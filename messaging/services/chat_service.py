@@ -13,11 +13,27 @@ from messaging.types import IncomingMessage, OutgoingMessage
 
 
 def extract_whatsapp_identity(payload: dict) -> dict:
+    # Facebook WhatsApp API format
+    # For Facebook, we extract from the webhook payload structure
+    if not payload:
+        return {
+            "channel": "whatsapp_facebook",
+            "wa_id": None,
+            "from": None,
+            "to": None,
+        }
+
+    # Try to extract from Facebook format
+    entry = payload.get("entry", [{}])[0]
+    changes = entry.get("changes", [{}])[0]
+    value = changes.get("value", {})
+    messages = value.get("messages", [{}])[0]
+
     return {
-        "channel": "whatsapp",
-        "wa_id": payload.get("WaId"),
-        "from": payload.get("From"),
-        "to": payload.get("To"),
+        "channel": "whatsapp_facebook",
+        "wa_id": messages.get("from"),
+        "from": messages.get("from"),
+        "to": value.get("metadata", {}).get("phone_number_id"),
     }
 
 
@@ -42,23 +58,31 @@ def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
 
 def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
 
-    user = User.objects.filter(username=msg.from_.replace("whatsapp:", "")).first()
+    user = User.objects.filter(username=msg.from_).first()
     names = biblical_names
     if not user and msg.raw_payload:
-        metadata = msg.raw_payload.get("ChannelMetadata")
+        # Try to extract profile name from Facebook WhatsApp webhook
         first_name = None
         last_name = None
-        if metadata and isinstance(metadata, list) and len(metadata) > 0:
-            metadata = metadata[0]
-            metadata = json.loads(metadata)
-            name = metadata.get("data", {}).get("context", {}).get("ProfileName", {})
 
-            if name:
-                first_name = name.split(" ")[0]
-                last_name = name.split(" ")[-1]
+        # Facebook WhatsApp format
+        try:
+            entry = msg.raw_payload.get("entry", [{}])[0]
+            changes = entry.get("changes", [{}])[0]
+            value = changes.get("value", {})
+            contacts = value.get("contacts", [])
+            if contacts:
+                profile = contacts[0].get("profile", {})
+                name = profile.get("name", "")
+                if name:
+                    name_parts = name.split(" ")
+                    first_name = name_parts[0]
+                    last_name = name_parts[-1] if len(name_parts) > 1 else name_parts[0]
+        except (KeyError, IndexError, AttributeError):
+            pass
 
         user, created = User.objects.get_or_create(
-            username=msg.from_.replace("whatsapp:", ""),
+            username=msg.from_,
             first_name=first_name,
             last_name=last_name,
             is_active=True,
