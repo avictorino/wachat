@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/4.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
+
 import os
 from pathlib import Path
 
@@ -51,8 +52,6 @@ else:
 # Application definition
 
 INSTALLED_APPS = [
-    "rest_framework",
-    "drf_spectacular",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -62,10 +61,6 @@ INSTALLED_APPS = [
     "core.apps.CoreConfig",
     "corsheaders",
 ]
-
-REST_FRAMEWORK = {
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-}
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -107,7 +102,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Falls back to SQLite if DATABASE_URL is not set
 DATABASES = {
     "default": dj_database_url.parse(
-        os.getenv("DATABASE_URL"),
+        os.getenv("DATABASE_URL", "sqlite:///db.sqlite3"),
         conn_max_age=600,
     )
 }
