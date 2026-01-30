@@ -4,13 +4,12 @@ import os
 import requests
 
 from core.services.text_to_speech import TextToSpeechService
-from messaging.providers.base import MessagingProvider
 from messaging.types import OutgoingMessage
 
 logger = logging.getLogger(__name__)
 
 
-class FacebookWhatsAppProvider(MessagingProvider):
+class FacebookWhatsAppProvider:
     """
     WhatsApp provider using Facebook's WhatsApp Business API.
     """
