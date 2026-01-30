@@ -23,8 +23,8 @@ from core.models import (
     VirtualFriend,
 )
 from llm import LLMClient, LLMMessage
-from media_generation import maybe_generate_image
-from prompts import (
+from service.media_generation import maybe_generate_image
+from service.prompts import (
     IMAGE_EXTRACTION_PROMPT,
     build_memory_prompt,
     build_mode_inference_prompt,

@@ -22,7 +22,7 @@ from openai import OpenAI
 from requests.auth import HTTPBasicAuth
 
 from core.constants import ConversationMode
-from prompts import image_generation_base_prompt
+from service.prompts import image_generation_base_prompt
 
 logger = logging.getLogger(__name__)
 
