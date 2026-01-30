@@ -3,12 +3,13 @@
 import os
 import sys
 
+# Load environment variables from .env file
+import dotenv
+
 
 def main():
     """Run administrative tasks."""
-    # Load environment variables from .env file
-    import dotenv
-    dotenv.read_dotenv()
+    dotenv.read_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
     
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "wachat.settings")
     try:
