@@ -1,0 +1,75 @@
+# ----------------------------------
+# IDEs / Editors
+# ----------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ----------------------------------
+# Python cache / compiled files
+# ----------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ----------------------------------
+# Virtual environments
+# ----------------------------------
+.env
+.venv
+env/
+venv/
+ENV/
+.python-version
+
+# ----------------------------------
+# Django specific
+# ----------------------------------
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# ----------------------------------
+# Test / coverage
+# ----------------------------------
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.tox/
+.nox/
+
+# ----------------------------------
+# OS files
+# ----------------------------------
+.DS_Store
+Thumbs.db
+
+# ----------------------------------
+# Temporary / runtime
+# ----------------------------------
+*.pid
+*.sock
+*.sqlite3
+*.tmp
+
+# ----------------------------------
+# Build / packaging
+# ----------------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ----------------------------------
+# Node (if frontend exists)
+# ----------------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
