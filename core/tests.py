@@ -118,3 +118,26 @@ class WhatsAppWebhookViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
         mock_process_task.assert_called_once()
+
+    @patch("core.views.process_message_task")
+    @patch("core.views.GroqWhisperSTT")
+    def test_post_whatsapp_webhook_handles_processing_exception(
+        self, mock_whisper, mock_process_task
+    ):
+        """Test webhook endpoint handles exceptions in process_message_task gracefully"""
+        # Arrange
+        mock_process_task.side_effect = Exception("Simulated error")
+        data = {
+            "From": "whatsapp:+5521967337683",
+            "To": "whatsapp:+5511999999999",
+            "Body": "Test message",
+            "NumMedia": "0",
+        }
+
+        # Act
+        response = self.client.post("/api/webhooks/whatsapp/", data)
+
+        # Assert - Should still return 200 even with exception
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+        mock_process_task.assert_called_once()

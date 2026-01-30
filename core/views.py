@@ -69,6 +69,15 @@ class WhatsAppWebhookView(View):
             reply_as_audio=reply_as_audio,
         )
 
-        process_message_task(msg)
+        try:
+            process_message_task(msg)
+        except Exception as ex:
+            logger.exception(
+                "Error processing webhook message",
+                extra={
+                    "exception_type": type(ex).__name__,
+                    "exception_message": str(ex),
+                },
+            )
 
         return JsonResponse({"status": "ok"}, status=200)
