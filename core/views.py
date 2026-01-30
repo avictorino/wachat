@@ -12,7 +12,6 @@ from messaging.types import IncomingMessage
 
 logger = logging.getLogger(__name__)
 
-
 @method_decorator(csrf_exempt, name="dispatch")
 class FacebookWhatsAppWebhookView(View):
     """
