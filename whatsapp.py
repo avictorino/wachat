@@ -11,7 +11,6 @@ import random
 
 import requests
 from django.contrib.auth.models import User
-from requests.auth import HTTPBasicAuth
 
 from core.constants import biblical_names
 from core.models import UserSpiritualProfile, VirtualFriend
