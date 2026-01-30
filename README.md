@@ -2,6 +2,8 @@
 
 WaChat é um projeto Django para aplicação de chat.
 
+cloudflared tunnel --url http://localhost:9000
+
 ## 📋 Requisitos
 
 - Python 3.8+
