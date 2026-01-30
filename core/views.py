@@ -1,8 +1,9 @@
 import logging
 
-from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.views import APIView
+from django.http import JsonResponse
+from django.utils.decorators import method_decorator
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
 
 from core.services.speech_to_text import GroqWhisperSTT
 from messaging.dispatcher import dispatch
@@ -12,11 +13,15 @@ from messaging.types import IncomingMessage
 logger = logging.getLogger(__name__)
 
 
-class WhatsAppWebhookView(APIView):
-    permission_classes = []  # Twilio não usa auth
+@method_decorator(csrf_exempt, name="dispatch")
+class WhatsAppWebhookView(View):
+    """
+    WhatsApp webhook endpoint for receiving messages from Twilio.
+    CSRF is exempted because Twilio webhooks don't use CSRF tokens.
+    """
 
     def post(self, request):
-        data = request.data
+        data = request.POST
 
         from_number = data.get("From")  # 'whatsapp:+5521967337683'
         to_number = data.get("To")  # whatsapp:+5511999999999
@@ -53,10 +58,10 @@ class WhatsAppWebhookView(APIView):
             from_=from_number,
             to=to_number,
             text=(user_text or "").strip(),
-            raw_payload=dict(request.data),
+            raw_payload=dict(request.POST),
             reply_as_audio=reply_as_audio,
         )
 
         dispatch(process_message_task, msg)
 
-        return Response({"status": "ok"}, status=status.HTTP_200_OK)
+        return JsonResponse({"status": "ok"}, status=200)
