@@ -1,0 +1,63 @@
+{
+  "name": "WaChat",
+  "description": "Django-based chat application with WhatsApp integration",
+  "repository": "https://github.com/avictorino/wachat",
+  "keywords": [
+    "python",
+    "django",
+    "whatsapp",
+    "chat",
+    "postgresql"
+  ],
+  "stack": "heroku-24",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql:essential-0",
+      "as": "DATABASE"
+    }
+  ],
+  "env": {
+    "SECRET_KEY": {
+      "description": "Django secret key for cryptographic signing",
+      "generator": "secret"
+    },
+    "DEBUG": {
+      "description": "Debug mode (always False in production)",
+      "value": "False"
+    },
+    "ALLOWED_HOSTS": {
+      "description": "Comma-separated list of allowed hosts (will be auto-configured with your Heroku app domain)",
+      "required": false
+    },
+    "CSRF_TRUSTED_ORIGINS": {
+      "description": "Comma-separated list of CSRF trusted origins (will be auto-configured with your Heroku app domain)",
+      "required": false
+    },
+    "FACEBOOK_TOKEN": {
+      "description": "Facebook WhatsApp Business API access token",
+      "required": false
+    },
+    "FACEBOOK_PHONE_NUMBER_ID": {
+      "description": "Facebook WhatsApp Business phone number ID",
+      "required": false
+    },
+    "FACEBOOK_WEBHOOK_VERIFICATION": {
+      "description": "Facebook webhook verification token",
+      "required": false
+    }
+  },
+  "scripts": {
+    "postdeploy": "python manage.py migrate --noinput && python manage.py collectstatic --noinput"
+  }
+}
