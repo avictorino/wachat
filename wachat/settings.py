@@ -25,6 +25,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default="django-insecure-e%&7#bn310-go8+=ib5pu7=$)tj3b-21j)pn%k7s#5c_6rkkyj")
 
 # SECURITY WARNING: don't run with debug turned on in production!
+# For production, always set DEBUG=False in your .env file
 DEBUG = config('DEBUG', default=True, cast=bool)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()])
@@ -79,9 +80,10 @@ WSGI_APPLICATION = "wachat.wsgi.application"
 
 # Read database URL from environment variable
 # Falls back to SQLite if DATABASE_URL is not set
-DATABASE_URL = config('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
 DATABASES = {
-    "default": dj_database_url.parse(DATABASE_URL)
+    "default": dj_database_url.parse(
+        config('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
+    )
 }
 
 
