@@ -1,5 +1,5 @@
 """
-WSGI config for wachat project.
+WSGI config for config project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -15,6 +15,6 @@ dotenv.read_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.en
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "wachat.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
 application = get_wsgi_application()
