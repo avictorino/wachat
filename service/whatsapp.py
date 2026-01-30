@@ -15,10 +15,10 @@ from django.contrib.auth.models import User
 from core.constants import biblical_names
 from core.models import UserSpiritualProfile, VirtualFriend
 from llm import LLMMessage, get_llm_client
-from media_generation import TextToSpeechService
+from service.media_generation import TextToSpeechService
 from messaging.types import IncomingMessage, OutgoingMessage
-from orchestration import chat_with_friend
-from prompts import build_gender_inference_prompt
+from service.orchestration import chat_with_friend
+from service.prompts import build_gender_inference_prompt
 
 logger = logging.getLogger(__name__)
 
