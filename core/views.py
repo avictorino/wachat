@@ -20,6 +20,10 @@ class WhatsAppWebhookView(View):
     CSRF is exempted because Twilio webhooks don't use CSRF tokens.
     """
 
+    def get(self, request):
+
+        return JsonResponse({})
+
     def post(self, request):
         data = request.POST
 
