@@ -6,7 +6,6 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from core.services.speech_to_text import GroqWhisperSTT
-from messaging.dispatcher import dispatch
 from messaging.tasks import process_message_task
 from messaging.types import IncomingMessage
 
@@ -70,6 +69,6 @@ class WhatsAppWebhookView(View):
             reply_as_audio=reply_as_audio,
         )
 
-        dispatch(process_message_task, msg)
+        process_message_task(msg)
 
         return JsonResponse({"status": "ok"}, status=200)
