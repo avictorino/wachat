@@ -1,8 +1,6 @@
 # messaging/tasks.py
 import logging
 
-from django.db import close_old_connections
-
 from messaging.providers.factory import get_provider
 from messaging.services.chat_service import handle_incoming_message
 from messaging.types import IncomingMessage
@@ -12,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 def process_message_task(incoming_message: IncomingMessage) -> None:
     try:
-        close_old_connections()
 
         outgoing = handle_incoming_message(incoming_message)
         provider = get_provider(outgoing.channel)

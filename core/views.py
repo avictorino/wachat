@@ -205,7 +205,6 @@ class FacebookWhatsAppWebhookView(View):
                         reply_as_audio=reply_as_audio,
                     )
 
-                    # Dispatch message for processing
-                    dispatch(process_message_task, msg)
+                    process_message_task(msg)
 
         return JsonResponse({"status": "ok"}, status=200)
