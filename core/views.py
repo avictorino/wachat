@@ -26,7 +26,11 @@ class WhatsAppWebhookView(View):
         from_number = data.get("From")  # 'whatsapp:+5521967337683'
         to_number = data.get("To")  # whatsapp:+5511999999999
         body = data.get("Body", "").strip()
-        num_media = int(data.get("NumMedia", 0))
+        # Safely convert NumMedia to int, default to 0 if missing or invalid
+        try:
+            num_media = int(data.get("NumMedia", 0))
+        except (ValueError, TypeError):
+            num_media = 0
 
         user_text_parts = []
         reply_as_audio = False
