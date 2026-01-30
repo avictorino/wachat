@@ -283,7 +283,9 @@ class FacebookWhatsAppWebhookViewTest(TestCase):
 
         # Assert
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json(), {"status": "error", "message": "Invalid JSON"})
+        self.assertEqual(
+            response.json(), {"status": "error", "message": "Invalid JSON"}
+        )
         mock_dispatch.assert_not_called()
 
     @patch("core.views.dispatch")

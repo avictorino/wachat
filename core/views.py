@@ -110,7 +110,9 @@ class FacebookWhatsAppWebhookView(View):
             body = json.loads(request.body)
         except json.JSONDecodeError:
             logger.error("Invalid JSON in Facebook webhook")
-            return JsonResponse({"status": "error", "message": "Invalid JSON"}, status=400)
+            return JsonResponse(
+                {"status": "error", "message": "Invalid JSON"}, status=400
+            )
 
         # Facebook webhook structure:
         # {
@@ -156,7 +158,6 @@ class FacebookWhatsAppWebhookView(View):
                 for message in value.get("messages", []):
                     from_number = message.get("from")
                     message_type = message.get("type")
-                    message_id = message.get("id")
 
                     # Extract message content based on type
                     text = ""
@@ -168,17 +169,21 @@ class FacebookWhatsAppWebhookView(View):
                     elif message_type == "audio":
                         # Handle audio messages
                         audio_data = message.get("audio", {})
-                        media_url = audio_data.get("id")  # Facebook provides media ID, needs to be fetched
+                        media_url = audio_data.get(
+                            "id"
+                        )  # Facebook provides media ID, needs to be fetched
                         # For now, just log that we received audio
                         logger.info(f"Received audio message with ID: {media_url}")
                         text = "[Audio message received]"
                         reply_as_audio = True
                     elif message_type == "image":
                         # Handle image messages
-                        logger.info(f"Received image message")
+                        logger.info("Received image message")
                         text = "[Image message received]"
                     else:
-                        logger.info(f"Received unsupported message type: {message_type}")
+                        logger.info(
+                            f"Received unsupported message type: {message_type}"
+                        )
                         text = f"[{message_type} message received]"
 
                     # Create incoming message

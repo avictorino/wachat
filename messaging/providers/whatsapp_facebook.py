@@ -38,7 +38,9 @@ class FacebookWhatsAppProvider(MessagingProvider):
                 # Send audio as media message
                 payload = {
                     "messaging_product": "whatsapp",
-                    "to": message.to.replace("whatsapp:", ""),  # Remove prefix if present
+                    "to": message.to.replace(
+                        "whatsapp:", ""
+                    ),  # Remove prefix if present
                     "type": "audio",
                     "audio": {
                         "link": audio_url,
@@ -59,7 +61,9 @@ class FacebookWhatsAppProvider(MessagingProvider):
         # Default: send plain text message
         payload = {
             "messaging_product": "whatsapp",
-            "to": message.to.replace("whatsapp:", ""),  # Remove whatsapp: prefix if present
+            "to": message.to.replace(
+                "whatsapp:", ""
+            ),  # Remove whatsapp: prefix if present
             "type": "text",
             "text": {
                 "body": message.text,
