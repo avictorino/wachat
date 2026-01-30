@@ -164,6 +164,17 @@ python manage.py collectstatic
 - Em produção, sempre configure `DEBUG=False`
 - Configure `ALLOWED_HOSTS` apropriadamente em produção
 
+## 🚀 Deploy para Heroku
+
+Para instruções completas de deployment no Heroku, consulte o [Guia de Deploy para Heroku](HEROKU_DEPLOYMENT.md).
+
+O deploy no Heroku inclui:
+- Configuração automática de PostgreSQL
+- Execução automática de migrations durante o deploy
+- Sincronização com o branch `main` do GitHub
+- Python buildpack configurado
+- Gunicorn como servidor WSGI
+
 ## 📄 Licença
 
 [Especifique a licença do projeto aqui]
