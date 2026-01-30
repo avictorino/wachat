@@ -26,7 +26,9 @@ class WhatsAppWebhookView(View):
         Handle GET requests to webhook endpoint.
         This can be used for health checks or verification.
         """
-        return JsonResponse({"status": "ok", "message": "WhatsApp webhook endpoint is active"})
+        return JsonResponse(
+            {"status": "ok", "message": "WhatsApp webhook endpoint is active"}
+        )
 
     def post(self, request):
         data = request.POST
