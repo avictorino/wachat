@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from messaging.providers.factory import get_provider
 from messaging.providers.whatsapp_facebook import FacebookWhatsAppProvider
 from messaging.types import OutgoingMessage
 
@@ -194,25 +193,3 @@ class FacebookWhatsAppProviderTest(TestCase):
         # Act & Assert
         with self.assertRaises(requests.exceptions.HTTPError):
             provider.send(message)
-
-
-class FactoryTest(TestCase):
-    @patch.dict(
-        "os.environ",
-        {"FACEBOOK_TOKEN": "test_token", "FACEBOOK_PHONE_NUMBER_ID": "123456789"},
-    )
-    def test_get_provider_whatsapp_facebook(self):
-        """Test factory returns FacebookWhatsAppProvider for whatsapp_facebook channel"""
-        # Act
-        provider = get_provider("whatsapp_facebook")
-
-        # Assert
-        self.assertIsInstance(provider, FacebookWhatsAppProvider)
-
-    def test_get_provider_unsupported_channel(self):
-        """Test factory raises error for unsupported channel"""
-        # Act & Assert
-        with self.assertRaises(ValueError) as context:
-            get_provider("unsupported_channel")
-
-        self.assertIn("Unsupported channel", str(context.exception))

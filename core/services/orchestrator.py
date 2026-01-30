@@ -49,7 +49,7 @@ def chat_with_friend(
 
     conversation = get_or_create_open_conversation(
         friend=friend,
-        channel="whatsapp",
+        channel="whatsapp_facebook",
         channel_user_id=identity["wa_id"],
     )
 
