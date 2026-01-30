@@ -2,6 +2,12 @@
 """Django's command-line utility for administrative tasks."""
 import os
 import sys
+import warnings
+
+# Suppress pkg_resources deprecation warnings from PyCharm debugger
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
+warnings.filterwarnings("ignore", message=".*pkg_resources.*", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*declare_namespace.*", category=DeprecationWarning)
 
 # Load environment variables from .env file
 import dotenv
