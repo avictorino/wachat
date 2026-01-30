@@ -4,20 +4,24 @@ Conversation orchestration and management.
 This module handles the core conversation logic including memory management,
 conversation flow, and message handling.
 """
-from __future__ import annotations
-
 import json
 import logging
 from dataclasses import dataclass
 from datetime import timedelta
-from typing import Iterable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from core.constants import INITIAL_WELCOME_MESSAGE, MODE_PRIORITY, ConversationMode
-from core.models import Conversation, FriendMemory, Message, UserSpiritualProfile, VirtualFriend
+from core.models import (
+    Conversation,
+    FriendMemory,
+    Message,
+    UserSpiritualProfile,
+    VirtualFriend,
+)
 from llm import LLMClient, LLMMessage
 from media_generation import maybe_generate_image
 from prompts import (
@@ -45,9 +49,9 @@ DEFAULT_MEMORY_KEYS = [
 ]
 
 
-def get_relevant_memories(
-    friend: VirtualFriend, keys: Iterable[str] = DEFAULT_MEMORY_KEYS
-) -> list[FriendMemory]:
+def get_relevant_memories(friend: VirtualFriend, keys=None) -> list[FriendMemory]:
+    if keys is None:
+        keys = DEFAULT_MEMORY_KEYS
     qs = (
         FriendMemory.objects.filter(friend=friend, is_active=True)
         .filter(Q(key__in=list(keys)) | Q(kind__in=["prayer", "verse"]))
@@ -63,7 +67,7 @@ def upsert_memory(
     key: str,
     value: str,
     confidence: float = 0.80,
-    source: dict | None = None,
+    source: Optional[dict] = None,
 ) -> FriendMemory:
     obj, _ = FriendMemory.objects.update_or_create(
         friend=friend,
