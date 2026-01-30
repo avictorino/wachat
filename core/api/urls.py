@@ -1,5 +1,5 @@
 from django.urls import path
-from biblical_friend.views import FriendsListCreateView, ChatView, ConversationDetailView, WhatsAppWebhookView
+from core.views import FriendsListCreateView, ChatView, ConversationDetailView, WhatsAppWebhookView
 
 urlpatterns = [
     path("friends/", FriendsListCreateView.as_view()),
