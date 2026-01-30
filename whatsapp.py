@@ -152,12 +152,15 @@ def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
         friend=friend, user_text=msg.text or "", llm=get_llm_client(), identity=identity
     )
 
+    from core.constants import ConversationMode
+
     return OutgoingMessage(
         channel=msg.channel,
         from_=msg.to,  # 👈 invertendo
         to=msg.from_,  # 👈 invertendo
         text=result.text,
         reply_as_audio=msg.reply_as_audio,
+        conversation_mode=ConversationMode(conversation.current_mode),
     )
 
 

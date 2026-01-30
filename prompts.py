@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from core.constants import (
     BIBLICAL_MODE_BLOCK,
     LISTENING_MODE_BLOCK,
@@ -190,7 +192,7 @@ def build_profile_extraction_prompt() -> str:
     )
 
 
-PROFILE_FIELD_RENDERERS: dict[str, callable] = {
+PROFILE_FIELD_RENDERERS: dict[str, Callable] = {
     "age": lambda v: f"Idade aproximada mencionada: {v}",
     "city": lambda v: f"Mora em: {v}",
     "marital_status": lambda v: f"Estado civil: {v}",

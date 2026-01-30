@@ -21,7 +21,6 @@ from groq import Groq
 from openai import OpenAI
 from requests.auth import HTTPBasicAuth
 
-from config import settings as config_settings
 from core.constants import ConversationMode
 from prompts import image_generation_base_prompt
 
@@ -50,14 +49,14 @@ class TextToSpeechService:
         filename = f"{uuid.uuid4()}.mp3"
         path = self._audio_dir / filename
 
-        if conversation_mode.LISTENING:
+        if conversation_mode == ConversationMode.LISTENING:
             voice_settings = VoiceSettings(
                 stability=0.72,  # voz bem estável, transmite segurança
                 similarity_boost=0.60,  # mantém identidade sem rigidez
                 style=0.22,  # pouca teatralidade
                 use_speaker_boost=True,  # presença suave
             )
-        elif conversation_mode.REFLECTIVE:
+        elif conversation_mode == ConversationMode.REFLECTIVE:
             voice_settings = VoiceSettings(
                 stability=0.68,  # estável, mas não rígido
                 similarity_boost=0.58,  # menos "voz padrão"
@@ -247,14 +246,14 @@ def maybe_generate_image(
         image_bytes = base64.b64decode(image_base64)
 
         # ---- Save image ----
-        image_dir = Path(config_settings.MEDIA_ROOT) / "images"
+        image_dir = Path(settings.MEDIA_ROOT) / "images"
         image_dir.mkdir(parents=True, exist_ok=True)
 
         filename = f"{uuid.uuid4()}.png"
         path = image_dir / filename
         path.write_bytes(image_bytes)
 
-        return f"{config_settings.SITE_URL}/media/images/{filename}"
+        return f"{settings.SITE_URL}/media/images/{filename}"
 
     except Exception as ex:
         logger.error(f"Image generation failed: {ex}")
