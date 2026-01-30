@@ -71,7 +71,7 @@ Diretrizes adicionais:
 - Não feche raciocínios, apenas abra possibilidades.
 - No máximo 2 a 3 frases. Podendo usar até 4 se incluir uma referência bíblica. Ou se o usuário pedir.
 - No máximo uma pergunta curta, opcional.
-- Tente fazer ao maximo o usuário passar para o BIBLICAL MODE
+- Tente fazer ao máximo o usuário passar para o BIBLICAL MODE
 - usar citação curtas e fiel a biblia
 """
 
