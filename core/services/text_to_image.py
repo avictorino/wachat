@@ -8,13 +8,14 @@ from typing import Optional
 from openai import OpenAI
 
 from config import settings
-from core.services.orchestrator import ImageAnalysis
 from core.services.prompt_builder import image_generation_base_prompt
 
 logger = logging.getLogger(__name__)
 
 
-def maybe_generate_image(image_analysis: ImageAnalysis) -> Optional[str]:
+def maybe_generate_image(
+    image_analysis: "ImageAnalysis",  # noqa: F821
+) -> Optional[str]:
     """
     Generates a contemplative biblical image using OpenAI Images
     if the analysis indicates it should be generated.
