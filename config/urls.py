@@ -20,10 +20,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from core.views import WhatsAppWebhookView
+from core.views import FacebookWhatsAppWebhookView, WhatsAppWebhookView
 
 urlpatterns = [
     path("api/webhooks/whatsapp/", WhatsAppWebhookView.as_view()),
+    path("api/webhooks/whatsapp-facebook/", FacebookWhatsAppWebhookView.as_view()),
     path("admin/", admin.site.urls),
 ]
 
