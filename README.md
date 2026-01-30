@@ -114,7 +114,7 @@ DATABASE_URL=sqlite:///db.sqlite3
 ```
 wachat/
 ├── core/               # App principal
-├── wachat/            # Configurações do projeto
+├── config/            # Configurações do projeto
 │   ├── settings.py    # Configurações Django
 │   ├── urls.py        # URLs principais
 │   └── wsgi.py        # WSGI config
