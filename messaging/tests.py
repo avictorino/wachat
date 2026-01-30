@@ -2,8 +2,8 @@ from unittest.mock import MagicMock, patch
 
 from django.test import TestCase
 
-from messaging.providers.whatsapp_facebook import FacebookWhatsAppProvider
 from messaging.types import OutgoingMessage
+from whatsapp import FacebookWhatsAppProvider
 
 
 class FacebookWhatsAppProviderTest(TestCase):
@@ -25,7 +25,7 @@ class FacebookWhatsAppProviderTest(TestCase):
             "https://graph.facebook.com/v22.0/123456789/messages",
         )
 
-    @patch("messaging.providers.whatsapp_facebook.requests.post")
+    @patch("whatsapp.requests.post")
     def test_send_text_message(self, mock_post):
         """Test sending a simple text message"""
         # Arrange
@@ -69,7 +69,7 @@ class FacebookWhatsAppProviderTest(TestCase):
         self.assertEqual(payload["type"], "text")
         self.assertEqual(payload["text"]["body"], "Hello World")
 
-    @patch("messaging.providers.whatsapp_facebook.requests.post")
+    @patch("whatsapp.requests.post")
     def test_send_text_message_removes_whatsapp_prefix(self, mock_post):
         """Test that whatsapp: prefix is removed from phone number"""
         # Arrange
@@ -95,8 +95,8 @@ class FacebookWhatsAppProviderTest(TestCase):
         payload = mock_post.call_args[1]["json"]
         self.assertEqual(payload["to"], "5521967337683")  # Prefix removed
 
-    @patch("messaging.providers.whatsapp_facebook.TextToSpeechService")
-    @patch("messaging.providers.whatsapp_facebook.requests.post")
+    @patch("whatsapp.TextToSpeechService")
+    @patch("whatsapp.requests.post")
     def test_send_audio_message(self, mock_post, mock_tts_service):
         """Test sending an audio message"""
         # Arrange
@@ -133,8 +133,8 @@ class FacebookWhatsAppProviderTest(TestCase):
         self.assertEqual(payload["type"], "audio")
         self.assertEqual(payload["audio"]["link"], "https://example.com/audio.mp3")
 
-    @patch("messaging.providers.whatsapp_facebook.TextToSpeechService")
-    @patch("messaging.providers.whatsapp_facebook.requests.post")
+    @patch("whatsapp.TextToSpeechService")
+    @patch("whatsapp.requests.post")
     def test_send_audio_message_fallback_to_text(self, mock_post, mock_tts_service):
         """Test that audio message falls back to text if TTS fails"""
         # Arrange
@@ -166,7 +166,7 @@ class FacebookWhatsAppProviderTest(TestCase):
         self.assertEqual(payload["type"], "text")
         self.assertEqual(payload["text"]["body"], "Hello World")
 
-    @patch("messaging.providers.whatsapp_facebook.requests.post")
+    @patch("whatsapp.requests.post")
     def test_send_message_api_error(self, mock_post):
         """Test handling of API errors"""
         # Arrange

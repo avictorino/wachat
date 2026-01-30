@@ -1,9 +1,8 @@
 # messaging/tasks.py
 import logging
 
-from messaging.providers.whatsapp_facebook import FacebookWhatsAppProvider
-from messaging.services.chat_service import handle_incoming_message
 from messaging.types import IncomingMessage
+from whatsapp import FacebookWhatsAppProvider, handle_incoming_message
 
 logger = logging.getLogger(__name__)
 

@@ -1,17 +1,26 @@
+"""
+Conversation orchestration and management.
+
+This module handles the core conversation logic including memory management,
+conversation flow, and message handling.
+"""
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from datetime import timedelta
+from typing import Iterable, List, Optional, Tuple
 
+from django.db.models import Q
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
 from core.constants import INITIAL_WELCOME_MESSAGE, MODE_PRIORITY, ConversationMode
-from core.llm.base import LLMClient, LLMMessage
-from core.models import Conversation, Message, UserSpiritualProfile, VirtualFriend
-from core.services.memory import get_relevant_memories, upsert_memory
-from core.services.prompt_builder import (
+from core.models import Conversation, FriendMemory, Message, UserSpiritualProfile, VirtualFriend
+from llm import LLMClient, LLMMessage
+from media_generation import maybe_generate_image
+from prompts import (
     IMAGE_EXTRACTION_PROMPT,
     build_memory_prompt,
     build_mode_inference_prompt,
@@ -20,10 +29,112 @@ from core.services.prompt_builder import (
     build_system_prompt,
     onboarding_question,
 )
-from core.services.selectors import get_or_create_open_conversation, get_recent_messages
-from core.services.text_to_image import maybe_generate_image
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# Memory Management
+# ============================================================================
+
+DEFAULT_MEMORY_KEYS = [
+    "favorite_verse",
+    "main_struggle",
+    "prayer_style",
+    "family_context",
+]
+
+
+def get_relevant_memories(
+    friend: VirtualFriend, keys: Iterable[str] = DEFAULT_MEMORY_KEYS
+) -> list[FriendMemory]:
+    qs = (
+        FriendMemory.objects.filter(friend=friend, is_active=True)
+        .filter(Q(key__in=list(keys)) | Q(kind__in=["prayer", "verse"]))
+        .order_by("-updated_at")[:25]
+    )
+    return list(qs)
+
+
+def upsert_memory(
+    friend: VirtualFriend,
+    *,
+    kind: str,
+    key: str,
+    value: str,
+    confidence: float = 0.80,
+    source: dict | None = None,
+) -> FriendMemory:
+    obj, _ = FriendMemory.objects.update_or_create(
+        friend=friend,
+        kind=kind,
+        key=key,
+        defaults={
+            "value": value,
+            "confidence": confidence,
+            "source": source or {},
+            "is_active": True,
+        },
+    )
+    return obj
+
+
+# ============================================================================
+# Conversation Selectors
+# ============================================================================
+
+
+def is_whatsapp_window_open(conversation: Conversation) -> bool:
+    last_user_msg = conversation.context.get("last_user_message_at")
+    if not last_user_msg:
+        return False
+
+    return timezone.now() - parse_datetime(last_user_msg) < timedelta(hours=24)
+
+
+def get_or_create_open_conversation(
+    friend: VirtualFriend,
+    channel: str,
+    channel_user_id: str,
+    title: str = "",
+) -> Conversation:
+
+    convo = (
+        Conversation.objects.filter(
+            friend=friend,
+            is_closed=False,
+            context__channel=channel,
+            context__channel_user_id=channel_user_id,
+        )
+        .order_by("-created_at")
+        .first()
+    )
+
+    if convo:
+        if not is_whatsapp_window_open(convo):
+            convo.is_closed = True
+            convo.save()
+        else:
+            return convo
+
+    return Conversation.objects.create(
+        friend=friend,
+        title=title,
+        context={
+            "channel": channel,
+            "channel_user_id": channel_user_id,
+            "last_user_message_at": timezone.now().isoformat(),
+        },
+    )
+
+
+def get_recent_messages(conversation: Conversation, limit: int = 20) -> list[Message]:
+    return list(conversation.messages.order_by("-created_at")[:limit][::-1])
+
+
+# ============================================================================
+# Core Orchestration
+# ============================================================================
 
 
 @dataclass
