@@ -48,8 +48,16 @@ else:
     # In production, parse from environment or use Heroku app domain
     csrf_origins = config("CSRF_TRUSTED_ORIGINS", default="", cast=lambda v: [s.strip() for s in v.split(",") if s.strip()])
     if not csrf_origins:
-        # Auto-configure for Heroku
-        csrf_origins = [f"https://{host}" for host in ALLOWED_HOSTS if host != "*"]
+        # Auto-configure for Heroku - filter out wildcards
+        csrf_origins = [f"https://{host}" for host in ALLOWED_HOSTS if host != "*" and host]
+    # Validate that CSRF_TRUSTED_ORIGINS is not empty in production
+    if not csrf_origins:
+        import warnings
+        warnings.warn(
+            "CSRF_TRUSTED_ORIGINS is empty in production. Set ALLOWED_HOSTS to your domain "
+            "or explicitly set CSRF_TRUSTED_ORIGINS environment variable.",
+            RuntimeWarning
+        )
     CSRF_TRUSTED_ORIGINS = csrf_origins
 
 # Production Security Settings

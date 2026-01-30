@@ -21,10 +21,10 @@ Or create it through the [Heroku Dashboard](https://dashboard.heroku.com/).
 ### 2. Add PostgreSQL Database
 
 ```bash
-heroku addons:create heroku-postgresql:mini
+heroku addons:create heroku-postgresql:essential-0
 ```
 
-This automatically sets the `DATABASE_URL` environment variable.
+This automatically sets the `DATABASE_URL` environment variable. The `essential-0` plan is the entry-level paid plan at $5/month.
 
 ### 3. Configure Environment Variables
 
@@ -115,11 +115,11 @@ heroku run python manage.py collectstatic --noinput
 Defines the processes that run on Heroku:
 
 ```
-release: python manage.py migrate --noinput
+release: python manage.py migrate --noinput && python manage.py collectstatic --noinput
 web: gunicorn config.wsgi --log-file -
 ```
 
-- **release**: Runs migrations automatically before each deployment
+- **release**: Runs migrations and collects static files automatically before each deployment
 - **web**: Starts the web server using Gunicorn
 
 ### runtime.txt

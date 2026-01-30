@@ -9,7 +9,7 @@
     "chat",
     "postgresql"
   ],
-  "stack": "heroku-22",
+  "stack": "heroku-24",
   "buildpacks": [
     {
       "url": "heroku/python"
@@ -18,12 +18,12 @@
   "formation": {
     "web": {
       "quantity": 1,
-      "size": "eco"
+      "size": "basic"
     }
   },
   "addons": [
     {
-      "plan": "heroku-postgresql:mini",
+      "plan": "heroku-postgresql:essential-0",
       "as": "DATABASE"
     }
   ],
