@@ -104,6 +104,7 @@ DATABASE_URL=sqlite:///db.sqlite3
 - **Django 4.2.27**: Framework web principal
 - **dj-database-url**: Configuração de banco de dados via URL
 - **python-decouple**: Gerenciamento de variáveis de ambiente
+- **django-dotenv**: Carregamento automático de variáveis do arquivo .env
 - **psycopg2-binary**: Driver PostgreSQL
 
 ## 🛠️ Desenvolvimento
