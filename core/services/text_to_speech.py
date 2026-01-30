@@ -1,13 +1,14 @@
-import os
-import uuid
-import time
 import logging
+import os
+import time
+import uuid
 from pathlib import Path
-from django.conf import settings
 
-from biblical_friend.constants import ConversationMode
+from django.conf import settings
 from elevenlabs.client import ElevenLabs
 from elevenlabs.types.voice_settings import VoiceSettings
+
+from core.constants import ConversationMode
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +22,11 @@ class TextToSpeechService:
         self._audio_dir = Path(settings.MEDIA_ROOT) / "audio"
         self._audio_dir.mkdir(parents=True, exist_ok=True)
 
-        self._client = ElevenLabs(
-            api_key=os.getenv("ELEVENLABS_API_KEY")
-        )
+        self._client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-    def speak_and_store(self, text: str, conversation_mode: ConversationMode, previous_text: str = None) -> str:
+    def speak_and_store(
+        self, text: str, conversation_mode: ConversationMode, previous_text: str = None
+    ) -> str:
         filename = f"{uuid.uuid4()}.mp3"
         path = self._audio_dir / filename
 
@@ -43,7 +44,10 @@ class TextToSpeechService:
                 style=0.35,  # emoção presente
                 use_speaker_boost=False,  # menos projeção, mais intimidade
             )
-        elif conversation_mode in (ConversationMode.SPIRITUAL_AWARENESS, ConversationMode.BIBLICAL,):
+        elif conversation_mode in (
+            ConversationMode.SPIRITUAL_AWARENESS,
+            ConversationMode.BIBLICAL,
+        ):
             voice_settings = VoiceSettings(
                 stability=0.55,  # menos estabilidade → mais energia
                 similarity_boost=0.65,  # voz mais presente
@@ -68,7 +72,7 @@ class TextToSpeechService:
             voice_settings=voice_settings,
             apply_text_normalization="on",
             language_code="pt",
-            seed=42
+            seed=42,
         )
 
         with open(path, "wb") as f:

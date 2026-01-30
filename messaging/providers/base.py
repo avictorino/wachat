@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+
 from messaging.types import OutgoingMessage
 
 

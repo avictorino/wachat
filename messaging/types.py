@@ -1,7 +1,7 @@
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Literal, Optional
 
-from biblical_friend.constants import ConversationMode
+from core.constants import ConversationMode
 
 ChannelType = Literal["whatsapp", "telegram", "web"]
 

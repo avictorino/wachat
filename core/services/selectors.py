@@ -1,8 +1,11 @@
 from __future__ import annotations
-from biblical_friend.models import Conversation, VirtualFriend, Message
+
 from datetime import timedelta
+
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+
+from core.models import Conversation, Message, VirtualFriend
 
 
 def is_whatsapp_window_open(conversation: Conversation) -> bool:
@@ -21,8 +24,7 @@ def get_or_create_open_conversation(
 ) -> Conversation:
 
     convo = (
-        Conversation.objects
-        .filter(
+        Conversation.objects.filter(
             friend=friend,
             is_closed=False,
             context__channel=channel,

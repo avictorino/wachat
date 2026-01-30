@@ -1,7 +1,5 @@
-import os
-
-from messaging.providers.whatsapp_twilio import TwilioWhatsAppProvider
 from messaging.providers.telegram import TelegramProvider
+from messaging.providers.whatsapp_twilio import TwilioWhatsAppProvider
 
 
 def get_provider(channel: str):

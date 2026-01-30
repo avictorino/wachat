@@ -2,7 +2,7 @@ from typing import Iterable, Optional
 
 from openai import OpenAI
 
-from biblical_friend.llm.base import LLMClient, LLMMessage, LLMResponse
+from core.llm.base import LLMClient, LLMMessage, LLMResponse
 
 
 class OpenAILLMClient(LLMClient):

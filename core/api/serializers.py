@@ -1,11 +1,21 @@
 from rest_framework import serializers
-from biblical_friend.models import VirtualFriend, Conversation, Message
+
+from core.models import Conversation, Message, VirtualFriend
 
 
 class VirtualFriendSerializer(serializers.ModelSerializer):
     class Meta:
         model = VirtualFriend
-        fields = ["id", "name", "persona", "tone", "age", "background", "is_active", "created_at"]
+        fields = [
+            "id",
+            "name",
+            "persona",
+            "tone",
+            "age",
+            "background",
+            "is_active",
+            "created_at",
+        ]
 
 
 class MessageSerializer(serializers.ModelSerializer):

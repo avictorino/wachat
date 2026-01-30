@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -25,9 +26,18 @@ class UserSpiritualProfile(TimeStampedModel):
     """
     Perfil espiritual do usuário, preferências e contexto que ajudam o Amigo.
     """
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="spiritual_profile")
-    gender = models.CharField(max_length=10, choices=Gender.choices, null=True, blank=False)
-    preferred_translation = models.CharField(max_length=32, default="NVI")  # ARA, NVI, NVT etc
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="spiritual_profile",
+    )
+    gender = models.CharField(
+        max_length=10, choices=Gender.choices, null=True, blank=False
+    )
+    preferred_translation = models.CharField(
+        max_length=32, default="NVI"
+    )  # ARA, NVI, NVT etc
     doctrine_profile = models.CharField(
         max_length=32,
         default="generic",
@@ -38,9 +48,11 @@ class UserSpiritualProfile(TimeStampedModel):
             ("custom", "Custom"),
         ],
     )
-    onboarding_answers = models.JSONField(default=dict, blank=True)  # { "faith_level": "...", "church": "...", ... }
-    allowed_topics = models.JSONField(default=list, blank=True)      # opcional: whitelist
-    blocked_topics = models.JSONField(default=list, blank=True)      # opcional: blacklist
+    onboarding_answers = models.JSONField(
+        default=dict, blank=True
+    )  # { "faith_level": "...", "church": "...", ... }
+    allowed_topics = models.JSONField(default=list, blank=True)  # opcional: whitelist
+    blocked_topics = models.JSONField(default=list, blank=True)  # opcional: blacklist
     extracted_profile = models.JSONField(default=dict)
 
 
@@ -48,17 +60,30 @@ class VirtualFriend(TimeStampedModel):
     """
     Um usuário pode ter vários amigos bíblicos, cada um com personalidade e parâmetros.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="virtual_friends")
-    gender = models.CharField(max_length=10, choices=Gender.choices, null=True, blank=False)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="virtual_friends",
+    )
+    gender = models.CharField(
+        max_length=10, choices=Gender.choices, null=True, blank=False
+    )
 
     name = models.CharField(max_length=48, default="Amigo Bíblico")
-    persona = models.TextField(default="Amigo bíblico, acolhedor, pastoral, baseado em Escrituras.")
-    tone = models.CharField(max_length=32, default="carinhoso")  # carinhoso, direto, reflexivo, etc
+    persona = models.TextField(
+        default="Amigo bíblico, acolhedor, pastoral, baseado em Escrituras."
+    )
+    tone = models.CharField(
+        max_length=32, default="carinhoso"
+    )  # carinhoso, direto, reflexivo, etc
 
     # Parametros que você pode ir completando com o tempo (igual você queria)
     age = models.PositiveSmallIntegerField(null=True, blank=True)
-    background = models.JSONField(default=dict, blank=True)  # { "where_studied": "", "where_works": "", ... }
+    background = models.JSONField(
+        default=dict, blank=True
+    )  # { "where_studied": "", "where_works": "", ... }
 
     is_active = models.BooleanField(default=True)
 
@@ -75,10 +100,15 @@ class Conversation(TimeStampedModel):
     """
     Sessão de conversa, pode ser diária, tema, estudo bíblico etc.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    friend = models.ForeignKey(VirtualFriend, on_delete=models.CASCADE, related_name="conversations")
+    friend = models.ForeignKey(
+        VirtualFriend, on_delete=models.CASCADE, related_name="conversations"
+    )
     title = models.CharField(max_length=120, blank=True, default="")
-    context = models.JSONField(default=dict, blank=True)  # { "channel": "app", "topic": "...", ... }
+    context = models.JSONField(
+        default=dict, blank=True
+    )  # { "channel": "app", "topic": "...", ... }
     is_closed = models.BooleanField(default=False)
     current_mode = models.CharField(
         max_length=32,
@@ -107,11 +137,15 @@ class Message(TimeStampedModel):
         TOOL = "tool", "Tool"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="messages")
+    conversation = models.ForeignKey(
+        Conversation, on_delete=models.CASCADE, related_name="messages"
+    )
 
     role = models.CharField(max_length=16, choices=Role.choices, db_index=True)
     content = models.TextField()
-    metadata = models.JSONField(default=dict, blank=True)  # { "tokens": 123, "model": "...", "verses": [...] }
+    metadata = models.JSONField(
+        default=dict, blank=True
+    )  # { "tokens": 123, "model": "...", "verses": [...] }
 
     class Meta:
         indexes = [
@@ -125,6 +159,7 @@ class FriendMemory(TimeStampedModel):
     Memória episódica e semântica do amigo, por usuário/amigo.
     Ex: "Usuário lida com ansiedade antes de dormir", "Verso favorito: Salmo 23".
     """
+
     class Kind(models.TextChoices):
         EPISODIC = "episodic", "Episodic"
         SEMANTIC = "semantic", "Semantic"
@@ -133,13 +168,21 @@ class FriendMemory(TimeStampedModel):
         PLAN = "plan", "Plan"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    friend = models.ForeignKey(VirtualFriend, on_delete=models.CASCADE, related_name="memories")
+    friend = models.ForeignKey(
+        VirtualFriend, on_delete=models.CASCADE, related_name="memories"
+    )
 
     kind = models.CharField(max_length=16, choices=Kind.choices, db_index=True)
-    key = models.CharField(max_length=128, db_index=True)  # "anxiety_bedtime", "favorite_verse", ...
+    key = models.CharField(
+        max_length=128, db_index=True
+    )  # "anxiety_bedtime", "favorite_verse", ...
     value = models.TextField()
-    confidence = models.DecimalField(max_digits=3, decimal_places=2, default=0.80)  # 0.00 a 1.00
-    source = models.JSONField(default=dict, blank=True)  # { "message_id": "...", "reason": "...", ... }
+    confidence = models.DecimalField(
+        max_digits=3, decimal_places=2, default=0.80
+    )  # 0.00 a 1.00
+    source = models.JSONField(
+        default=dict, blank=True
+    )  # { "message_id": "...", "reason": "...", ... }
 
     is_active = models.BooleanField(default=True)
 
@@ -155,8 +198,11 @@ class PrayerRequest(TimeStampedModel):
     """
     Pedidos de oração, para o amigo retomar depois.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    friend = models.ForeignKey(VirtualFriend, on_delete=models.CASCADE, related_name="prayer_requests")
+    friend = models.ForeignKey(
+        VirtualFriend, on_delete=models.CASCADE, related_name="prayer_requests"
+    )
 
     title = models.CharField(max_length=120)
     details = models.TextField(blank=True, default="")
@@ -174,8 +220,11 @@ class ReadingPlan(TimeStampedModel):
     """
     Plano de leitura bíblica guiado pelo amigo.
     """
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    friend = models.ForeignKey(VirtualFriend, on_delete=models.CASCADE, related_name="reading_plans")
+    friend = models.ForeignKey(
+        VirtualFriend, on_delete=models.CASCADE, related_name="reading_plans"
+    )
 
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True, default="")

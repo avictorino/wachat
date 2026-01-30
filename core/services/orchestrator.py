@@ -1,32 +1,27 @@
 from __future__ import annotations
 
-import base64
-import dataclasses
 import json
-import os
-import uuid
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional, Tuple, List
-
-import requests
-from django.utils import timezone
-from huggingface_hub import InferenceClient
-from openai import OpenAI
-
-from biblical_friend.constants import INITIAL_WELCOME_MESSAGE, ConversationMode, MODE_PRIORITY
-from biblical_friend.llm.base import LLMClient, LLMMessage
-from biblical_friend.models import VirtualFriend, Message, UserSpiritualProfile, Conversation
-from biblical_friend.services.selectors import get_or_create_open_conversation, get_recent_messages
-from biblical_friend.services.prompt_builder import build_system_prompt, build_profile_extraction_prompt, \
-    onboarding_question, build_onboarding_prompt, build_mode_inference_prompt, build_memory_prompt, \
-    IMAGE_EXTRACTION_PROMPT, image_generation_base_prompt
-from biblical_friend.services.memory import get_relevant_memories, upsert_memory
-
 import logging
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
-from biblical_friend.services.text_to_image import maybe_generate_image
-from config import settings
+from django.utils import timezone
+
+from core.constants import INITIAL_WELCOME_MESSAGE, MODE_PRIORITY, ConversationMode
+from core.llm.base import LLMClient, LLMMessage
+from core.models import Conversation, Message, UserSpiritualProfile, VirtualFriend
+from core.services.memory import get_relevant_memories, upsert_memory
+from core.services.prompt_builder import (
+    IMAGE_EXTRACTION_PROMPT,
+    build_memory_prompt,
+    build_mode_inference_prompt,
+    build_onboarding_prompt,
+    build_profile_extraction_prompt,
+    build_system_prompt,
+    onboarding_question,
+)
+from core.services.selectors import get_or_create_open_conversation, get_recent_messages
+from core.services.text_to_image import maybe_generate_image
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +34,7 @@ class ImageAnalysis:
     emotional_tone: Optional[str] = None
     visual_description: Optional[str] = None
 
+
 @dataclass(frozen=True)
 class ChatResult:
     conversation_id: str
@@ -47,7 +43,9 @@ class ChatResult:
     media_url: Optional[str] = None
 
 
-def chat_with_friend(friend: VirtualFriend, user_text: str, llm: LLMClient, identity: dict) -> Tuple[ChatResult, Conversation]:
+def chat_with_friend(
+    friend: VirtualFriend, user_text: str, llm: LLMClient, identity: dict
+) -> Tuple[ChatResult, Conversation]:
 
     conversation = get_or_create_open_conversation(
         friend=friend,
@@ -61,9 +59,11 @@ def chat_with_friend(friend: VirtualFriend, user_text: str, llm: LLMClient, iden
         content=user_text,
     )
 
-    conversation.context.update({
-        "last_user_message_at": timezone.now().isoformat() ,
-    })
+    conversation.context.update(
+        {
+            "last_user_message_at": timezone.now().isoformat(),
+        }
+    )
 
     conversation.save()
 
@@ -76,19 +76,21 @@ def chat_with_friend(friend: VirtualFriend, user_text: str, llm: LLMClient, iden
             role=Message.Role.ASSISTANT,
             content=INITIAL_WELCOME_MESSAGE.replace("{friend_name}", friend.name),
         )
-        return (ChatResult(
-            conversation_id=str(conversation.id),
-            assistant_message_id=str(assistant_msg.id),
-            text=assistant_msg.content,
-        ), conversation)
+        return (
+            ChatResult(
+                conversation_id=str(conversation.id),
+                assistant_message_id=str(assistant_msg.id),
+                text=assistant_msg.content,
+            ),
+            conversation,
+        )
 
     if assistant_count < 3:
         system_prompt = build_onboarding_prompt(friend)
         extra_user_prompt = onboarding_question(assistant_count)
     else:
         recent_user_messages = (
-            Message.objects
-            .filter(conversation=conversation, role=Message.Role.USER)
+            Message.objects.filter(conversation=conversation, role=Message.Role.USER)
             .order_by("-created_at")
             .values_list("content", flat=True)[:5]
         )
@@ -114,17 +116,12 @@ def chat_with_friend(friend: VirtualFriend, user_text: str, llm: LLMClient, iden
     llm_messages = []
 
     if extra_user_prompt:
-        llm_messages.append(
-            LLMMessage(role="user", content=extra_user_prompt)
-        )
+        llm_messages.append(LLMMessage(role="user", content=extra_user_prompt))
 
-    llm_messages.append(
-        LLMMessage(role="system", content=system_prompt)
-    )
+    llm_messages.append(LLMMessage(role="system", content=system_prompt))
 
     llm_messages.extend(
-        LLMMessage(role=m.role, content=m.content)
-        for m in recent_messages
+        LLMMessage(role=m.role, content=m.content) for m in recent_messages
     )
 
     # 5. Extração de perfil (permanece igual)
@@ -167,12 +164,15 @@ def chat_with_friend(friend: VirtualFriend, user_text: str, llm: LLMClient, iden
 
     media_url = maybe_generate_image(image_analysis=image_analysis)
 
-    return (ChatResult(
-        conversation_id=str(conversation.id),
-        assistant_message_id=str(assistant_msg.id),
-        text=assistant_msg.content,
-        media_url=media_url
-    ), conversation)
+    return (
+        ChatResult(
+            conversation_id=str(conversation.id),
+            assistant_message_id=str(assistant_msg.id),
+            text=assistant_msg.content,
+            media_url=media_url,
+        ),
+        conversation,
+    )
 
 
 def extract_user_profile_from_message(
@@ -198,6 +198,7 @@ def extract_user_profile_from_message(
         pass
 
     return {}
+
 
 def merge_extracted_profile(
     current: dict,
@@ -298,6 +299,7 @@ def maybe_extract_and_store_memory(
         },
     )
 
+
 def extract_memory_with_llm(
     llm: LLMClient,
     user_text: str,
@@ -316,7 +318,7 @@ def extract_memory_with_llm(
 
     resp = llm.chat(
         messages=messages,
-        temperature=0.0,   # memória precisa ser determinística
+        temperature=0.0,  # memória precisa ser determinística
         max_tokens=300,
     )
 
@@ -328,9 +330,7 @@ def extract_memory_with_llm(
         pass
 
     # fallback seguro
-    return {
-        "should_create": False
-    }
+    return {"should_create": False}
 
 
 def infer_image_analysis(
@@ -368,12 +368,10 @@ def infer_image_analysis(
                 image_type=data.get("image_type"),
                 visual_elements=data.get("visual_elements", []),
                 emotional_tone=data.get("emotional_tone"),
-                visual_description=data.get("visual_description")
+                visual_description=data.get("visual_description"),
             )
-
 
     except Exception as ex:
         logger.error(f"Failed to infer image analysis: {ex}")
 
     return ImageAnalysis()
-

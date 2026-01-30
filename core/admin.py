@@ -4,19 +4,19 @@ from django.db.models import Count
 
 from core.constants import ConversationMode
 from core.models import (
-    UserSpiritualProfile,
-    VirtualFriend,
     Conversation,
-    Message,
     FriendMemory,
+    Message,
     PrayerRequest,
     ReadingPlan,
+    UserSpiritualProfile,
+    VirtualFriend,
 )
-
 
 # -----------------------------
 # User Spiritual Profile
 # -----------------------------
+
 
 @admin.register(UserSpiritualProfile)
 class UserSpiritualProfileAdmin(admin.ModelAdmin):
@@ -32,30 +32,40 @@ class UserSpiritualProfileAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("Usuário", {"fields": ("user",)}),
-        ("Preferências Espirituais", {
-            "fields": (
-                "preferred_translation",
-                "doctrine_profile",
-            )
-        }),
-        ("Onboarding e Restrições", {
-            "classes": ("collapse",),
-            "fields": (
-                "extracted_profile",
-                "allowed_topics",
-                "blocked_topics",
-            )
-        }),
-        ("Auditoria", {
-            "classes": ("collapse",),
-            "fields": ("created_at", "updated_at"),
-        }),
+        (
+            "Preferências Espirituais",
+            {
+                "fields": (
+                    "preferred_translation",
+                    "doctrine_profile",
+                )
+            },
+        ),
+        (
+            "Onboarding e Restrições",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "extracted_profile",
+                    "allowed_topics",
+                    "blocked_topics",
+                ),
+            },
+        ),
+        (
+            "Auditoria",
+            {
+                "classes": ("collapse",),
+                "fields": ("created_at", "updated_at"),
+            },
+        ),
     )
 
 
 # -----------------------------
 # Message Inline (Chat style)
 # -----------------------------
+
 
 class MessageInline(admin.TabularInline):
     model = Message
@@ -106,6 +116,7 @@ def reset_conversation_state(modeladmin, request, queryset):
             conversation.current_mode = ConversationMode.LISTENING.value
             conversation.save(update_fields=["current_mode"])
 
+
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
     actions = [reset_conversation_state]
@@ -129,16 +140,19 @@ class ConversationAdmin(admin.ModelAdmin):
 
     def short_title(self, obj):
         return obj.title[:50] if obj.title else "—"
+
     short_title.short_description = "Título"
 
     def message_count(self, obj):
         return obj.messages.count()
+
     message_count.short_description = "Mensagens"
 
 
 # -----------------------------
 # Virtual Friend
 # -----------------------------
+
 
 @admin.register(VirtualFriend)
 class VirtualFriendAdmin(admin.ModelAdmin):
@@ -159,29 +173,38 @@ class VirtualFriendAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
-        ("Identidade do Amigo", {
-            "fields": (
-                "owner",
-                "name",
-                "persona",
-                "tone",
-                "is_active",
-            )
-        }),
-        ("Parâmetros pessoais", {
-            "classes": ("collapse",),
-            "fields": (
-                "age",
-                "background",
-            )
-        }),
-        ("Auditoria", {
-            "classes": ("collapse",),
-            "fields": (
-                "created_at",
-                "updated_at",
-            )
-        }),
+        (
+            "Identidade do Amigo",
+            {
+                "fields": (
+                    "owner",
+                    "name",
+                    "persona",
+                    "tone",
+                    "is_active",
+                )
+            },
+        ),
+        (
+            "Parâmetros pessoais",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "age",
+                    "background",
+                ),
+            },
+        ),
+        (
+            "Auditoria",
+            {
+                "classes": ("collapse",),
+                "fields": (
+                    "created_at",
+                    "updated_at",
+                ),
+            },
+        ),
     )
 
     def get_queryset(self, request):
@@ -190,12 +213,14 @@ class VirtualFriendAdmin(admin.ModelAdmin):
 
     def conversation_count(self, obj):
         return obj.convo_count
+
     conversation_count.short_description = "Conversas"
 
 
 # -----------------------------
 # Friend Memory
 # -----------------------------
+
 
 @admin.register(FriendMemory)
 class FriendMemoryAdmin(admin.ModelAdmin):
@@ -218,36 +243,39 @@ class FriendMemoryAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
-        ("Vínculo", {
-            "fields": ("friend",)
-        }),
-        ("Conteúdo da Memória", {
-            "fields": (
-                "kind",
-                "key",
-                "value",
-                "confidence",
-                "is_active",
-            )
-        }),
-        ("Origem", {
-            "classes": ("collapse",),
-            "fields": ("source",)
-        }),
-        ("Auditoria", {
-            "classes": ("collapse",),
-            "fields": ("created_at", "updated_at"),
-        }),
+        ("Vínculo", {"fields": ("friend",)}),
+        (
+            "Conteúdo da Memória",
+            {
+                "fields": (
+                    "kind",
+                    "key",
+                    "value",
+                    "confidence",
+                    "is_active",
+                )
+            },
+        ),
+        ("Origem", {"classes": ("collapse",), "fields": ("source",)}),
+        (
+            "Auditoria",
+            {
+                "classes": ("collapse",),
+                "fields": ("created_at", "updated_at"),
+            },
+        ),
     )
 
     def short_value(self, obj):
         return obj.value[:80] + "..." if len(obj.value) > 80 else obj.value
+
     short_value.short_description = "Valor"
 
 
 # -----------------------------
 # Prayer Request
 # -----------------------------
+
 
 @admin.register(PrayerRequest)
 class PrayerRequestAdmin(admin.ModelAdmin):
@@ -267,30 +295,40 @@ class PrayerRequestAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
-        ("Pedido de Oração", {
-            "fields": (
-                "friend",
-                "title",
-                "details",
-                "tags",
-            )
-        }),
-        ("Resposta", {
-            "fields": (
-                "is_answered",
-                "answered_notes",
-            )
-        }),
-        ("Auditoria", {
-            "classes": ("collapse",),
-            "fields": ("created_at", "updated_at"),
-        }),
+        (
+            "Pedido de Oração",
+            {
+                "fields": (
+                    "friend",
+                    "title",
+                    "details",
+                    "tags",
+                )
+            },
+        ),
+        (
+            "Resposta",
+            {
+                "fields": (
+                    "is_answered",
+                    "answered_notes",
+                )
+            },
+        ),
+        (
+            "Auditoria",
+            {
+                "classes": ("collapse",),
+                "fields": ("created_at", "updated_at"),
+            },
+        ),
     )
 
 
 # -----------------------------
 # Reading Plan
 # -----------------------------
+
 
 @admin.register(ReadingPlan)
 class ReadingPlanAdmin(admin.ModelAdmin):
@@ -311,21 +349,24 @@ class ReadingPlanAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
     fieldsets = (
-        ("Plano de Leitura", {
-            "fields": (
-                "friend",
-                "name",
-                "description",
-                "days",
-                "is_active",
-            )
-        }),
-        ("Estrutura do Plano", {
-            "classes": ("collapse",),
-            "fields": ("plan",)
-        }),
-        ("Auditoria", {
-            "classes": ("collapse",),
-            "fields": ("created_at", "updated_at"),
-        }),
+        (
+            "Plano de Leitura",
+            {
+                "fields": (
+                    "friend",
+                    "name",
+                    "description",
+                    "days",
+                    "is_active",
+                )
+            },
+        ),
+        ("Estrutura do Plano", {"classes": ("collapse",), "fields": ("plan",)}),
+        (
+            "Auditoria",
+            {
+                "classes": ("collapse",),
+                "fields": ("created_at", "updated_at"),
+            },
+        ),
     )

@@ -1,10 +1,11 @@
+import logging
 import os
-from biblical_friend.services.text_to_speech import TextToSpeechService
 
+from twilio.rest import Client
+
+from core.services.text_to_speech import TextToSpeechService
 from messaging.providers.base import MessagingProvider
 from messaging.types import OutgoingMessage
-import logging
-from twilio.rest import Client
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,9 @@ class TwilioWhatsAppProvider(MessagingProvider):
         # If reply should be audio, convert text to speech and send as media
         if message.reply_as_audio:
             try:
-                audio_url = TextToSpeechService().speak_and_store(text=message.text, conversation_mode=message.conversation_mode)
+                audio_url = TextToSpeechService().speak_and_store(
+                    text=message.text, conversation_mode=message.conversation_mode
+                )
                 self.client.messages.create(
                     from_=message.from_,
                     to=message.to,
@@ -26,7 +29,9 @@ class TwilioWhatsAppProvider(MessagingProvider):
                 )
                 return
             except Exception as e:
-                logger.error(f"Failed to convert audio message via Twilio WhatsApp: {e}")
+                logger.error(
+                    f"Failed to convert audio message via Twilio WhatsApp: {e}"
+                )
 
         # Default: send plain text
         self.client.messages.create(

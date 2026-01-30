@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Optional, Any, Literal
+from typing import Any, Iterable, Literal, Optional
 
 
 @dataclass(frozen=True)
@@ -39,4 +39,6 @@ class DummyLLM(LLMClient):
     ) -> LLMResponse:
         # Troque pelo provider real
         last = messages[-1]["content"] if messages else ""
-        return type("R", (), {"text": f"(stub) Recebi: {last}", "raw": {"stub": True}})()
+        return type(
+            "R", (), {"text": f"(stub) Recebi: {last}", "raw": {"stub": True}}
+        )()

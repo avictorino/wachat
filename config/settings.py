@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+
 import dj_database_url
 from decouple import config
 
@@ -31,20 +32,20 @@ SECRET_KEY = config(
 # For production, always set DEBUG=False in your .env file
 DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = config(
-    "ALLOWED_HOSTS",
-    default="",
-    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
-)
+ALLOWED_HOSTS = ["*"]
 
 # CSRF Configuration
 # Configure trusted origins for CSRF protection (comma-separated URLs)
 # Example: https://example.com,https://www.example.com
-CSRF_TRUSTED_ORIGINS = config(
-    "CSRF_TRUSTED_ORIGINS",
-    default="",
-    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
-)
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://*.ngrok-free.app",
+        "https://*.trycloudflare.com",
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        "https://yourdomain.com",
+    ]
 
 
 # Application definition

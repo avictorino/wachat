@@ -1,6 +1,4 @@
-import dataclasses
 from enum import Enum
-from typing import TypedDict, Optional, List
 
 from django.db import models
 

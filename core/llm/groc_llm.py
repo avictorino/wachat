@@ -2,7 +2,7 @@ from typing import Iterable, Optional
 
 from groq import Groq
 
-from biblical_friend.llm.base import LLMClient, LLMMessage, LLMResponse
+from core.llm.base import LLMClient, LLMMessage, LLMResponse
 
 
 class GroqLLMClient(LLMClient):

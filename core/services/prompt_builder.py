@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from biblical_friend.constants import ConversationMode, LISTENING_MODE_BLOCK, REFLECTIVE_MODE_BLOCK, \
-    BIBLICAL_MODE_BLOCK, SPIRITUAL_AWARENESS_MODE_BLOCK
-from biblical_friend.models import VirtualFriend, FriendMemory
+from core.constants import (
+    BIBLICAL_MODE_BLOCK,
+    LISTENING_MODE_BLOCK,
+    REFLECTIVE_MODE_BLOCK,
+    SPIRITUAL_AWARENESS_MODE_BLOCK,
+    ConversationMode,
+)
+from core.models import FriendMemory, VirtualFriend
 
 
 def build_gender_inference_prompt(*, profile_name: str, country: str) -> str:
@@ -17,11 +22,11 @@ def build_gender_inference_prompt(*, profile_name: str, country: str) -> str:
         "- Responda APENAS em formato JSON válido.\n"
         "- Não inclua texto fora do JSON.\n"
         "- Não use comentários.\n"
-        "- O JSON deve conter exatamente uma chave chamada \"gender\".\n"
-        "- O valor de \"gender\" deve ser UMA das seguintes strings em letras minúsculas:\n"
-        "  \"male\", \"female\" ou \"unknown\".\n"
+        '- O JSON deve conter exatamente uma chave chamada "gender".\n'
+        '- O valor de "gender" deve ser UMA das seguintes strings em letras minúsculas:\n'
+        '  "male", "female" ou "unknown".\n'
         "- Baseie a decisão no uso tradicional do nome no país informado.\n"
-        "- Se o nome for ambíguo, moderno, unissex, raro ou culturalmente indefinido, use \"unknown\".\n"
+        '- Se o nome for ambíguo, moderno, unissex, raro ou culturalmente indefinido, use "unknown".\n'
         "- Não explique o raciocínio.\n\n"
         "Formato esperado da resposta:\n"
         "{\n"
@@ -29,6 +34,7 @@ def build_gender_inference_prompt(*, profile_name: str, country: str) -> str:
         "}\n\n"
         "Resposta:"
     )
+
 
 def build_onboarding_prompt(friend: VirtualFriend) -> str:
     return (
@@ -51,23 +57,22 @@ def build_onboarding_prompt(friend: VirtualFriend) -> str:
         "- O que ela espera dessa conversa\n"
     )
 
+
 def onboarding_question(step: int) -> str:
     questions = {
         0: "O que te trouxe até aqui hoje?",
         1: "Como tem sido esse momento da sua vida?",
-        2: "O que você espera encontrar nessas conversas?"
+        2: "O que você espera encontrar nessas conversas?",
     }
     return questions.get(step, "")
+
 
 def build_system_prompt(
     friend: VirtualFriend,
     memories: list[FriendMemory],
     mode: ConversationMode,
 ) -> str:
-    mem_lines = [
-        f"- {m.key}: {m.value}"
-        for m in memories
-    ]
+    mem_lines = [f"- {m.key}: {m.value}" for m in memories]
 
     extracted_block = build_extracted_profile_context(
         friend.owner.spiritual_profile.extracted_profile or {}
@@ -78,49 +83,42 @@ def build_system_prompt(
     base_prompt = (
         f"Você é {friend.name}, um orientador cristão.\n"
         "Converse como alguém que caminha ao lado do usuário, com escuta atenta e humildade.\n\n"
-
         "Princípios essenciais:\n"
         "- Priorize compreender antes de orientar.\n"
         "- Responda como em uma conversa real, não como um sermão.\n"
         "- Evite frases prontas, clichês religiosos ou linguagem excessivamente devocional.\n"
         "- Não use versículos automaticamente; só traga a Bíblia se ela realmente iluminar o que foi dito.\n"
         "- Quando citar a Bíblia, prefira paráfrases curtas ou referências sutis.\n\n"
-
         "Estilo de resposta:\n"
         "- Seja breve e humano.\n"
         "- Trabalhe com uma única ideia central.\n"
         "- Faça no máximo uma pergunta aberta.\n"
         "- Não moralize nem corrija o usuário.\n"
         "- Não ofereça oração por iniciativa própria.\n"
-        "- EXCEÇÃO IMPORTANTE: se o usuário pedir oração de forma direta (ex.: \"ore por mim\", \"pode orar por mim\"),\n"
+        '- EXCEÇÃO IMPORTANTE: se o usuário pedir oração de forma direta (ex.: "ore por mim", "pode orar por mim"),\n'
         "- Ao orar: \n"
         "   - Não use aspas.\n"
-        "   - Não anuncie que vai orar (\"posso orar\", \"vou orar\").\n"
+        '   - Não anuncie que vai orar ("posso orar", "vou orar").\n'
         "   - Use voz clara (terceira pessoa ou nome do usuário).\n"
         "   - Evite linguagem litúrgica clássica.\n"
         "  responda com uma oração curta, simples e acolhedora.\n"
         "- Nunca explique limitações técnicas.\n"
         "- Nunca instrua o usuário sobre como orar.\n"
         "- Assuma a oração como gesto de presença e cuidado.\n\n"
-
         "Postura relacional:\n"
         "- Valide o sentimento do usuário antes de qualquer reflexão.\n"
         "- Use expressões como 'faz sentido', 'imagino que isso pese', 'talvez'.\n"
         "- Deixe espaço para silêncio e continuidade.\n\n"
-
         "Postura em pedidos de oração:\n"
         "- Quando houver um pedido direto de oração, ore antes de qualquer reflexão.\n"
         "- Use linguagem simples, humana e próxima.\n"
         "- Limite a oração a 3–6 frases curtas.\n"
         "- Não inclua ensino, explicação ou versículos automaticamente.\n"
         "- Evite tom formal, teológico ou cerimonial.\n\n"
-
         "Tom da conversa:\n"
         f"- {friend.tone}\n\n"
-
         "O que já foi dito pelo usuário:\n"
         f"{extracted_block}\n\n"
-
         "Memórias recentes da conversa:\n"
         f"{memory_block}\n"
     )
@@ -138,6 +136,7 @@ def build_system_prompt(
         mode_block = ""
 
     return base_prompt + "\n" + mode_block
+
 
 def build_profile_extraction_prompt() -> str:
     return (
@@ -190,6 +189,7 @@ def build_profile_extraction_prompt() -> str:
         "ela NÃO deve aparecer no JSON.\n"
     )
 
+
 PROFILE_FIELD_RENDERERS: dict[str, callable] = {
     "age": lambda v: f"Idade aproximada mencionada: {v}",
     "city": lambda v: f"Mora em: {v}",
@@ -198,9 +198,11 @@ PROFILE_FIELD_RENDERERS: dict[str, callable] = {
     "faith_background": lambda v: f"Contexto de fé mencionado: {v}",
     "recurring_concerns": lambda v: (
         "Temas que aparecem com frequência: " + ", ".join(v)
-        if isinstance(v, list) else None
+        if isinstance(v, list)
+        else None
     ),
 }
+
 
 def render_generic_field(key: str, value) -> str | None:
     # filtros básicos
@@ -217,6 +219,7 @@ def render_generic_field(key: str, value) -> str | None:
 
     # escalares
     return f"{label} mencionado: {value}"
+
 
 def build_extracted_profile_context(extracted_profile: dict) -> str:
     if not extracted_profile:
@@ -249,7 +252,6 @@ def build_mode_inference_prompt() -> str:
         "Você é um SISTEMA DE CLASSIFICAÇÃO DE ESTADO DE CONVERSA.\n\n"
         "Sua tarefa é analisar EXCLUSIVAMENTE as mensagens do usuário e identificar "
         "se há sinais claros de que o modo de conversa deve ser alterado.\n\n"
-
         "MODOS POSSÍVEIS:\n"
         "- listening: escuta humana, sem conteúdo espiritual explícito.\n"
         "- reflective: reflexão existencial ou espiritual leve, metáforas, cansaço emocional, "
@@ -258,13 +260,11 @@ def build_mode_inference_prompt() -> str:
         "ou companhia no presente, mesmo sem certeza ou linguagem religiosa forte.\n"
         "- biblical: entrega, confiança ou dependência explícita de Deus, fé assumida como apoio real, "
         "ou sofrimento espiritual profundo com referência clara a Deus.\n\n"
-
         "CRITÉRIOS IMPORTANTES:\n"
         "- Esperança, abertura ou crescimento pessoal NÃO são suficientes para sair do modo reflective.\n"
         "- O modo spiritual_awareness começa quando Deus deixa de ser apenas uma ideia e passa a ser "
         "reconhecido como uma presença possível no caminho.\n"
         "- O modo biblical exige linguagem declarativa de fé, entrega ou confiança em Deus.\n\n"
-
         "REGRAS OBRIGATÓRIAS:\n"
         "- Baseie-se SOMENTE no conteúdo explícito das mensagens do usuário.\n"
         "- NÃO infira intenções ocultas.\n"
@@ -272,14 +272,13 @@ def build_mode_inference_prompt() -> str:
         "- NÃO escreva texto livre.\n"
         "- NÃO explique sua decisão.\n"
         "- Retorne APENAS JSON válido.\n\n"
-
         "FORMATO DO JSON:\n"
         "{\n"
         '  "conversation_mode": "listening | reflective | spiritual_awareness | biblical" | null\n'
         "}\n\n"
-
         "Retorne null se NÃO houver sinais suficientes para mudar o modo atual.\n"
     )
+
 
 def build_memory_prompt(
     user_text: str,
@@ -395,7 +394,7 @@ Siga rigorosamente as etapas abaixo:
     - EXEMPLO DE RESPOSTA INCORRETA (NÃO FAÇA ISSO):
     "1. O texto descreve uma cena visual clara..."
     "2. O tipo da imagem é..."
-    
+
     - EXEMPLO DE RESPOSTA CORRETA:
     {
       "should_generate_image": true,

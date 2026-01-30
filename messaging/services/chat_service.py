@@ -3,12 +3,12 @@ import random
 
 from django.contrib.auth.models import User
 
-from biblical_friend.constants import biblical_names, Gender
-from biblical_friend.llm.base import LLMMessage
-from biblical_friend.llm.factory import get_llm_client
-from biblical_friend.models import UserSpiritualProfile, VirtualFriend
-from biblical_friend.services.orchestrator import chat_with_friend
-from biblical_friend.services.prompt_builder import build_gender_inference_prompt
+from core.constants import biblical_names
+from core.llm.base import LLMMessage
+from core.llm.factory import get_llm_client
+from core.models import UserSpiritualProfile, VirtualFriend
+from core.services.orchestrator import chat_with_friend
+from core.services.prompt_builder import build_gender_inference_prompt
 from messaging.types import IncomingMessage, OutgoingMessage
 
 
@@ -20,6 +20,7 @@ def extract_whatsapp_identity(payload: dict) -> dict:
         "to": payload.get("To"),
     }
 
+
 def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
 
     identity = extract_whatsapp_identity(msg.raw_payload)
@@ -27,18 +28,15 @@ def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
     friend = get_friend_or_init_person(msg)
 
     result, conversation = chat_with_friend(
-        friend=friend,
-        user_text=msg.text or "",
-        llm=get_llm_client(),
-        identity=identity
+        friend=friend, user_text=msg.text or "", llm=get_llm_client(), identity=identity
     )
 
     return OutgoingMessage(
         channel=msg.channel,
-        from_=msg.to,              # 👈 invertendo
+        from_=msg.to,  # 👈 invertendo
         to=msg.from_,  # 👈 invertendo
         text=result.text,
-        reply_as_audio=msg.reply_as_audio
+        reply_as_audio=msg.reply_as_audio,
     )
 
 
@@ -63,7 +61,7 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
             username=msg.from_.replace("whatsapp:", ""),
             first_name=first_name,
             last_name=last_name,
-            is_active=True
+            is_active=True,
         )
 
         if created:
@@ -74,10 +72,7 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
 
             UserSpiritualProfile.objects.create(user=user, gender=gender_found)
 
-            names = [
-                b for b in biblical_names
-                if b["gender"] == gender_found
-            ]
+            names = [b for b in biblical_names if b["gender"] == gender_found]
 
     friend_name = random.choice(names)
     friend, _ = VirtualFriend.objects.get_or_create(
@@ -85,7 +80,7 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
         defaults={
             "name": friend_name.get("name"),
             "gender": friend_name.get("gender"),
-        }
+        },
     )
 
     return friend

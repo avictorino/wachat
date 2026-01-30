@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 import uuid
 from pathlib import Path
@@ -6,11 +7,9 @@ from typing import Optional
 
 from openai import OpenAI
 
-from biblical_friend.services.orchestrator import ImageAnalysis
-from biblical_friend.services.prompt_builder import image_generation_base_prompt
-import logging
-
 from config import settings
+from core.services.orchestrator import ImageAnalysis
+from core.services.prompt_builder import image_generation_base_prompt
 
 logger = logging.getLogger(__name__)
 

@@ -1,7 +1,8 @@
 import os
-from biblical_friend.llm.base import LLMClient
-from biblical_friend.llm.groc_llm import GroqLLMClient
-from biblical_friend.llm.openai_llm import OpenAILLMClient
+
+from core.llm.base import LLMClient
+from core.llm.groc_llm import GroqLLMClient
+from core.llm.openai_llm import OpenAILLMClient
 
 
 def get_llm_client() -> LLMClient:
