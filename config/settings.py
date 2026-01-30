@@ -33,7 +33,8 @@ SECRET_KEY = config(
 # For production, always set DEBUG=False in your .env file
 DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = ["*"]
+# Parse ALLOWED_HOSTS from environment variable
+ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="*", cast=lambda v: [s.strip() for s in v.split(",")])
 
 # CSRF Configuration
 # Configure trusted origins for CSRF protection (comma-separated URLs)
@@ -44,9 +45,22 @@ if DEBUG:
         "https://*.trycloudflare.com",
     ]
 else:
-    CSRF_TRUSTED_ORIGINS = [
-        "https://yourdomain.com",
-    ]
+    # In production, parse from environment or use Heroku app domain
+    csrf_origins = config("CSRF_TRUSTED_ORIGINS", default="", cast=lambda v: [s.strip() for s in v.split(",") if s.strip()])
+    if not csrf_origins:
+        # Auto-configure for Heroku
+        csrf_origins = [f"https://{host}" for host in ALLOWED_HOSTS if host != "*"]
+    CSRF_TRUSTED_ORIGINS = csrf_origins
+
+# Production Security Settings
+if not DEBUG:
+    SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
+    SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=31536000, cast=int)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=True, cast=bool)
+    SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=True, cast=bool)
+    SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=True, cast=bool)
+    CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=True, cast=bool)
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Application definition
