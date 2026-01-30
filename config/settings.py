@@ -22,13 +22,29 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default="django-insecure-e%&7#bn310-go8+=ib5pu7=$)tj3b-21j)pn%k7s#5c_6rkkyj")
+SECRET_KEY = config(
+    "SECRET_KEY",
+    default="django-insecure-e%&7#bn310-go8+=ib5pu7=$)tj3b-21j)pn%k7s#5c_6rkkyj",
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 # For production, always set DEBUG=False in your .env file
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config("DEBUG", default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='', cast=lambda v: [s.strip() for s in v.split(',') if s.strip()])
+ALLOWED_HOSTS = config(
+    "ALLOWED_HOSTS",
+    default="",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
+
+# CSRF Configuration
+# Configure trusted origins for CSRF protection (comma-separated URLs)
+# Example: https://example.com,https://www.example.com
+CSRF_TRUSTED_ORIGINS = config(
+    "CSRF_TRUSTED_ORIGINS",
+    default="",
+    cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+)
 
 
 # Application definition
@@ -40,7 +56,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    'core.apps.CoreConfig',
+    "core.apps.CoreConfig",
 ]
 
 MIDDLEWARE = [
@@ -58,8 +74,7 @@ ROOT_URLCONF = "config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / 'templates']
-        ,
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -82,7 +97,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 # Falls back to SQLite if DATABASE_URL is not set
 DATABASES = {
     "default": dj_database_url.parse(
-        config('DATABASE_URL', default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
+        config("DATABASE_URL", default=f'sqlite:///{BASE_DIR / "db.sqlite3"}')
     )
 }
 
