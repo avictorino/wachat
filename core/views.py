@@ -205,7 +205,7 @@ def _handle_data_deletion_post(request):
     # Normalize phone number
     try:
         normalized_phone = normalize_phone_number(phone)
-    except Exception:
+    except (ValueError, TypeError, AttributeError):
         return render(
             request,
             "data_deletion.html",
