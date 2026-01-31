@@ -13,6 +13,7 @@ from messaging.types import IncomingMessage
 logger = logging.getLogger(__name__)
 
 
+@method_decorator(csrf_exempt, name="dispatch")
 class FacebookWhatsAppWebhookView(View):
     """
     Facebook WhatsApp webhook endpoint for receiving messages from Facebook Graph API.
@@ -37,7 +38,6 @@ class FacebookWhatsAppWebhookView(View):
             logger.warning("Facebook webhook verification failed")
             return HttpResponse("Forbidden", status=403)
 
-    @method_decorator(csrf_exempt, name="dispatch")
     def post(self, request):
         """
         Webhook endpoint for receiving messages from Facebook WhatsApp.

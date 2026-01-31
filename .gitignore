@@ -22,7 +22,6 @@ __pycache__/
 env/
 venv/
 ENV/
-.python-version
 
 # ----------------------------------
 # Django specific
