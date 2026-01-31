@@ -168,32 +168,39 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
 
     user = User.objects.filter(username=msg.from_).first()
     names = biblical_names
-    if not user and msg.raw_payload:
+    if not user:
         # Try to extract profile name from Facebook WhatsApp webhook
         first_name = None
         last_name = None
 
-        # Facebook WhatsApp format
-        try:
-            entry = msg.raw_payload.get("entry", [{}])[0]
-            changes = entry.get("changes", [{}])[0]
-            value = changes.get("value", {})
-            contacts = value.get("contacts", [])
-            if contacts:
-                profile = contacts[0].get("profile", {})
-                name = profile.get("name", "")
-                if name:
-                    name_parts = name.split(" ")
-                    first_name = name_parts[0]
-                    last_name = name_parts[-1] if len(name_parts) > 1 else name_parts[0]
-        except (KeyError, IndexError, AttributeError):
-            pass
+        if msg.raw_payload:
+            # Facebook WhatsApp format
+            try:
+                entry = msg.raw_payload.get("entry", [{}])[0]
+                changes = entry.get("changes", [{}])[0]
+                value = changes.get("value", {})
+                contacts = value.get("contacts", [])
+                if contacts:
+                    profile = contacts[0].get("profile", {})
+                    name = profile.get("name", "")
+                    if name:
+                        name_parts = name.split(" ")
+                        first_name = name_parts[0]
+                        last_name = name_parts[-1] if len(name_parts) > 1 else name_parts[0]
+            except (KeyError, IndexError, AttributeError):
+                pass
+
+        # Ensure last_name is not None to avoid database constraint errors
+        if last_name is None:
+            last_name = ""
 
         user, created = User.objects.get_or_create(
             username=msg.from_,
-            first_name=first_name,
-            last_name=last_name,
-            is_active=True,
+            defaults={
+                "first_name": first_name or "",
+                "last_name": last_name,
+                "is_active": True,
+            },
         )
 
         if created:
@@ -205,6 +212,19 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
             UserSpiritualProfile.objects.create(user=user, gender=gender_found)
 
             names = [b for b in biblical_names if b["gender"] == gender_found]
+
+            # Defensive check: if no names match the gender, fallback to all biblical names
+            if not names:
+                logger.warning(
+                    f"No biblical names found for gender '{gender_found}'. "
+                    f"Falling back to all available names."
+                )
+                names = biblical_names
+
+    # Defensive check: ensure names is not empty before calling random.choice
+    if not names:
+        logger.error("No biblical names available. Using default fallback.")
+        names = biblical_names
 
     friend_name = random.choice(names)
     friend, _ = VirtualFriend.objects.get_or_create(

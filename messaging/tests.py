@@ -193,3 +193,235 @@ class FacebookWhatsAppProviderTest(TestCase):
         # Act & Assert
         with self.assertRaises(requests.exceptions.HTTPError):
             provider.send(message)
+
+
+class GetFriendOrInitPersonTest(TestCase):
+    """Test cases for get_friend_or_init_person function"""
+
+    def setUp(self):
+        """Set up test fixtures"""
+        from django.contrib.auth.models import User
+
+        # Clean up any existing test users
+        User.objects.filter(username__startswith="test_").delete()
+
+    def tearDown(self):
+        """Clean up test data"""
+        from django.contrib.auth.models import User
+
+        User.objects.filter(username__startswith="test_").delete()
+
+    @patch("service.whatsapp.infer_gender_from_name")
+    def test_get_friend_with_unknown_gender(self, mock_infer_gender):
+        """Test that unknown gender doesn't cause crash"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+
+        # Arrange - mock gender inference to return 'unknown'
+        mock_infer_gender.return_value = "unknown"
+
+        payload = {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "contacts": [{"profile": {"name": "Test User"}}],
+                                "messages": [{"from": "test_123"}],
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_123",
+            text="Hello",
+            raw_payload=payload,
+        )
+
+        # Act - should not raise IndexError
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertIsNotNone(friend)
+        self.assertIsNotNone(friend.name)
+        self.assertIsNotNone(friend.gender)
+
+    @patch("service.whatsapp.infer_gender_from_name")
+    def test_get_friend_with_male_gender(self, mock_infer_gender):
+        """Test that male gender works correctly"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+        from core.constants import Gender
+
+        # Arrange
+        mock_infer_gender.return_value = "male"
+
+        payload = {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "contacts": [{"profile": {"name": "John Doe"}}],
+                                "messages": [{"from": "test_male_456"}],
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_male_456",
+            text="Hello",
+            raw_payload=payload,
+        )
+
+        # Act
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertIsNotNone(friend)
+        self.assertEqual(friend.gender, Gender.MALE)
+
+    @patch("service.whatsapp.infer_gender_from_name")
+    def test_get_friend_with_female_gender(self, mock_infer_gender):
+        """Test that female gender works correctly"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+        from core.constants import Gender
+
+        # Arrange
+        mock_infer_gender.return_value = "female"
+
+        payload = {
+            "entry": [
+                {
+                    "changes": [
+                        {
+                            "value": {
+                                "contacts": [{"profile": {"name": "Jane Doe"}}],
+                                "messages": [{"from": "test_female_789"}],
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_female_789",
+            text="Hello",
+            raw_payload=payload,
+        )
+
+        # Act
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertIsNotNone(friend)
+        self.assertEqual(friend.gender, Gender.FEMALE)
+
+    def test_get_friend_with_empty_payload(self):
+        """Test that empty payload doesn't cause crash"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+
+        # Arrange
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_empty_001",
+            text="Hello",
+            raw_payload={},
+        )
+
+        # Act - should not raise exception
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertIsNotNone(friend)
+
+    def test_get_friend_with_none_payload(self):
+        """Test that None payload doesn't cause crash"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+
+        # Arrange
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_none_002",
+            text="Hello",
+            raw_payload=None,
+        )
+
+        # Act - should not raise exception
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertIsNotNone(friend)
+
+    @patch("service.whatsapp.infer_gender_from_name")
+    def test_get_friend_with_malformed_payload(self, mock_infer_gender):
+        """Test that malformed payload is handled gracefully"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+
+        # Arrange
+        mock_infer_gender.return_value = "unknown"
+
+        # Malformed payload missing expected structure
+        payload = {"unexpected": "structure"}
+
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_malformed_003",
+            text="Hello",
+            raw_payload=payload,
+        )
+
+        # Act - should not raise exception
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertIsNotNone(friend)
+
+    def test_get_existing_friend(self):
+        """Test that existing user returns existing friend"""
+        from django.contrib.auth.models import User
+        from core.models import VirtualFriend
+        from messaging.types import IncomingMessage
+        from service.whatsapp import get_friend_or_init_person
+        from core.constants import Gender
+
+        # Arrange - create existing user and friend
+        user = User.objects.create(username="test_existing_004", is_active=True)
+        existing_friend = VirtualFriend.objects.create(
+            owner=user, name="Pedro", gender=Gender.MALE
+        )
+
+        message = IncomingMessage(
+            channel="whatsapp_facebook",
+            to="5511999999999",
+            from_="test_existing_004",
+            text="Hello",
+            raw_payload=None,
+        )
+
+        # Act
+        friend = get_friend_or_init_person(message)
+
+        # Assert
+        self.assertEqual(friend.id, existing_friend.id)
+        self.assertEqual(friend.name, "Pedro")
