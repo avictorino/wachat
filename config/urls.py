@@ -22,6 +22,7 @@ from django.urls import path
 
 from core.views import (
     FacebookWhatsAppWebhookView,
+    data_deletion_view,
     privacy_policy_view,
     terms_of_service_view,
 )
@@ -31,6 +32,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("privacidade/", privacy_policy_view, name="privacy_policy"),
     path("termos/", terms_of_service_view, name="terms_of_service"),
+    path("data-deletion/", data_deletion_view, name="data_deletion"),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
