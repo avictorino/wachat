@@ -190,15 +190,11 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
             except (KeyError, IndexError, AttributeError):
                 pass
 
-        # Ensure last_name is not None to avoid database constraint errors
-        if last_name is None:
-            last_name = ""
-
         user, created = User.objects.get_or_create(
             username=msg.from_,
             defaults={
                 "first_name": first_name or "",
-                "last_name": last_name,
+                "last_name": last_name or "",
                 "is_active": True,
             },
         )
@@ -220,11 +216,6 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
                     f"Falling back to all available names."
                 )
                 names = biblical_names
-
-    # Defensive check: ensure names is not empty before calling random.choice
-    if not names:
-        logger.error("No biblical names available. Using default fallback.")
-        names = biblical_names
 
     friend_name = random.choice(names)
     friend, _ = VirtualFriend.objects.get_or_create(
