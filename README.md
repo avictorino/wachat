@@ -1,7 +1,9 @@
 # WaChat
 
 
-postgres hosted at: https://supabase.com/dashboard/project/jratzhwgcwawfefwuqye
+postgres hosted at: https://supabase.com/dashboard/project/
+
+My whatsapp app: https://developers.facebook.com/apps/
 
 WaChat é um projeto Django para aplicação de chat.
 
