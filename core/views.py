@@ -108,6 +108,13 @@ class FacebookWhatsAppWebhookView(View):
             "twilio": "twilio",
             "twilio_whatsapp": "twilio_whatsapp",
         }
+        
+        if provider not in channel_map:
+            logger.warning(
+                f"Unknown provider '{provider}' not in channel map, using default 'whatsapp_facebook'",
+                extra={"provider": provider}
+            )
+        
         channel = channel_map.get(provider, "whatsapp_facebook")
 
         msg = IncomingMessage(

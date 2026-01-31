@@ -152,7 +152,7 @@ class WhatsAppAdapter(ProviderAdapter):
                     
                     return NormalizedMessage(
                         sender_id=sender_id,
-                        recipient_id=display_phone_number or phone_number_id,
+                        recipient_id=display_phone_number if display_phone_number else phone_number_id,
                         message_body=message_body,
                         message_type=message_type,
                         timestamp=timestamp,
