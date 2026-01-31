@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitação de Exclusão de Dados - WaChat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #25D366;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #128C7E;
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+        p {
+            margin: 10px 0;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #128C7E;
+        }
+        input[type="tel"] {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="tel"]:focus {
+            outline: none;
+            border-color: #25D366;
+        }
+        button {
+            background-color: #25D366;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #128C7E;
+        }
+        .help-text {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 5px;
+        }
+        .info-box {
+            background-color: #e8f5e9;
+            border-left: 4px solid #25D366;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .warning-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .success-message {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            border-radius: 4px;
+            color: #155724;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .error-message {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            color: #721c24;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        a {
+            color: #25D366;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        ul {
+            line-height: 1.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Solicitação de Exclusão de Dados</h1>
+        
+        <p>Use este formulário para solicitar a exclusão dos seus dados do WaChat, conforme exigido pelas políticas da Meta (Facebook/WhatsApp).</p>
+        
+        <div class="info-box">
+            <strong>O que será excluído:</strong>
+            <ul>
+                <li>Seu perfil de usuário e informações pessoais</li>
+                <li>Todas as conversas e mensagens</li>
+                <li>Perfis espirituais e amigos virtuais</li>
+                <li>Memórias, pedidos de oração e planos de leitura</li>
+            </ul>
+        </div>
+        
+        <div class="warning-box">
+            <strong>⚠️ Atenção:</strong> Esta ação é permanente e não pode ser desfeita. Todos os seus dados serão removidos do sistema.
+        </div>
+        
+        {% if success %}
+        <div class="success-message">
+            <strong>✓ Solicitação Recebida</strong><br>
+            Se o número fornecido existir em nosso sistema, seus dados serão excluídos. 
+            Por motivos de segurança, não podemos confirmar se o número está registrado.
+        </div>
+        {% endif %}
+        
+        {% if error %}
+        <div class="error-message">
+            <strong>✗ Erro</strong><br>
+            {{ error }}
+        </div>
+        {% endif %}
+        
+        {% if rate_limited %}
+        <div class="error-message">
+            <strong>✗ Limite Excedido</strong><br>
+            Você excedeu o número máximo de solicitações permitidas. Por favor, tente novamente mais tarde.
+        </div>
+        {% endif %}
+        
+        <form method="post" action="/data-deletion/">
+            {% csrf_token %}
+            
+            <div class="form-group">
+                <label for="phone">Número de Telefone (WhatsApp)</label>
+                <input 
+                    type="tel" 
+                    id="phone" 
+                    name="phone" 
+                    placeholder="+5511999999999" 
+                    required
+                    pattern="\+?[0-9]{10,15}"
+                    title="Digite seu número no formato E.164 (ex: +5511999999999)"
+                >
+                <div class="help-text">
+                    Digite seu número de telefone no formato internacional E.164.<br>
+                    Exemplo: <strong>+55 11 99999-9999</strong> ou <strong>+5511999999999</strong>
+                </div>
+            </div>
+            
+            <button type="submit">Solicitar Exclusão de Dados</button>
+        </form>
+        
+        <h2>Informações Adicionais</h2>
+        <p>
+            Esta página atende aos requisitos da Meta para fornecer uma URL de instruções de exclusão de dados.
+            Para mais informações sobre como tratamos seus dados, consulte nossa
+            <a href="{% url 'privacy_policy' %}">Política de Privacidade</a>.
+        </p>
+
+        <p>
+            Se você tiver dúvidas ou problemas com a exclusão de dados, entre em contato através do
+            <a href="https://github.com/avictorino/wachat">GitHub</a>.
+        </p>
+    </div>
+</body>
+</html>

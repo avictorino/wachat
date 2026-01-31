@@ -10,6 +10,11 @@ from django.views.decorators.csrf import csrf_exempt
 
 from messaging.tasks import process_message_task
 from messaging.types import IncomingMessage
+from service.data_deletion import (
+    delete_user_data,
+    normalize_phone_number,
+    rate_limit_by_ip,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -151,3 +156,80 @@ def terms_of_service_view(request):
     View for displaying the Terms of Service page.
     """
     return render(request, "terms_of_service.html")
+
+
+def data_deletion_view(request):
+    """
+    View for displaying and handling data deletion requests.
+
+    GET: Display the data deletion form
+    POST: Process the data deletion request with rate limiting
+    """
+    if request.method == "GET":
+        return render(request, "data_deletion.html")
+
+    elif request.method == "POST":
+        # Check rate limit
+        result = _handle_data_deletion_post(request)
+
+        if result is None:
+            # Rate limit exceeded
+            return render(
+                request,
+                "data_deletion.html",
+                {
+                    "rate_limited": True,
+                },
+            )
+
+        return result
+
+
+@rate_limit_by_ip(max_requests=5, window_seconds=3600)
+def _handle_data_deletion_post(request):
+    """
+    Handle POST request for data deletion.
+    Rate limited to 5 requests per hour per IP.
+    """
+    # Get phone number from form
+    phone = request.POST.get("phone", "").strip()
+
+    # Validate phone number format
+    if not phone:
+        return render(
+            request,
+            "data_deletion.html",
+            {"error": "Por favor, forneça um número de telefone válido."},
+        )
+
+    # Normalize phone number
+    try:
+        normalized_phone = normalize_phone_number(phone)
+    except (ValueError, TypeError, AttributeError):
+        return render(
+            request,
+            "data_deletion.html",
+            {
+                "error": "Formato de número de telefone inválido. "
+                "Use o formato E.164 (ex: +5511999999999)."
+            },
+        )
+
+    # Delete user data
+    success, error = delete_user_data(normalized_phone)
+
+    if success:
+        # Always return success message (don't reveal if user exists)
+        return render(
+            request,
+            "data_deletion.html",
+            {
+                "success": True,
+            },
+        )
+    else:
+        return render(
+            request,
+            "data_deletion.html",
+            {"error": error or "Ocorreu um erro ao processar sua solicitação."},
+        )
