@@ -14,7 +14,7 @@ from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from core.constants import INITIAL_WELCOME_MESSAGE, MODE_PRIORITY, ConversationMode
+from core.constants import MODE_PRIORITY, ConversationMode
 from core.models import (
     Conversation,
     FriendMemory,
@@ -26,6 +26,7 @@ from llm import LLMClient, LLMMessage
 from service.media_generation import maybe_generate_image
 from service.prompts import (
     IMAGE_EXTRACTION_PROMPT,
+    INITIAL_WELCOME_MESSAGE,
     build_memory_prompt,
     build_mode_inference_prompt,
     build_onboarding_prompt,
