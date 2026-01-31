@@ -79,6 +79,7 @@ if not DEBUG:
     SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=True, cast=bool)
     CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=True, cast=bool)
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    USE_X_FORWARDED_HOST = True
 
 
 # Application definition
@@ -132,8 +133,9 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # Read database URL from environment variable
 # Falls back to SQLite if DATABASE_URL is not set
+# conn_max_age=0 is required for Supabase Transaction Pooler (Shared Pooler)
 DATABASES = {}
-DATABASES["default"] = dj_database_url.config(conn_max_age=600)
+DATABASES["default"] = dj_database_url.config(conn_max_age=0)
 
 
 LOGGING = {

@@ -3,13 +3,19 @@
 import os
 import sys
 
-# Load environment variables from .env file
-import dotenv
-
 
 def main():
     """Run administrative tasks."""
-    dotenv.read_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+    # Only load .env file in non-production environments
+    # In production (Heroku), use Config Vars instead
+    if os.getenv("DYNO") is None:
+        # Not on Heroku, load .env file for local development
+        try:
+            import dotenv
+            dotenv.read_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+        except ImportError:
+            # django-dotenv not installed (e.g., in production)
+            pass
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     try:
