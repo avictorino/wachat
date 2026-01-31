@@ -161,17 +161,17 @@ def terms_of_service_view(request):
 def data_deletion_view(request):
     """
     View for displaying and handling data deletion requests.
-    
+
     GET: Display the data deletion form
     POST: Process the data deletion request with rate limiting
     """
     if request.method == "GET":
         return render(request, "data_deletion.html")
-    
+
     elif request.method == "POST":
         # Check rate limit
         result = _handle_data_deletion_post(request)
-        
+
         if result is None:
             # Rate limit exceeded
             return render(
@@ -181,7 +181,7 @@ def data_deletion_view(request):
                     "rate_limited": True,
                 },
             )
-        
+
         return result
 
 
@@ -193,17 +193,15 @@ def _handle_data_deletion_post(request):
     """
     # Get phone number from form
     phone = request.POST.get("phone", "").strip()
-    
+
     # Validate phone number format
     if not phone:
         return render(
             request,
             "data_deletion.html",
-            {
-                "error": "Por favor, forneça um número de telefone válido."
-            },
+            {"error": "Por favor, forneça um número de telefone válido."},
         )
-    
+
     # Normalize phone number
     try:
         normalized_phone = normalize_phone_number(phone)
@@ -216,10 +214,10 @@ def _handle_data_deletion_post(request):
                 "Use o formato E.164 (ex: +5511999999999)."
             },
         )
-    
+
     # Delete user data
     success, error = delete_user_data(normalized_phone)
-    
+
     if success:
         # Always return success message (don't reveal if user exists)
         return render(
@@ -233,7 +231,5 @@ def _handle_data_deletion_post(request):
         return render(
             request,
             "data_deletion.html",
-            {
-                "error": error or "Ocorreu um erro ao processar sua solicitação."
-            },
+            {"error": error or "Ocorreu um erro ao processar sua solicitação."},
         )
