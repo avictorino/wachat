@@ -3,6 +3,7 @@ import logging
 import os
 
 from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -136,3 +137,17 @@ class FacebookWhatsAppWebhookView(View):
                     process_message_task(msg)
 
         return JsonResponse({"status": "ok"}, status=200)
+
+
+def privacy_policy_view(request):
+    """
+    View for displaying the Privacy Policy page.
+    """
+    return render(request, "privacy_policy.html")
+
+
+def terms_of_service_view(request):
+    """
+    View for displaying the Terms of Service page.
+    """
+    return render(request, "terms_of_service.html")
