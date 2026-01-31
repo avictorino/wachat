@@ -10,7 +10,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
-import os
 from pathlib import Path
 
 import dj_database_url
@@ -34,7 +33,9 @@ SECRET_KEY = config(
 DEBUG = config("DEBUG", default=True, cast=bool)
 
 # Parse ALLOWED_HOSTS from environment variable
-ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="*", cast=lambda v: [s.strip() for s in v.split(",")])
+ALLOWED_HOSTS = config(
+    "ALLOWED_HOSTS", default="*", cast=lambda v: [s.strip() for s in v.split(",")]
+)
 
 # CSRF Configuration
 # Configure trusted origins for CSRF protection (comma-separated URLs)
@@ -46,17 +47,24 @@ if DEBUG:
     ]
 else:
     # In production, parse from environment or use Heroku app domain
-    csrf_origins = config("CSRF_TRUSTED_ORIGINS", default="", cast=lambda v: [s.strip() for s in v.split(",") if s.strip()])
+    csrf_origins = config(
+        "CSRF_TRUSTED_ORIGINS",
+        default="",
+        cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
+    )
     if not csrf_origins:
         # Auto-configure for Heroku - filter out wildcards
-        csrf_origins = [f"https://{host}" for host in ALLOWED_HOSTS if host != "*" and host]
+        csrf_origins = [
+            f"https://{host}" for host in ALLOWED_HOSTS if host != "*" and host
+        ]
     # Validate that CSRF_TRUSTED_ORIGINS is not empty in production
     if not csrf_origins:
         import warnings
+
         warnings.warn(
             "CSRF_TRUSTED_ORIGINS is empty in production. Set ALLOWED_HOSTS to your domain "
             "or explicitly set CSRF_TRUSTED_ORIGINS environment variable.",
-            RuntimeWarning
+            RuntimeWarning,
         )
     CSRF_TRUSTED_ORIGINS = csrf_origins
 
@@ -64,7 +72,9 @@ else:
 if not DEBUG:
     SECURE_SSL_REDIRECT = config("SECURE_SSL_REDIRECT", default=True, cast=bool)
     SECURE_HSTS_SECONDS = config("SECURE_HSTS_SECONDS", default=31536000, cast=int)
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = config("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=True, cast=bool)
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = config(
+        "SECURE_HSTS_INCLUDE_SUBDOMAINS", default=True, cast=bool
+    )
     SECURE_HSTS_PRELOAD = config("SECURE_HSTS_PRELOAD", default=True, cast=bool)
     SESSION_COOKIE_SECURE = config("SESSION_COOKIE_SECURE", default=True, cast=bool)
     CSRF_COOKIE_SECURE = config("CSRF_COOKIE_SECURE", default=True, cast=bool)
@@ -122,12 +132,8 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # Read database URL from environment variable
 # Falls back to SQLite if DATABASE_URL is not set
-DATABASES = {
-    "default": dj_database_url.parse(
-        os.getenv("DATABASE_URL", "sqlite:///db.sqlite3"),
-        conn_max_age=600,
-    )
-}
+DATABASES = {}
+DATABASES["default"] = dj_database_url.config(conn_max_age=600)
 
 
 LOGGING = {
