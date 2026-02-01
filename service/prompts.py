@@ -83,7 +83,7 @@ def generate_first_welcome_message(
     user_name: str,
     inferred_gender: str = "unknown",
     phone_ddd: str | None = None,
-    llm = None,
+    llm: "LLMClient | None" = None,
 ) -> str:
     """
     Generate a personalized first welcome message for a conversational Christian virtual companion.
@@ -100,6 +100,9 @@ def generate_first_welcome_message(
     # If LLM is provided, use it to generate the message
     if llm:
         from service.llm import LLMMessage
+        import logging
+        
+        logger = logging.getLogger(__name__)
         
         system_prompt = build_welcome_message_prompt(
             user_name=user_name,
@@ -118,9 +121,10 @@ def generate_first_welcome_message(
                 max_tokens=300,
             )
             return response.text.strip()
-        except Exception:
-            # Fallback to hardcoded message if LLM fails
-            pass
+        except Exception as e:
+            # Log the error and fallback to hardcoded message
+            logger.warning(f"Failed to generate welcome message via LLM: {e}. Using fallback.")
+            # Fallback to hardcoded message
     
     # Fallback: hardcoded message (backward compatibility)
     # Start with natural greeting using the user's name

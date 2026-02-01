@@ -271,11 +271,10 @@ class WelcomeMessageLLMGenerationTest(TestCase):
         # Check that prompt contains essential elements
         self.assertIn("Ana", prompt)
         self.assertIn("feminino", prompt)
-        # Check that DDD context is not mentioned when None
-        # The prompt should not have DDD info if it's None
-        lines = prompt.split('\n')
-        ddd_mentioned = any('DDD' in line and 'tem DDD' in line for line in lines)
-        self.assertFalse(ddd_mentioned)
+        # Check that DDD is not mentioned when it's None
+        # We verify by checking that 'DDD' doesn't appear after the user's name
+        context_section = prompt.split("Contexto:")[1].split("Diretrizes")[0]
+        self.assertNotIn("DDD", context_section)
 
     def test_build_welcome_message_prompt_unknown_gender(self):
         """Test the prompt builder with unknown gender."""
