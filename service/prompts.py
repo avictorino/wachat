@@ -20,10 +20,70 @@ INITIAL_WELCOME_MESSAGE = (
 )
 
 
+def build_welcome_message_prompt(
+    user_name: str,
+    inferred_gender: str = "unknown",
+    phone_ddd: str | None = None,
+) -> str:
+    """
+    Build a system prompt for generating the first welcome message.
+    
+    Args:
+        user_name: The user's first name
+        inferred_gender: Inferred gender (male, female, or unknown)
+        phone_ddd: Optional Brazilian DDD (area code) for regional context
+        
+    Returns:
+        A system prompt for the LLM to generate the welcome message
+    """
+    gender_context = ""
+    if inferred_gender == "male":
+        gender_context = "- O usuário é do gênero masculino (inferido pelo nome).\n"
+    elif inferred_gender == "female":
+        gender_context = "- O usuário é do gênero feminino (inferido pelo nome).\n"
+    
+    ddd_context = ""
+    if phone_ddd:
+        ddd_context = f"- O usuário tem DDD {phone_ddd} (pode implicar proximidade regional se desejar, mas de forma muito sutil, usando 'por aqui' se fizer sentido).\n"
+    
+    return f"""Você está gerando a PRIMEIRA mensagem de boas-vindas de um acompanhante espiritual cristão conversacional no Telegram.
+
+Contexto:
+- Nome do usuário: {user_name}
+{gender_context}{ddd_context}
+- Idioma: Português brasileiro
+
+Diretrizes OBRIGATÓRIAS:
+1. Cumprimente o usuário pelo nome de forma natural (sem formalidade excessiva).
+2. Se o DDD estiver disponível, você PODE usar "por aqui" para implicar proximidade regional, mas SOMENTE se for natural. Nunca mencione "DDD" explicitamente.
+3. Apresente o espaço como:
+   - Seguro
+   - Sem julgamento
+   - Focado em escutar e caminhar ao lado da pessoa
+4. Inclua uma frase guia similar em espírito (não em palavras exatas) a:
+   "Não te digo o que pensar. Caminho contigo enquanto você pensa."
+5. Termine com UMA pergunta aberta e simples convidando o usuário a compartilhar o que o trouxe aqui.
+6. Mantenha conciso: 3-5 parágrafos ou linhas curtas.
+7. NÃO se apresente com títulos como "sou um amigo bíblico" ou use emojis.
+8. Soe como uma presença real, não um bot.
+
+Tom:
+- Humano, calmo, caloroso e pessoal
+- Nunca pregador, nunca clichê
+- Evite frases feitas religiosas ou "linguagem de igreja"
+- O objetivo é convidar para conversa, não explicar recursos
+
+Formato de saída:
+- Apenas o texto da mensagem de boas-vindas.
+- Sem explicações.
+- Sem formatação além de quebras de linha."""
+
+
 def generate_first_welcome_message(
     user_name: str,
     inferred_gender: str = "unknown",
     phone_ddd: str | None = None,
+    llm = None,
 ) -> str:
     """
     Generate a personalized first welcome message for a conversational Christian virtual companion.
@@ -32,10 +92,37 @@ def generate_first_welcome_message(
         user_name: The user's first name
         inferred_gender: Inferred gender (male, female, or unknown) - reserved for future subtle adaptations
         phone_ddd: Optional Brazilian DDD (area code) for regional context
+        llm: LLM client to generate the message (if None, uses fallback hardcoded message)
         
     Returns:
         A warm, personal welcome message in Brazilian Portuguese
     """
+    # If LLM is provided, use it to generate the message
+    if llm:
+        from service.llm import LLMMessage
+        
+        system_prompt = build_welcome_message_prompt(
+            user_name=user_name,
+            inferred_gender=inferred_gender,
+            phone_ddd=phone_ddd,
+        )
+        
+        messages = [
+            LLMMessage(role="system", content=system_prompt),
+        ]
+        
+        try:
+            response = llm.chat(
+                messages=messages,
+                temperature=0.7,
+                max_tokens=300,
+            )
+            return response.text.strip()
+        except Exception:
+            # Fallback to hardcoded message if LLM fails
+            pass
+    
+    # Fallback: hardcoded message (backward compatibility)
     # Start with natural greeting using the user's name
     # Optionally add regional closeness if DDD is available
     if phone_ddd:

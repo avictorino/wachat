@@ -263,11 +263,12 @@ def chat_with_friend(
         # Extract DDD from user's phone number (username is the phone)
         phone_ddd = extract_phone_ddd(friend.owner.username)
         
-        # Generate the personalized welcome message
+        # Generate the personalized welcome message using LLM
         welcome_text = generate_first_welcome_message(
             user_name=user_name,
             inferred_gender=inferred_gender,
             phone_ddd=phone_ddd,
+            llm=llm,
         )
         
         assistant_msg = Message.objects.create(
