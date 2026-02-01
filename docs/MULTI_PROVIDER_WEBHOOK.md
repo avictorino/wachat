@@ -9,6 +9,8 @@ The webhook endpoint at `/api/webhooks/whatsapp-facebook/` now supports multiple
 1. **WhatsApp** (via Facebook/Meta Graph API)
 2. **Facebook Messenger** (via Facebook/Meta Graph API)
 3. **Twilio** (WhatsApp and SMS)
+4. **Telegram** (Bot API)
+5. **Slack** (Events API)
 
 ## Architecture
 
@@ -45,7 +47,7 @@ class NormalizedMessage:
     message_body: str       # Text content
     message_type: str       # text, audio, image, video, etc.
     timestamp: Optional[str]
-    provider: str           # whatsapp, facebook, twilio, twilio_whatsapp
+    provider: str           # whatsapp, facebook, twilio, telegram, slack
     media_url: Optional[str] = None
     reply_as_audio: bool = False
     raw_payload: Optional[Dict[str, Any]] = None
@@ -86,27 +88,100 @@ provider, normalized_message = detector.detect_and_normalize(headers, body)
 - Check for `MessageSid` or `AccountSid` in body
 - Distinguish WhatsApp vs SMS by `From` field prefix
 
+### Telegram
+- Check for `update_id` field in body
+- Check for `message` or `edited_message` field
+- Supports text, voice, audio, photo, and document messages
+
+### Slack
+- Check for `type: "event_callback"` in body
+- Check for `event.type: "message"` and absence of `bot_id`
+- Supports text and file attachments (images, audio, documents)
+
+## Media Support
+
+All providers support audio and image messages with the following capabilities:
+
+### Audio Messages
+
+**WhatsApp**: 
+- Receives audio with `file_id` for later download
+- Sets `reply_as_audio: true`
+
+**Facebook Messenger**:
+- Audio attachments with direct URL
+- Supports various audio formats
+
+**Twilio**:
+- Audio via `MediaUrl` with content type
+- Supports MP3, WAV, etc.
+
+**Telegram**:
+- Voice messages via `file_id` (requires separate API call to download)
+- Audio files via `file_id`
+- Sets `reply_as_audio: true` for voice messages
+
+**Slack**:
+- Audio files via `url_private` (requires authentication)
+- Stores file metadata in format: `file_id|mime_type|url`
+- Sets `reply_as_audio: true` for audio files
+
+### Image Messages
+
+**WhatsApp**:
+- Image messages detected by `type: "image"`
+- Media ID provided for download
+
+**Facebook Messenger**:
+- Image attachments with direct URL
+- Supports JPEG, PNG, GIF
+
+**Twilio**:
+- Image via `MediaUrl` with content type
+- Direct download URLs
+
+**Telegram**:
+- Photos as array of sizes (adapter selects largest)
+- Images in documents with MIME type check
+- Both use `file_id` for download
+
+**Slack**:
+- Image files via `url_private`
+- Requires bearer token for download
+- Metadata stored for later processing
+
+## Provider Limitations
+
+### Telegram
+- File downloads require separate API call using `file_id`
+- Bot must be authorized to access files
+- File size limits apply (20MB for photos)
+
+### Slack
+- File URLs require authentication with bot token
+- Does not have native voice messages (audio treated as file)
+- Files may expire after certain period
+
 ## Adding a New Provider
 
-To add support for a new provider (e.g., Telegram):
+To add support for a new provider (e.g., Discord):
 
 1. **Create adapter** in `messaging/providers.py`:
 
 ```python
-class TelegramAdapter(ProviderAdapter):
+class DiscordAdapter(ProviderAdapter):
     def can_handle(self, headers: Dict[str, str], body: Dict[str, Any]) -> bool:
-        # Telegram has update_id and message fields
-        return "update_id" in body and "message" in body
+        # Discord webhooks have specific structure
+        return body.get("type") == 0 and "author" in body
     
     def normalize(self, headers: Dict[str, str], body: Dict[str, Any]) -> Optional[NormalizedMessage]:
-        message = body.get("message", {})
         return NormalizedMessage(
-            sender_id=str(message.get("from", {}).get("id")),
-            recipient_id=str(message.get("chat", {}).get("id")),
-            message_body=message.get("text", ""),
+            sender_id=str(body.get("author", {}).get("id")),
+            recipient_id=str(body.get("channel_id")),
+            message_body=body.get("content", ""),
             message_type="text",
-            timestamp=str(message.get("date")),
-            provider="telegram",
+            timestamp=body.get("timestamp"),
+            provider="discord",
             raw_payload=body,
         )
 ```
@@ -118,14 +193,16 @@ self.adapters = [
     WhatsAppAdapter(),
     FacebookMessengerAdapter(),
     TwilioAdapter(),
-    TelegramAdapter(),  # Add here
+    TelegramAdapter(),
+    SlackAdapter(),
+    DiscordAdapter(),  # Add here
 ]
 ```
 
 3. **Update channel types** in `messaging/types.py`:
 
 ```python
-ChannelType = Literal["whatsapp_facebook", "facebook", "twilio", "twilio_whatsapp", "telegram"]
+ChannelType = Literal["whatsapp_facebook", "facebook", "twilio", "twilio_whatsapp", "telegram", "slack", "discord"]
 ```
 
 4. **Add channel mapping** in `core/views.py`:
@@ -136,19 +213,40 @@ channel_map = {
     "facebook": "facebook",
     "twilio": "twilio",
     "twilio_whatsapp": "twilio_whatsapp",
-    "telegram": "telegram",  # Add here
+    "telegram": "telegram",
+    "slack": "slack",
+    "discord": "discord",  # Add here
 }
 ```
 
 5. **Write tests** in `messaging/tests.py`:
 
 ```python
-class TelegramAdapterTest(TestCase):
-    def test_can_handle_telegram_webhook(self):
+class DiscordAdapterTest(TestCase):
+    def test_can_handle_discord_webhook(self):
         # Test detection logic
         
     def test_normalize_text_message(self):
         # Test normalization
+```
+
+## Testing
+
+Run tests for provider adapters:
+
+```bash
+python manage.py test messaging.tests
+```
+
+Run webhook integration tests:
+
+```bash
+python manage.py test core.tests.MultiProviderWebhookViewTest
+```
+
+## Backward Compatibility
+
+The existing WhatsApp functionality is **fully preserved**:
 ```
 
 ## Testing
