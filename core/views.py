@@ -28,6 +28,8 @@ class FacebookWhatsAppWebhookView(View):
     - WhatsApp (via Facebook/Meta Graph API)
     - Facebook Messenger (via Facebook/Meta Graph API)
     - Twilio (WhatsApp and SMS)
+    - Telegram (Bot API)
+    - Slack (Events API)
     
     CSRF is exempted because webhooks don't use CSRF tokens.
     """
@@ -53,7 +55,7 @@ class FacebookWhatsAppWebhookView(View):
     def post(self, request):
         """
         Unified webhook endpoint for receiving messages from multiple providers.
-        Supports WhatsApp (Meta), Facebook Messenger, and Twilio.
+        Supports WhatsApp (Meta), Facebook Messenger, Twilio, Telegram, and Slack.
         """
         try:
             body = json.loads(request.body)
@@ -107,6 +109,8 @@ class FacebookWhatsAppWebhookView(View):
             "facebook": "facebook",
             "twilio": "twilio",
             "twilio_whatsapp": "twilio_whatsapp",
+            "telegram": "telegram",
+            "slack": "slack",
         }
         
         if provider not in channel_map:

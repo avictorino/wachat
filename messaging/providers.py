@@ -5,6 +5,8 @@ This module implements a strategy pattern for handling requests from different p
 - WhatsApp (via Facebook/Meta Graph API)
 - Facebook Messenger (via Facebook/Meta Graph API)
 - Twilio (WhatsApp and SMS)
+- Telegram (Bot API)
+- Slack (Events API)
 
 Each adapter normalizes the provider-specific request format into a common structure.
 """
@@ -24,7 +26,7 @@ class NormalizedMessage:
         message_body: The text content of the message
         message_type: Type of message (text, audio, image, etc.)
         timestamp: Message timestamp
-        provider: Source provider (whatsapp, facebook, twilio)
+        provider: Source provider (whatsapp, facebook, twilio, telegram, slack)
         media_url: URL for media messages (optional)
         reply_as_audio: Whether to reply with audio (optional)
         raw_payload: Original request data for debugging
@@ -327,6 +329,243 @@ class TwilioAdapter(ProviderAdapter):
         )
 
 
+class TelegramAdapter(ProviderAdapter):
+    """
+    Adapter for Telegram Bot API messages.
+    
+    Telegram webhook structure:
+    {
+      "update_id": 123456789,
+      "message": {
+        "message_id": 123,
+        "from": {
+          "id": 123456789,
+          "is_bot": false,
+          "first_name": "John"
+        },
+        "chat": {
+          "id": 123456789,
+          "type": "private"
+        },
+        "date": 1234567890,
+        "text": "Hello"
+      }
+    }
+    
+    Note: Telegram media files require a separate API call to download.
+    The adapter stores the file_id which can be used to fetch the file later.
+    """
+    
+    def can_handle(self, headers: Dict[str, str], body: Dict[str, Any]) -> bool:
+        """Check if this is a Telegram webhook request."""
+        # Telegram webhooks have update_id field
+        if "update_id" not in body:
+            return False
+        
+        # Check for message or edited_message
+        return "message" in body or "edited_message" in body
+    
+    def normalize(self, headers: Dict[str, str], body: Dict[str, Any]) -> Optional[NormalizedMessage]:
+        """
+        Normalize Telegram webhook payload.
+        
+        Telegram supports:
+        - Text messages
+        - Audio messages (voice, audio files)
+        - Photo messages
+        - Document messages
+        """
+        # Get the message (could be regular message or edited_message)
+        message = body.get("message") or body.get("edited_message")
+        if not message:
+            return None
+        
+        sender = message.get("from", {})
+        chat = message.get("chat", {})
+        
+        sender_id = str(sender.get("id", ""))
+        recipient_id = str(chat.get("id", ""))
+        timestamp = str(message.get("date", ""))
+        
+        # Default values
+        message_body = ""
+        message_type = "text"
+        media_url = None
+        reply_as_audio = False
+        
+        # Extract message content based on type
+        if "text" in message:
+            message_body = message.get("text", "")
+            message_type = "text"
+        
+        elif "voice" in message:
+            # Voice messages are audio messages
+            voice = message.get("voice", {})
+            media_url = voice.get("file_id")  # Store file_id for later download
+            message_body = "[Audio message received]"
+            message_type = "audio"
+            reply_as_audio = True
+        
+        elif "audio" in message:
+            # Audio files
+            audio = message.get("audio", {})
+            media_url = audio.get("file_id")
+            message_body = "[Audio message received]"
+            message_type = "audio"
+            reply_as_audio = True
+        
+        elif "photo" in message:
+            # Photo messages - Telegram sends multiple sizes
+            # Get the largest photo (last in the array)
+            photos = message.get("photo", [])
+            if photos:
+                largest_photo = photos[-1]
+                media_url = largest_photo.get("file_id")
+                message_body = message.get("caption", "[Image message received]")
+                message_type = "image"
+        
+        elif "document" in message:
+            # Document messages (could be any file type)
+            document = message.get("document", {})
+            media_url = document.get("file_id")
+            mime_type = document.get("mime_type", "")
+            
+            if mime_type.startswith("image"):
+                message_body = message.get("caption", "[Image message received]")
+                message_type = "image"
+            elif mime_type.startswith("audio"):
+                message_body = message.get("caption", "[Audio message received]")
+                message_type = "audio"
+            else:
+                message_body = message.get("caption", "[Document received]")
+                message_type = "document"
+        
+        else:
+            # Unsupported message type
+            message_body = "[Unsupported message type]"
+            message_type = "unknown"
+        
+        return NormalizedMessage(
+            sender_id=sender_id,
+            recipient_id=recipient_id,
+            message_body=message_body,
+            message_type=message_type,
+            timestamp=timestamp,
+            provider="telegram",
+            media_url=media_url,
+            reply_as_audio=reply_as_audio,
+            raw_payload=body,
+        )
+
+
+class SlackAdapter(ProviderAdapter):
+    """
+    Adapter for Slack Events API messages.
+    
+    Slack webhook structure (Event Callback):
+    {
+      "type": "event_callback",
+      "event": {
+        "type": "message",
+        "user": "U123456",
+        "text": "Hello",
+        "ts": "1234567890.123456",
+        "channel": "C123456",
+        "files": [
+          {
+            "id": "F123456",
+            "url_private": "https://...",
+            "mimetype": "image/png"
+          }
+        ]
+      }
+    }
+    
+    Note: Slack file URLs require authentication (bot token).
+    The adapter normalizes file metadata, but download requires separate API call.
+    
+    Limitations:
+    - Slack does not natively support voice messages
+    - Audio files are treated as document attachments
+    - File downloads require bearer token authentication
+    """
+    
+    def can_handle(self, headers: Dict[str, str], body: Dict[str, Any]) -> bool:
+        """Check if this is a Slack Events API webhook request."""
+        # Slack Events API has type field
+        if body.get("type") == "url_verification":
+            # This is a challenge request, not a message
+            return False
+        
+        # Check for event callback with message event
+        if body.get("type") == "event_callback":
+            event = body.get("event", {})
+            # Check if it's a message event (not bot message)
+            return event.get("type") == "message" and "bot_id" not in event
+        
+        return False
+    
+    def normalize(self, headers: Dict[str, str], body: Dict[str, Any]) -> Optional[NormalizedMessage]:
+        """
+        Normalize Slack Events API webhook payload.
+        
+        Slack supports:
+        - Text messages
+        - File uploads (images, audio, documents)
+        - Note: Slack doesn't have native voice messages
+        """
+        event = body.get("event", {})
+        if not event:
+            return None
+        
+        sender_id = event.get("user", "")
+        recipient_id = event.get("channel", "")
+        timestamp = event.get("ts", "")
+        message_body = event.get("text", "")
+        
+        # Default values
+        message_type = "text"
+        media_url = None
+        reply_as_audio = False
+        
+        # Check for file attachments
+        files = event.get("files", [])
+        if files:
+            # Process the first file
+            file = files[0]
+            file_id = file.get("id")
+            mime_type = file.get("mimetype", "")
+            file_url = file.get("url_private")  # Requires authentication
+            
+            # Store file metadata in media_url as JSON string for later processing
+            # Format: "file_id|mime_type|url"
+            media_url = f"{file_id}|{mime_type}|{file_url}"
+            
+            if mime_type.startswith("image"):
+                message_body = message_body or "[Image message received]"
+                message_type = "image"
+            elif mime_type.startswith("audio"):
+                message_body = message_body or "[Audio message received]"
+                message_type = "audio"
+                # Slack audio files can be replied to with audio
+                reply_as_audio = True
+            else:
+                message_body = message_body or "[File received]"
+                message_type = "file"
+        
+        return NormalizedMessage(
+            sender_id=sender_id,
+            recipient_id=recipient_id,
+            message_body=message_body,
+            message_type=message_type,
+            timestamp=timestamp,
+            provider="slack",
+            media_url=media_url,
+            reply_as_audio=reply_as_audio,
+            raw_payload=body,
+        )
+
+
 class ProviderDetector:
     """
     Detects the provider from a webhook request and returns the appropriate adapter.
@@ -337,6 +576,8 @@ class ProviderDetector:
             WhatsAppAdapter(),
             FacebookMessengerAdapter(),
             TwilioAdapter(),
+            TelegramAdapter(),
+            SlackAdapter(),
         ]
     
     def detect_and_normalize(
