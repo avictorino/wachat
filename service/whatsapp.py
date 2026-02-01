@@ -142,9 +142,79 @@ def extract_whatsapp_identity(payload: dict) -> dict:
     }
 
 
-def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
+def extract_identity(msg: IncomingMessage) -> dict:
+    """
+    Extract identity information from an incoming message based on channel.
+    
+    Args:
+        msg: The incoming message
+        
+    Returns:
+        Dictionary with channel-specific identity information
+    """
+    from messaging.types import CHANNEL_TELEGRAM
+    
+    if msg.channel == CHANNEL_TELEGRAM:
+        # For Telegram, extract from the normalized message or raw payload
+        payload = msg.raw_payload or {}
+        message = payload.get("message") or payload.get("edited_message") or {}
+        sender = message.get("from", {})
+        chat = message.get("chat", {})
+        
+        sender_id = str(sender.get("id", "")) if sender.get("id") else ""
+        chat_id = str(chat.get("id", "")) if chat.get("id") else ""
+        
+        return {
+            "channel": CHANNEL_TELEGRAM,
+            "user_id": sender_id,
+            "chat_id": chat_id,
+            "from": msg.from_,
+            "to": msg.to,
+        }
+    else:
+        # Use existing WhatsApp identity extraction
+        identity = extract_whatsapp_identity(msg.raw_payload)
+        identity["user_id"] = identity.get("wa_id") or identity.get("from")
+        return identity
 
-    identity = extract_whatsapp_identity(msg.raw_payload)
+
+def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
+    """
+    Handle an incoming message from any channel.
+    
+    Supports:
+    - WhatsApp (Facebook)
+    - Telegram
+    - Other channels as configured
+    
+    Args:
+        msg: The incoming message
+        
+    Returns:
+        The outgoing response message
+    """
+    from messaging.types import CHANNEL_TELEGRAM
+    
+    # Check for /start command (Telegram)
+    if msg.channel == CHANNEL_TELEGRAM:
+        from service.telegram import detect_start_command, get_telegram_welcome_message
+        
+        if detect_start_command(msg.text):
+            # Handle /start command
+            friend = get_friend_or_init_person(msg)
+            
+            # Send welcome message
+            from core.constants import ConversationMode
+            return OutgoingMessage(
+                channel=msg.channel,
+                from_=msg.to,
+                to=msg.from_,
+                text=get_telegram_welcome_message(friend.name),
+                reply_as_audio=False,
+                conversation_mode=ConversationMode.LISTENING,
+            )
+
+    identity = extract_identity(msg)
 
     friend = get_friend_or_init_person(msg)
 
@@ -165,35 +235,62 @@ def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
 
 
 def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
-
+    """
+    Get or create a VirtualFriend for the user based on the incoming message.
+    
+    Supports multiple channels:
+    - WhatsApp (Facebook)
+    - Telegram
+    
+    Args:
+        msg: The incoming message
+        
+    Returns:
+        VirtualFriend instance for the user
+    """
+    from messaging.types import CHANNEL_TELEGRAM
+    
     user = User.objects.filter(username=msg.from_).first()
     names = biblical_names
+    
     if not user and msg.raw_payload:
-        # Try to extract profile name from Facebook WhatsApp webhook
+        # Try to extract profile name based on channel
         first_name = None
         last_name = None
 
-        # Facebook WhatsApp format
-        try:
-            entry = msg.raw_payload.get("entry", [{}])[0]
-            changes = entry.get("changes", [{}])[0]
-            value = changes.get("value", {})
-            contacts = value.get("contacts", [])
-            if contacts:
-                profile = contacts[0].get("profile", {})
-                name = profile.get("name", "")
-                if name:
-                    name_parts = name.split(" ")
-                    first_name = name_parts[0]
-                    last_name = name_parts[-1] if len(name_parts) > 1 else name_parts[0]
-        except (KeyError, IndexError, AttributeError):
-            pass
+        if msg.channel == CHANNEL_TELEGRAM:
+            # Telegram format
+            try:
+                message = msg.raw_payload.get("message") or msg.raw_payload.get("edited_message") or {}
+                sender = message.get("from", {})
+                first_name = sender.get("first_name", "")
+                last_name = sender.get("last_name", "")
+            except (KeyError, IndexError, AttributeError):
+                pass
+        else:
+            # Facebook WhatsApp format
+            try:
+                entry = msg.raw_payload.get("entry", [{}])[0]
+                changes = entry.get("changes", [{}])[0]
+                value = changes.get("value", {})
+                contacts = value.get("contacts", [])
+                if contacts:
+                    profile = contacts[0].get("profile", {})
+                    name = profile.get("name", "")
+                    if name:
+                        name_parts = name.split(" ")
+                        first_name = name_parts[0]
+                        last_name = name_parts[-1] if len(name_parts) > 1 else name_parts[0]
+            except (KeyError, IndexError, AttributeError):
+                pass
 
         user, created = User.objects.get_or_create(
             username=msg.from_,
-            first_name=first_name,
-            last_name=last_name,
-            is_active=True,
+            defaults={
+                "first_name": first_name or "",
+                "last_name": last_name or "",
+                "is_active": True,
+            }
         )
 
         if created:

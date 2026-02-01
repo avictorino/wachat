@@ -5,6 +5,14 @@ from core.constants import ConversationMode
 
 ChannelType = Literal["whatsapp_facebook", "facebook", "twilio", "twilio_whatsapp", "telegram", "slack"]
 
+# Channel name constants
+CHANNEL_WHATSAPP_FACEBOOK = "whatsapp_facebook"
+CHANNEL_FACEBOOK = "facebook"
+CHANNEL_TWILIO = "twilio"
+CHANNEL_TWILIO_WHATSAPP = "twilio_whatsapp"
+CHANNEL_TELEGRAM = "telegram"
+CHANNEL_SLACK = "slack"
+
 
 @dataclass(frozen=True)
 class IncomingMessage:
