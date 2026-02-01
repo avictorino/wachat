@@ -126,6 +126,74 @@ class MultiProviderWebhookViewTest(TestCase):
         self.assertEqual(called_msg.from_, "+5521967337683")
         self.assertEqual(called_msg.text, "Hello from Twilio")
 
+    @patch("core.views.process_message_task")
+    def test_telegram_webhook_post(self, mock_process_message):
+        """Test that Telegram webhooks are processed correctly"""
+        payload = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {
+                    "id": 987654321,
+                    "first_name": "John"
+                },
+                "chat": {
+                    "id": 123456789,
+                    "type": "private"
+                },
+                "date": 1234567890,
+                "text": "Hello from Telegram"
+            }
+        }
+
+        response = self.client.post(
+            "/api/webhooks/whatsapp-facebook/",
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "ok")
+        
+        # Verify message processing was called
+        mock_process_message.assert_called_once()
+        called_msg = mock_process_message.call_args[0][0]
+        self.assertEqual(called_msg.channel, "telegram")
+        self.assertEqual(called_msg.from_, "987654321")
+        self.assertEqual(called_msg.text, "Hello from Telegram")
+
+    @patch("core.views.process_message_task")
+    def test_slack_webhook_post(self, mock_process_message):
+        """Test that Slack webhooks are processed correctly"""
+        payload = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456789",
+                "text": "Hello from Slack",
+                "channel": "C987654321",
+                "ts": "1234567890.123456"
+            }
+        }
+
+        response = self.client.post(
+            "/api/webhooks/whatsapp-facebook/",
+            data=json.dumps(payload),
+            content_type="application/json"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["status"], "ok")
+        
+        # Verify message processing was called
+        mock_process_message.assert_called_once()
+        called_msg = mock_process_message.call_args[0][0]
+        self.assertEqual(called_msg.channel, "slack")
+        self.assertEqual(called_msg.from_, "U123456789")
+        self.assertEqual(called_msg.text, "Hello from Slack")
+
     def test_webhook_invalid_json(self):
         """Test that invalid JSON returns 400"""
         response = self.client.post(

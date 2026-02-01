@@ -7,6 +7,8 @@ from messaging.providers import (
     WhatsAppAdapter,
     FacebookMessengerAdapter,
     TwilioAdapter,
+    TelegramAdapter,
+    SlackAdapter,
     ProviderDetector,
     NormalizedMessage,
 )
@@ -712,3 +714,470 @@ class ProviderDetectorTest(TestCase):
         
         self.assertIsNone(provider)
         self.assertIsNone(message)
+
+
+class TelegramAdapterTest(TestCase):
+    """Test Telegram Bot API provider adapter"""
+
+    def test_can_handle_telegram_webhook(self):
+        """Test that Telegram adapter can identify Telegram webhooks"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 123456789},
+                "chat": {"id": 123456789},
+                "text": "Hello"
+            }
+        }
+        headers = {}
+        
+        self.assertTrue(adapter.can_handle(headers, body))
+
+    def test_can_handle_edited_message(self):
+        """Test that Telegram adapter handles edited messages"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "edited_message": {
+                "message_id": 123,
+                "from": {"id": 123456789},
+                "chat": {"id": 123456789},
+                "text": "Edited text"
+            }
+        }
+        headers = {}
+        
+        self.assertTrue(adapter.can_handle(headers, body))
+
+    def test_cannot_handle_other_providers(self):
+        """Test that Telegram adapter rejects other providers"""
+        adapter = TelegramAdapter()
+        
+        body = {"object": "page"}
+        headers = {}
+        
+        self.assertFalse(adapter.can_handle(headers, body))
+
+    def test_normalize_text_message(self):
+        """Test normalizing a Telegram text message"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {
+                    "id": 987654321,
+                    "first_name": "John"
+                },
+                "chat": {
+                    "id": 123456789,
+                    "type": "private"
+                },
+                "date": 1234567890,
+                "text": "Hello from Telegram"
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.sender_id, "987654321")
+        self.assertEqual(result.recipient_id, "123456789")
+        self.assertEqual(result.message_body, "Hello from Telegram")
+        self.assertEqual(result.message_type, "text")
+        self.assertEqual(result.timestamp, "1234567890")
+        self.assertEqual(result.provider, "telegram")
+        self.assertIsNone(result.media_url)
+        self.assertFalse(result.reply_as_audio)
+
+    def test_normalize_voice_message(self):
+        """Test normalizing a Telegram voice message"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "voice": {
+                    "file_id": "voice_file_id_123",
+                    "duration": 10
+                }
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "[Audio message received]")
+        self.assertEqual(result.message_type, "audio")
+        self.assertEqual(result.media_url, "voice_file_id_123")
+        self.assertTrue(result.reply_as_audio)
+
+    def test_normalize_audio_file(self):
+        """Test normalizing a Telegram audio file"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "audio": {
+                    "file_id": "audio_file_id_123",
+                    "duration": 180,
+                    "title": "Song"
+                }
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "[Audio message received]")
+        self.assertEqual(result.message_type, "audio")
+        self.assertEqual(result.media_url, "audio_file_id_123")
+        self.assertTrue(result.reply_as_audio)
+
+    def test_normalize_photo_message(self):
+        """Test normalizing a Telegram photo message"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "photo": [
+                    {"file_id": "small_photo", "width": 320, "height": 240},
+                    {"file_id": "large_photo", "width": 1280, "height": 960}
+                ],
+                "caption": "Beautiful sunset"
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "Beautiful sunset")
+        self.assertEqual(result.message_type, "image")
+        self.assertEqual(result.media_url, "large_photo")  # Largest photo
+        self.assertFalse(result.reply_as_audio)
+
+    def test_normalize_photo_without_caption(self):
+        """Test normalizing a Telegram photo without caption"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "photo": [
+                    {"file_id": "photo_file_id", "width": 640, "height": 480}
+                ]
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "[Image message received]")
+        self.assertEqual(result.message_type, "image")
+
+    def test_normalize_document_image(self):
+        """Test normalizing a Telegram image sent as document"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "document": {
+                    "file_id": "doc_file_id",
+                    "mime_type": "image/png"
+                }
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "[Image message received]")
+        self.assertEqual(result.message_type, "image")
+        self.assertEqual(result.media_url, "doc_file_id")
+
+    def test_normalize_document_audio(self):
+        """Test normalizing a Telegram audio sent as document"""
+        adapter = TelegramAdapter()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "document": {
+                    "file_id": "audio_doc_id",
+                    "mime_type": "audio/mpeg"
+                }
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "[Audio message received]")
+        self.assertEqual(result.message_type, "audio")
+
+
+class SlackAdapterTest(TestCase):
+    """Test Slack Events API provider adapter"""
+
+    def test_can_handle_slack_event_callback(self):
+        """Test that Slack adapter can identify Slack event callbacks"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456",
+                "text": "Hello",
+                "channel": "C123456"
+            }
+        }
+        headers = {}
+        
+        self.assertTrue(adapter.can_handle(headers, body))
+
+    def test_cannot_handle_url_verification(self):
+        """Test that Slack adapter ignores URL verification requests"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "url_verification",
+            "challenge": "challenge_string"
+        }
+        headers = {}
+        
+        self.assertFalse(adapter.can_handle(headers, body))
+
+    def test_cannot_handle_bot_messages(self):
+        """Test that Slack adapter ignores bot messages"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "bot_id": "B123456",
+                "text": "Bot message"
+            }
+        }
+        headers = {}
+        
+        self.assertFalse(adapter.can_handle(headers, body))
+
+    def test_cannot_handle_other_providers(self):
+        """Test that Slack adapter rejects other providers"""
+        adapter = SlackAdapter()
+        
+        body = {"object": "page"}
+        headers = {}
+        
+        self.assertFalse(adapter.can_handle(headers, body))
+
+    def test_normalize_text_message(self):
+        """Test normalizing a Slack text message"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456789",
+                "text": "Hello from Slack",
+                "channel": "C987654321",
+                "ts": "1234567890.123456"
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.sender_id, "U123456789")
+        self.assertEqual(result.recipient_id, "C987654321")
+        self.assertEqual(result.message_body, "Hello from Slack")
+        self.assertEqual(result.message_type, "text")
+        self.assertEqual(result.timestamp, "1234567890.123456")
+        self.assertEqual(result.provider, "slack")
+        self.assertIsNone(result.media_url)
+        self.assertFalse(result.reply_as_audio)
+
+    def test_normalize_image_file(self):
+        """Test normalizing a Slack image file"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456789",
+                "text": "Check this out",
+                "channel": "C987654321",
+                "ts": "1234567890.123456",
+                "files": [
+                    {
+                        "id": "F123456",
+                        "mimetype": "image/png",
+                        "url_private": "https://files.slack.com/files-pri/T123/F123/image.png"
+                    }
+                ]
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "Check this out")
+        self.assertEqual(result.message_type, "image")
+        self.assertIn("F123456", result.media_url)
+        self.assertIn("image/png", result.media_url)
+        self.assertFalse(result.reply_as_audio)
+
+    def test_normalize_audio_file(self):
+        """Test normalizing a Slack audio file"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456789",
+                "text": "",
+                "channel": "C987654321",
+                "ts": "1234567890.123456",
+                "files": [
+                    {
+                        "id": "F789012",
+                        "mimetype": "audio/mpeg",
+                        "url_private": "https://files.slack.com/files-pri/T123/F789/audio.mp3"
+                    }
+                ]
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "[Audio message received]")
+        self.assertEqual(result.message_type, "audio")
+        self.assertIn("F789012", result.media_url)
+        self.assertIn("audio/mpeg", result.media_url)
+        self.assertTrue(result.reply_as_audio)
+
+    def test_normalize_generic_file(self):
+        """Test normalizing a generic Slack file"""
+        adapter = SlackAdapter()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456789",
+                "text": "Here's a document",
+                "channel": "C987654321",
+                "ts": "1234567890.123456",
+                "files": [
+                    {
+                        "id": "F345678",
+                        "mimetype": "application/pdf",
+                        "url_private": "https://files.slack.com/files-pri/T123/F345/doc.pdf"
+                    }
+                ]
+            }
+        }
+        headers = {}
+        
+        result = adapter.normalize(headers, body)
+        
+        self.assertIsNotNone(result)
+        self.assertEqual(result.message_body, "Here's a document")
+        self.assertEqual(result.message_type, "file")
+        self.assertIn("F345678", result.media_url)
+
+
+class ProviderDetectorExtendedTest(TestCase):
+    """Test provider detection with Telegram and Slack"""
+
+    def test_detect_telegram(self):
+        """Test detecting Telegram provider"""
+        detector = ProviderDetector()
+        
+        body = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 123,
+                "from": {"id": 987654321},
+                "chat": {"id": 123456789},
+                "date": 1234567890,
+                "text": "Hello from Telegram"
+            }
+        }
+        headers = {}
+        
+        provider, message = detector.detect_and_normalize(headers, body)
+        
+        self.assertEqual(provider, "telegram")
+        self.assertIsNotNone(message)
+        self.assertEqual(message.message_body, "Hello from Telegram")
+
+    def test_detect_slack(self):
+        """Test detecting Slack provider"""
+        detector = ProviderDetector()
+        
+        body = {
+            "type": "event_callback",
+            "event": {
+                "type": "message",
+                "user": "U123456789",
+                "text": "Hello from Slack",
+                "channel": "C987654321",
+                "ts": "1234567890.123456"
+            }
+        }
+        headers = {}
+        
+        provider, message = detector.detect_and_normalize(headers, body)
+        
+        self.assertEqual(provider, "slack")
+        self.assertIsNotNone(message)
+        self.assertEqual(message.message_body, "Hello from Slack")
