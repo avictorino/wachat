@@ -1,5 +1,14 @@
 # WaChat
 
+✨ O que você é
+
+Um espaço seguro de escuta espiritual, com reflexões cristãs e respostas personalizadas via chat, sem julgamento.
+
+Frase-guia interna
+
+“Não te digo o que pensar. Caminho contigo enquanto você pensa.”
+
+
 
 postgres hosted at: https://supabase.com/dashboard/project/
 
