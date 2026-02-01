@@ -37,14 +37,11 @@ def generate_first_welcome_message(
         A warm, personal welcome message in Brazilian Portuguese
     """
     # Start with natural greeting using the user's name
-    greeting = f"Oi, {user_name}, que bom ter você aqui"
-    
     # Optionally add regional closeness if DDD is available
-    # Only add if it feels natural
     if phone_ddd:
-        greeting += " por aqui"
-    
-    greeting += "."
+        greeting = f"Oi, {user_name}, que bom ter você por aqui."
+    else:
+        greeting = f"Oi, {user_name}, que bom ter você aqui."
     
     # Build the message with natural, human language
     # Adapt slightly based on gender (very subtly)
