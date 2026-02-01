@@ -21,7 +21,6 @@ from django.contrib import admin
 from django.urls import path
 
 from core.views import (
-    FacebookWhatsAppWebhookView,
     TelegramWebhookView,
     data_deletion_view,
     privacy_policy_view,
@@ -29,7 +28,6 @@ from core.views import (
 )
 
 urlpatterns = [
-    path("api/webhooks/whatsapp-facebook/", FacebookWhatsAppWebhookView.as_view()),
     path("webhooks/telegram/", TelegramWebhookView.as_view()),
     path("admin/", admin.site.urls),
     path("privacidade/", privacy_policy_view, name="privacy_policy"),
