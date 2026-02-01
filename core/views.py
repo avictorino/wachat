@@ -172,12 +172,20 @@ class TelegramWebhookView(View):
         """
         # Validate secret token
         webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+        
+        # Reject if secret is not configured (security measure)
+        if not webhook_secret:
+            logger.error("TELEGRAM_WEBHOOK_SECRET environment variable not configured")
+            return JsonResponse(
+                {"status": "error", "message": "Server configuration error"}, status=500
+            )
+        
         request_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
         
-        if not webhook_secret or request_secret != webhook_secret:
+        if request_secret != webhook_secret:
             logger.warning(
                 "Telegram webhook authentication failed",
-                extra={"has_secret": bool(webhook_secret), "has_request_secret": bool(request_secret)}
+                extra={"has_request_secret": bool(request_secret)}
             )
             return JsonResponse(
                 {"status": "error", "message": "Forbidden"}, status=403
@@ -239,7 +247,7 @@ class TelegramWebhookView(View):
             reply_as_audio=normalized_message.reply_as_audio,
         )
         
-        # Process message asynchronously
+        # Process message (note: process_message_task is synchronous in this codebase)
         process_message_task(msg)
         
         # Return 200 quickly

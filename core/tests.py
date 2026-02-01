@@ -467,6 +467,20 @@ class TelegramWebhookViewTest(TestCase):
         data = response.json()
         self.assertEqual(data["status"], "error")
 
+    def test_telegram_webhook_secret_not_configured(self):
+        """Test that Telegram webhook with unconfigured secret returns 500"""
+        with patch.dict("os.environ", {}, clear=True):
+            response = self.client.post(
+                "/webhooks/telegram/",
+                data=json.dumps(self.telegram_payload),
+                content_type="application/json",
+                HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="any_secret"
+            )
+
+            self.assertEqual(response.status_code, 500)
+            data = response.json()
+            self.assertEqual(data["status"], "error")
+
     @patch.dict("os.environ", {"TELEGRAM_WEBHOOK_SECRET": "test_secret_token"})
     def test_telegram_webhook_invalid_json(self):
         """Test that invalid JSON returns 400"""
