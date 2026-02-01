@@ -32,6 +32,7 @@ from service.prompts import (
     build_onboarding_prompt,
     build_profile_extraction_prompt,
     build_system_prompt,
+    generate_first_welcome_message,
     onboarding_question,
 )
 
@@ -155,6 +156,33 @@ def get_recent_messages(conversation: Conversation, limit: int = 20) -> list[Mes
     return list(conversation.messages.order_by("-created_at")[:limit][::-1])
 
 
+def extract_phone_ddd(phone_number: str) -> str | None:
+    """
+    Extract Brazilian DDD (area code) from a phone number.
+    
+    Args:
+        phone_number: Phone number string (e.g., "+5521967337683")
+        
+    Returns:
+        DDD as a string (e.g., "21") or None if not found
+    """
+    if not phone_number:
+        return None
+    
+    # Remove common formatting characters
+    clean_phone = phone_number.replace("+", "").replace("-", "").replace(" ", "").replace("(", "").replace(")", "")
+    
+    # Brazilian numbers start with country code 55 followed by 2-digit DDD
+    # Format: 55 + DDD (2 digits) + phone number (8 or 9 digits)
+    if clean_phone.startswith("55") and len(clean_phone) >= 4:
+        ddd = clean_phone[2:4]
+        # Validate DDD is numeric
+        if ddd.isdigit():
+            return ddd
+    
+    return None
+
+
 # ============================================================================
 # Core Orchestration
 # ============================================================================
@@ -221,10 +249,31 @@ def chat_with_friend(
     assistant_count = conversation.is_onboarding_phase()
 
     if assistant_count == 0:
+        # Generate personalized welcome message
+        user_name = friend.owner.first_name or "amigo" if friend.owner.first_name else "amigo"
+        
+        # Get inferred gender from user's spiritual profile
+        inferred_gender = "unknown"
+        try:
+            profile = friend.owner.spiritual_profile
+            inferred_gender = profile.gender if profile.gender else "unknown"
+        except Exception:
+            pass
+        
+        # Extract DDD from user's phone number (username is the phone)
+        phone_ddd = extract_phone_ddd(friend.owner.username)
+        
+        # Generate the personalized welcome message
+        welcome_text = generate_first_welcome_message(
+            user_name=user_name,
+            inferred_gender=inferred_gender,
+            phone_ddd=phone_ddd,
+        )
+        
         assistant_msg = Message.objects.create(
             conversation=conversation,
             role=Message.Role.ASSISTANT,
-            content=INITIAL_WELCOME_MESSAGE.replace("{friend_name}", friend.name),
+            content=welcome_text,
         )
         return (
             ChatResult(

@@ -19,6 +19,59 @@ INITIAL_WELCOME_MESSAGE = (
     "Quando quiser, me diga: o que te trouxe até aqui hoje?"
 )
 
+
+def generate_first_welcome_message(
+    user_name: str,
+    inferred_gender: str = "unknown",
+    phone_ddd: str | None = None,
+) -> str:
+    """
+    Generate a personalized first welcome message for a conversational Christian virtual companion.
+    
+    Args:
+        user_name: The user's first name
+        inferred_gender: Inferred gender (male, female, or unknown)
+        phone_ddd: Optional Brazilian DDD (area code) for regional context
+        
+    Returns:
+        A warm, personal welcome message in Brazilian Portuguese
+    """
+    # Start with natural greeting using the user's name
+    greeting = f"Oi, {user_name}, que bom ter você aqui"
+    
+    # Optionally add regional closeness if DDD is available
+    # Only add if it feels natural
+    if phone_ddd:
+        greeting += " por aqui"
+    
+    greeting += "."
+    
+    # Build the message with natural, human language
+    # Adapt slightly based on gender (very subtly)
+    if inferred_gender == "male":
+        connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
+    elif inferred_gender == "female":
+        connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
+    else:
+        connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
+    
+    # Core message: safe space description
+    space_description = (
+        "Este é um espaço seguro, onde você pode falar sobre o que está passando. "
+        "Não importa o que seja."
+    )
+    
+    # The guiding principle (inspired by the requirement)
+    guiding_principle = "Não te digo o que pensar. Caminho contigo enquanto você pensa."
+    
+    # End with an open question
+    invitation = "O que te trouxe até aqui?"
+    
+    # Assemble the message
+    message = f"{greeting}\n\n{connection}\n\n{space_description}\n\n{guiding_principle}\n\n{invitation}"
+    
+    return message
+
 LISTENING_MODE_BLOCK = """
 Modo atual: ESCUTA ACOLHEDORA.
 
