@@ -3,7 +3,7 @@ from typing import Literal, Optional
 
 from core.constants import ConversationMode
 
-ChannelType = Literal["whatsapp_facebook"]
+ChannelType = Literal["whatsapp_facebook", "facebook", "twilio", "twilio_whatsapp", "telegram", "slack"]
 
 
 @dataclass(frozen=True)

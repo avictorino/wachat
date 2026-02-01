@@ -8,6 +8,7 @@ from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from messaging.providers import ProviderDetector
 from messaging.tasks import process_message_task
 from messaging.types import IncomingMessage
 from service.data_deletion import (
@@ -22,8 +23,15 @@ logger = logging.getLogger(__name__)
 @method_decorator(csrf_exempt, name="dispatch")
 class FacebookWhatsAppWebhookView(View):
     """
-    Facebook WhatsApp webhook endpoint for receiving messages from Facebook Graph API.
-    CSRF is exempted because Facebook webhooks don't use CSRF tokens.
+    Unified webhook endpoint for receiving messages from multiple providers.
+    Supports:
+    - WhatsApp (via Facebook/Meta Graph API)
+    - Facebook Messenger (via Facebook/Meta Graph API)
+    - Twilio (WhatsApp and SMS)
+    - Telegram (Bot API)
+    - Slack (Events API)
+    
+    CSRF is exempted because webhooks don't use CSRF tokens.
     """
 
     def get(self, request):
@@ -46,100 +54,84 @@ class FacebookWhatsAppWebhookView(View):
 
     def post(self, request):
         """
-        Webhook endpoint for receiving messages from Facebook WhatsApp.
+        Unified webhook endpoint for receiving messages from multiple providers.
+        Supports WhatsApp (Meta), Facebook Messenger, Twilio, Telegram, and Slack.
         """
         try:
             body = json.loads(request.body)
         except json.JSONDecodeError:
-            logger.error("Invalid JSON in Facebook webhook")
+            logger.error("Invalid JSON in webhook request")
             return JsonResponse(
                 {"status": "error", "message": "Invalid JSON"}, status=400
             )
 
-        # Facebook webhook structure:
-        # {
-        #   "object": "whatsapp_business_account",
-        #   "entry": [{
-        #     "id": "WHATSAPP_BUSINESS_ACCOUNT_ID",
-        #     "changes": [{
-        #       "value": {
-        #         "messaging_product": "whatsapp",
-        #         "metadata": {
-        #           "display_phone_number": "PHONE_NUMBER",
-        #           "phone_number_id": "PHONE_NUMBER_ID"
-        #         },
-        #         "contacts": [{"profile": {"name": "NAME"}, "wa_id": "WHATSAPP_ID"}],
-        #         "messages": [{
-        #           "from": "WHATSAPP_ID",
-        #           "id": "MESSAGE_ID",
-        #           "timestamp": "TIMESTAMP",
-        #           "type": "text",
-        #           "text": {"body": "MESSAGE_BODY"}
-        #         }]
-        #       },
-        #       "field": "messages"
-        #     }]
-        #   }]
-        # }
+        # Convert Django headers to dict for provider detection
+        headers = {
+            key: value
+            for key, value in request.META.items()
+            if key.startswith("HTTP_") or key in ["CONTENT_TYPE", "CONTENT_LENGTH"]
+        }
+        # Normalize header names (remove HTTP_ prefix and convert to title case)
+        normalized_headers = {}
+        for key, value in headers.items():
+            if key.startswith("HTTP_"):
+                normalized_key = key[5:].replace("_", "-").title()
+            else:
+                normalized_key = key.replace("_", "-").title()
+            normalized_headers[normalized_key] = value
 
-        # Process each entry
-        for entry in body.get("entry", []):
-            for change in entry.get("changes", []):
-                value = change.get("value", {})
+        # Detect provider and normalize message
+        detector = ProviderDetector()
+        provider, normalized_message = detector.detect_and_normalize(
+            normalized_headers, body
+        )
 
-                # Only process message changes
-                if change.get("field") != "messages":
-                    continue
+        if not provider or not normalized_message:
+            logger.warning(
+                "Could not detect provider or normalize message",
+                extra={"headers": normalized_headers, "body": body},
+            )
+            return JsonResponse({"status": "ok"}, status=200)
 
-                # Get metadata
-                metadata = value.get("metadata", {})
-                phone_number_id = metadata.get("phone_number_id")
-                display_phone_number = metadata.get("display_phone_number", "")
+        logger.info(
+            f"Received message from provider: {provider}",
+            extra={
+                "provider": provider,
+                "sender": normalized_message.sender_id,
+                "message_type": normalized_message.message_type,
+            },
+        )
 
-                # Process each message
-                for message in value.get("messages", []):
-                    from_number = message.get("from")
-                    message_type = message.get("type")
+        # Convert normalized message to IncomingMessage for backward compatibility
+        # Map provider to channel type
+        channel_map = {
+            "whatsapp": "whatsapp_facebook",
+            "facebook": "facebook",
+            "twilio": "twilio",
+            "twilio_whatsapp": "twilio_whatsapp",
+            "telegram": "telegram",
+            "slack": "slack",
+        }
+        
+        if provider not in channel_map:
+            logger.warning(
+                f"Unknown provider '{provider}' not in channel map, using default 'whatsapp_facebook'",
+                extra={"provider": provider}
+            )
+        
+        channel = channel_map.get(provider, "whatsapp_facebook")
 
-                    # Extract message content based on type
-                    text = ""
-                    media_url = None
-                    reply_as_audio = False
+        msg = IncomingMessage(
+            channel=channel,
+            from_=normalized_message.sender_id,
+            to=normalized_message.recipient_id,
+            text=normalized_message.message_body,
+            media_url=normalized_message.media_url,
+            raw_payload=normalized_message.raw_payload,
+            reply_as_audio=normalized_message.reply_as_audio,
+        )
 
-                    if message_type == "text":
-                        text = message.get("text", {}).get("body", "")
-                    elif message_type == "audio":
-                        # Handle audio messages
-                        audio_data = message.get("audio", {})
-                        media_url = audio_data.get(
-                            "id"
-                        )  # Facebook provides media ID, needs to be fetched
-                        # For now, just log that we received audio
-                        logger.info(f"Received audio message with ID: {media_url}")
-                        text = "[Audio message received]"
-                        reply_as_audio = True
-                    elif message_type == "image":
-                        # Handle image messages
-                        logger.info("Received image message")
-                        text = "[Image message received]"
-                    else:
-                        logger.info(
-                            f"Received unsupported message type: {message_type}"
-                        )
-                        text = f"[{message_type} message received]"
-
-                    # Create incoming message
-                    msg = IncomingMessage(
-                        channel="whatsapp_facebook",
-                        from_=from_number,
-                        to=display_phone_number or phone_number_id,
-                        text=text,
-                        media_url=media_url,
-                        raw_payload=body,
-                        reply_as_audio=reply_as_audio,
-                    )
-
-                    process_message_task(msg)
+        process_message_task(msg)
 
         return JsonResponse({"status": "ok"}, status=200)
 
