@@ -150,6 +150,102 @@ def terms_of_service_view(request):
     return render(request, "terms_of_service.html")
 
 
+@method_decorator(csrf_exempt, name="dispatch")
+class TelegramWebhookView(View):
+    """
+    Dedicated webhook endpoint for Telegram Bot API.
+    
+    This endpoint:
+    - Validates requests using X-Telegram-Bot-Api-Secret-Token header
+    - Handles /start command (sends welcome message)
+    - Processes text messages through the LLM conversation pipeline
+    - Sends responses back to Telegram chat
+    
+    CSRF is exempted because webhooks don't use CSRF tokens.
+    """
+    
+    def post(self, request):
+        """
+        Handle incoming Telegram webhook requests.
+        
+        Validates secret token, parses payload, and processes messages.
+        """
+        # Validate secret token
+        webhook_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+        request_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        
+        if not webhook_secret or request_secret != webhook_secret:
+            logger.warning(
+                "Telegram webhook authentication failed",
+                extra={"has_secret": bool(webhook_secret), "has_request_secret": bool(request_secret)}
+            )
+            return JsonResponse(
+                {"status": "error", "message": "Forbidden"}, status=403
+            )
+        
+        # Parse JSON payload
+        try:
+            body = json.loads(request.body)
+        except json.JSONDecodeError:
+            logger.error("Invalid JSON in Telegram webhook request")
+            return JsonResponse(
+                {"status": "error", "message": "Invalid JSON"}, status=400
+            )
+        
+        # Log received webhook
+        logger.info(
+            "Received Telegram webhook",
+            extra={"update_id": body.get("update_id")}
+        )
+        
+        # Extract message from payload
+        message = body.get("message") or body.get("edited_message")
+        if not message:
+            # Not a message update (could be callback query, etc.)
+            logger.info("Telegram webhook is not a message update")
+            return JsonResponse({"status": "ok"}, status=200)
+        
+        # Extract message data
+        sender = message.get("from", {})
+        chat = message.get("chat", {})
+        message_text = message.get("text", "")
+        
+        sender_id = str(sender.get("id", ""))
+        chat_id = str(chat.get("id", ""))
+        
+        if not sender_id or not chat_id:
+            logger.warning("Telegram webhook missing sender_id or chat_id")
+            return JsonResponse({"status": "ok"}, status=200)
+        
+        # Normalize message using TelegramAdapter
+        from messaging.providers import TelegramAdapter
+        
+        adapter = TelegramAdapter()
+        normalized_headers = {}
+        normalized_message = adapter.normalize(normalized_headers, body)
+        
+        if not normalized_message:
+            logger.warning("Failed to normalize Telegram message")
+            return JsonResponse({"status": "ok"}, status=200)
+        
+        # Convert to IncomingMessage
+        msg = IncomingMessage(
+            channel="telegram",
+            from_=normalized_message.sender_id,
+            to=normalized_message.recipient_id,
+            text=normalized_message.message_body,
+            media_url=normalized_message.media_url,
+            raw_payload=normalized_message.raw_payload,
+            reply_as_audio=normalized_message.reply_as_audio,
+        )
+        
+        # Process message asynchronously
+        process_message_task(msg)
+        
+        # Return 200 quickly
+        return JsonResponse({"status": "ok"}, status=200)
+
+
 def data_deletion_view(request):
     """
     View for displaying and handling data deletion requests.
