@@ -14,7 +14,7 @@ from django.contrib.auth.models import User
 
 from core.constants import biblical_names
 from core.models import UserSpiritualProfile, VirtualFriend
-from llm import LLMMessage, get_llm_client
+from service.llm import LLMMessage, get_llm_client
 from service.media_generation import TextToSpeechService
 from messaging.types import IncomingMessage, OutgoingMessage
 from service.orchestration import chat_with_friend
