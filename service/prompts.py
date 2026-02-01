@@ -30,7 +30,7 @@ def generate_first_welcome_message(
     
     Args:
         user_name: The user's first name
-        inferred_gender: Inferred gender (male, female, or unknown)
+        inferred_gender: Inferred gender (male, female, or unknown) - reserved for future subtle adaptations
         phone_ddd: Optional Brazilian DDD (area code) for regional context
         
     Returns:
@@ -43,14 +43,8 @@ def generate_first_welcome_message(
     else:
         greeting = f"Oi, {user_name}, que bom ter você aqui."
     
-    # Build the message with natural, human language
-    # Adapt slightly based on gender (very subtly)
-    if inferred_gender == "male":
-        connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
-    elif inferred_gender == "female":
-        connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
-    else:
-        connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
+    # Connection statement - warm and welcoming
+    connection = "Estou aqui pra te ouvir, sem pressa e sem julgamento."
     
     # Core message: safe space description
     space_description = (

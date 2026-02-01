@@ -250,7 +250,7 @@ def chat_with_friend(
 
     if assistant_count == 0:
         # Generate personalized welcome message
-        user_name = friend.owner.first_name or "amigo" if friend.owner.first_name else "amigo"
+        user_name = friend.owner.first_name or "amigo"
         
         # Get inferred gender from user's spiritual profile
         inferred_gender = "unknown"
