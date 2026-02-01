@@ -1389,18 +1389,22 @@ class TelegramUtilityFunctionsTest(TestCase):
         self.assertTrue(len(message) > 0)
 
 
+
+
 class TelegramIntegrationTest(TestCase):
     """Integration tests for Telegram flow"""
     
+    @patch("service.whatsapp.infer_gender_from_name")
     @patch("service.whatsapp.get_llm_client")
-    @patch("messaging.tasks.get_provider_for_channel")
-    def test_handle_telegram_start_command(self, mock_get_provider, mock_get_llm):
+    def test_handle_telegram_start_command(self, mock_get_llm, mock_infer_gender):
         """Test handling /start command from Telegram"""
         from messaging.types import IncomingMessage
         from service.whatsapp import handle_incoming_message
         from django.contrib.auth.models import User
         
         # Arrange
+        mock_infer_gender.return_value = "male"
+        
         telegram_payload = {
             "update_id": 123456789,
             "message": {
