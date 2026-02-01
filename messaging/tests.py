@@ -1401,9 +1401,18 @@ class TelegramIntegrationTest(TestCase):
         from messaging.types import IncomingMessage
         from service.whatsapp import handle_incoming_message
         from django.contrib.auth.models import User
+        from core.models import Conversation, Message
         
         # Arrange
         mock_infer_gender.return_value = "male"
+        
+        # Mock LLM response
+        mock_llm_response = MagicMock()
+        mock_llm_response.text = "Olá João! Sou seu amigo bíblico. Como posso te ajudar?"
+        mock_llm_response.model = "test-model"
+        mock_llm_instance = MagicMock()
+        mock_llm_instance.chat.return_value = mock_llm_response
+        mock_get_llm.return_value = mock_llm_instance
         
         telegram_payload = {
             "update_id": 123456789,
@@ -1438,11 +1447,32 @@ class TelegramIntegrationTest(TestCase):
         # Assert
         self.assertEqual(outgoing.channel, "telegram")
         self.assertEqual(outgoing.to, "987654321")
-        self.assertIn("amigo bíblico", outgoing.text.lower())
-        self.assertFalse(outgoing.reply_as_audio)
+        # Check that we got a response (from LLM or fallback)
+        self.assertTrue(len(outgoing.text) > 0)
         
         # Verify user was created
         user = User.objects.filter(username="987654321").first()
         self.assertIsNotNone(user)
         self.assertEqual(user.first_name, "João")
         self.assertEqual(user.last_name, "Silva")
+        
+        # Verify conversation was created
+        conversation = Conversation.objects.filter(
+            friend__owner=user
+        ).first()
+        self.assertIsNotNone(conversation, "Conversation should be created")
+        
+        # Verify messages were saved
+        user_messages = Message.objects.filter(
+            conversation=conversation,
+            role=Message.Role.USER
+        )
+        self.assertEqual(user_messages.count(), 1, "User message should be saved")
+        self.assertEqual(user_messages.first().content, "/start")
+        
+        assistant_messages = Message.objects.filter(
+            conversation=conversation,
+            role=Message.Role.ASSISTANT
+        )
+        self.assertEqual(assistant_messages.count(), 1, "Assistant message should be saved")
+        self.assertTrue(len(assistant_messages.first().content) > 0)

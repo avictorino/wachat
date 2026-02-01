@@ -187,33 +187,15 @@ def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
     - Telegram
     - Other channels as configured
     
+    All messages, including Telegram /start command, are processed through
+    chat_with_friend to ensure proper tracking and database persistence.
+    
     Args:
         msg: The incoming message
         
     Returns:
         The outgoing response message
     """
-    from messaging.types import CHANNEL_TELEGRAM
-    
-    # Check for /start command (Telegram)
-    if msg.channel == CHANNEL_TELEGRAM:
-        from service.telegram import detect_start_command, get_telegram_welcome_message
-        
-        if detect_start_command(msg.text):
-            # Handle /start command
-            friend = get_friend_or_init_person(msg)
-            
-            # Send welcome message
-            from core.constants import ConversationMode
-            return OutgoingMessage(
-                channel=msg.channel,
-                from_=msg.to,
-                to=msg.from_,
-                text=get_telegram_welcome_message(friend.name),
-                reply_as_audio=False,
-                conversation_mode=ConversationMode.LISTENING,
-            )
-
     identity = extract_identity(msg)
 
     friend = get_friend_or_init_person(msg)
