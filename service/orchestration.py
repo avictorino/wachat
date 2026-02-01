@@ -22,7 +22,7 @@ from core.models import (
     UserSpiritualProfile,
     VirtualFriend,
 )
-from llm import LLMClient, LLMMessage
+from service.llm import LLMClient, LLMMessage
 from service.media_generation import maybe_generate_image
 from service.prompts import (
     IMAGE_EXTRACTION_PROMPT,
