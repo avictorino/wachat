@@ -152,24 +152,29 @@ def extract_identity(msg: IncomingMessage) -> dict:
     Returns:
         Dictionary with channel-specific identity information
     """
-    if msg.channel == "telegram":
+    from messaging.types import CHANNEL_TELEGRAM
+    
+    if msg.channel == CHANNEL_TELEGRAM:
         # For Telegram, extract from the normalized message or raw payload
         payload = msg.raw_payload or {}
         message = payload.get("message") or payload.get("edited_message") or {}
         sender = message.get("from", {})
         chat = message.get("chat", {})
         
+        sender_id = str(sender.get("id", "")) if sender.get("id") else ""
+        chat_id = str(chat.get("id", "")) if chat.get("id") else ""
+        
         return {
-            "channel": "telegram",
-            "user_id": str(sender.get("id", "")),
-            "chat_id": str(chat.get("id", "")),
+            "channel": CHANNEL_TELEGRAM,
+            "user_id": sender_id,
+            "chat_id": chat_id,
             "from": msg.from_,
             "to": msg.to,
         }
     else:
         # Use existing WhatsApp identity extraction
         identity = extract_whatsapp_identity(msg.raw_payload)
-        identity["user_id"] = identity.get("wa_id")
+        identity["user_id"] = identity.get("wa_id") or identity.get("from")
         return identity
 
 
@@ -188,8 +193,10 @@ def handle_incoming_message(msg: IncomingMessage) -> OutgoingMessage:
     Returns:
         The outgoing response message
     """
+    from messaging.types import CHANNEL_TELEGRAM
+    
     # Check for /start command (Telegram)
-    if msg.channel == "telegram":
+    if msg.channel == CHANNEL_TELEGRAM:
         from service.telegram import detect_start_command, get_telegram_welcome_message
         
         if detect_start_command(msg.text):
@@ -241,6 +248,8 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
     Returns:
         VirtualFriend instance for the user
     """
+    from messaging.types import CHANNEL_TELEGRAM
+    
     user = User.objects.filter(username=msg.from_).first()
     names = biblical_names
     
@@ -249,7 +258,7 @@ def get_friend_or_init_person(msg: IncomingMessage) -> VirtualFriend:
         first_name = None
         last_name = None
 
-        if msg.channel == "telegram":
+        if msg.channel == CHANNEL_TELEGRAM:
             # Telegram format
             try:
                 message = msg.raw_payload.get("message") or msg.raw_payload.get("edited_message") or {}

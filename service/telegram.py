@@ -148,7 +148,7 @@ class TelegramProvider:
             TelegramProvider instance
             
         Raises:
-            KeyError: If TELEGRAM_BOT_TOKEN is not set
+            ValueError: If TELEGRAM_BOT_TOKEN is not set
         """
         token = os.environ.get("TELEGRAM_BOT_TOKEN")
         if not token:

@@ -1,8 +1,14 @@
 # messaging/tasks.py
 import logging
 
-from messaging.types import IncomingMessage
-from service.whatsapp import FacebookWhatsAppProvider, handle_incoming_message
+from messaging.types import (
+    IncomingMessage,
+    CHANNEL_WHATSAPP_FACEBOOK,
+    CHANNEL_FACEBOOK,
+    CHANNEL_TWILIO,
+    CHANNEL_TWILIO_WHATSAPP,
+    CHANNEL_TELEGRAM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +26,15 @@ def get_provider_for_channel(channel: str):
     Raises:
         ValueError: If channel is not supported or provider cannot be initialized
     """
-    if channel in ("whatsapp_facebook", "facebook", "twilio", "twilio_whatsapp"):
+    if channel in (
+        CHANNEL_WHATSAPP_FACEBOOK,
+        CHANNEL_FACEBOOK,
+        CHANNEL_TWILIO,
+        CHANNEL_TWILIO_WHATSAPP,
+    ):
+        from service.whatsapp import FacebookWhatsAppProvider
         return FacebookWhatsAppProvider.from_settings()
-    elif channel == "telegram":
+    elif channel == CHANNEL_TELEGRAM:
         from service.telegram import TelegramProvider
         return TelegramProvider.from_settings()
     else:
@@ -31,6 +43,8 @@ def get_provider_for_channel(channel: str):
 
 def process_message_task(incoming_message: IncomingMessage) -> None:
     try:
+        from service.whatsapp import handle_incoming_message
+        
         outgoing = handle_incoming_message(incoming_message)
         provider = get_provider_for_channel(outgoing.channel)
         provider.send(outgoing)

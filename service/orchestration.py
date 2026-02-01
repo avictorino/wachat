@@ -195,9 +195,11 @@ def chat_with_friend(
     Returns:
         Tuple of (ChatResult, Conversation)
     """
+    from messaging.types import CHANNEL_WHATSAPP_FACEBOOK
+    
     conversation = get_or_create_open_conversation(
         friend=friend,
-        channel=identity.get("channel", "whatsapp_facebook"),
+        channel=identity.get("channel", CHANNEL_WHATSAPP_FACEBOOK),
         channel_user_id=identity.get("user_id", identity.get("wa_id")),
     )
 
