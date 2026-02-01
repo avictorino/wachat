@@ -103,7 +103,25 @@ def get_or_create_open_conversation(
     channel_user_id: str,
     title: str = "",
 ) -> Conversation:
-
+    """
+    Get or create an open conversation for a friend on a specific channel.
+    
+    Supports multiple channels:
+    - whatsapp_facebook
+    - telegram
+    - facebook
+    - twilio
+    - slack
+    
+    Args:
+        friend: The VirtualFriend instance
+        channel: The channel type (whatsapp_facebook, telegram, etc.)
+        channel_user_id: The user ID on that channel
+        title: Optional conversation title
+        
+    Returns:
+        Conversation instance
+    """
     convo = (
         Conversation.objects.filter(
             friend=friend,
@@ -162,11 +180,25 @@ class ChatResult:
 def chat_with_friend(
     friend: VirtualFriend, user_text: str, llm: LLMClient, identity: dict
 ) -> Tuple[ChatResult, Conversation]:
-
+    """
+    Main conversation orchestration function.
+    
+    Handles conversation flow, memory management, and response generation
+    for all supported channels.
+    
+    Args:
+        friend: The VirtualFriend instance
+        user_text: User's message text
+        llm: LLM client for generating responses
+        identity: Channel-specific identity information
+        
+    Returns:
+        Tuple of (ChatResult, Conversation)
+    """
     conversation = get_or_create_open_conversation(
         friend=friend,
-        channel="whatsapp_facebook",
-        channel_user_id=identity["wa_id"],
+        channel=identity.get("channel", "whatsapp_facebook"),
+        channel_user_id=identity.get("user_id", identity.get("wa_id")),
     )
 
     user_msg = Message.objects.create(

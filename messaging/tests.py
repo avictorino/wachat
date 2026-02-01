@@ -1181,3 +1181,264 @@ class ProviderDetectorExtendedTest(TestCase):
         self.assertEqual(provider, "slack")
         self.assertIsNotNone(message)
         self.assertEqual(message.message_body, "Hello from Slack")
+
+
+class TelegramProviderTest(TestCase):
+    """Tests for Telegram Bot API provider"""
+    
+    @patch.dict("os.environ", {"TELEGRAM_BOT_TOKEN": "123456:ABC-DEF"})
+    def test_from_settings(self):
+        """Test creating Telegram provider from environment variables"""
+        from service.telegram import TelegramProvider
+        
+        # Act
+        provider = TelegramProvider.from_settings()
+        
+        # Assert
+        self.assertIsInstance(provider, TelegramProvider)
+        self.assertEqual(provider.token, "123456:ABC-DEF")
+        self.assertEqual(
+            provider.api_base_url,
+            "https://api.telegram.org/bot123456:ABC-DEF"
+        )
+    
+    def test_from_settings_missing_token(self):
+        """Test that from_settings raises error when token is missing"""
+        from service.telegram import TelegramProvider
+        
+        with patch.dict("os.environ", {}, clear=True):
+            with self.assertRaises(ValueError) as context:
+                TelegramProvider.from_settings()
+            
+            self.assertIn("TELEGRAM_BOT_TOKEN", str(context.exception))
+    
+    @patch("service.telegram.requests.post")
+    def test_send_text_message(self, mock_post):
+        """Test sending a simple text message via Telegram"""
+        from service.telegram import TelegramProvider
+        
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+        
+        provider = TelegramProvider(token="123456:ABC-DEF")
+        message = OutgoingMessage(
+            channel="telegram",
+            to="123456789",
+            from_="bot",
+            text="Hello from Telegram Bot",
+            reply_as_audio=False,
+        )
+        
+        # Act
+        provider.send(message)
+        
+        # Assert
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        
+        # Verify URL
+        self.assertEqual(
+            call_args[0][0],
+            "https://api.telegram.org/bot123456:ABC-DEF/sendMessage"
+        )
+        
+        # Verify payload
+        payload = call_args[1]["json"]
+        self.assertEqual(payload["chat_id"], "123456789")
+        self.assertEqual(payload["text"], "Hello from Telegram Bot")
+        self.assertEqual(payload["parse_mode"], "Markdown")
+    
+    @patch("service.media_generation.TextToSpeechService")
+    @patch("service.telegram.requests.post")
+    def test_send_voice_message(self, mock_post, mock_tts_service):
+        """Test sending a voice message via Telegram"""
+        from service.telegram import TelegramProvider
+        
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+        
+        mock_tts_instance = MagicMock()
+        mock_tts_instance.speak_and_store.return_value = "https://example.com/audio.ogg"
+        mock_tts_service.return_value = mock_tts_instance
+        
+        provider = TelegramProvider(token="123456:ABC-DEF")
+        message = OutgoingMessage(
+            channel="telegram",
+            to="123456789",
+            from_="bot",
+            text="Audio message",
+            reply_as_audio=True,
+        )
+        
+        # Act
+        provider.send(message)
+        
+        # Assert
+        mock_tts_instance.speak_and_store.assert_called_once()
+        mock_post.assert_called_once()
+        
+        # Verify URL and payload for voice message
+        call_args = mock_post.call_args
+        self.assertEqual(
+            call_args[0][0],
+            "https://api.telegram.org/bot123456:ABC-DEF/sendVoice"
+        )
+        payload = call_args[1]["json"]
+        self.assertEqual(payload["chat_id"], "123456789")
+        self.assertEqual(payload["voice"], "https://example.com/audio.ogg")
+    
+    @patch("service.media_generation.TextToSpeechService")
+    @patch("service.telegram.requests.post")
+    def test_send_voice_message_fallback_to_text(self, mock_post, mock_tts_service):
+        """Test that voice message falls back to text if TTS fails"""
+        from service.telegram import TelegramProvider
+        
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+        
+        mock_tts_instance = MagicMock()
+        mock_tts_instance.speak_and_store.side_effect = Exception("TTS failed")
+        mock_tts_service.return_value = mock_tts_instance
+        
+        provider = TelegramProvider(token="123456:ABC-DEF")
+        message = OutgoingMessage(
+            channel="telegram",
+            to="123456789",
+            from_="bot",
+            text="Audio message",
+            reply_as_audio=True,
+        )
+        
+        # Act
+        provider.send(message)
+        
+        # Assert - should call sendMessage instead of sendVoice
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        self.assertEqual(
+            call_args[0][0],
+            "https://api.telegram.org/bot123456:ABC-DEF/sendMessage"
+        )
+    
+    @patch("service.telegram.requests.post")
+    def test_send_photo(self, mock_post):
+        """Test sending a photo via Telegram"""
+        from service.telegram import TelegramProvider
+        
+        # Arrange
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_post.return_value = mock_response
+        
+        provider = TelegramProvider(token="123456:ABC-DEF")
+        
+        # Act
+        provider.send_photo(
+            chat_id="123456789",
+            photo_url="https://example.com/photo.jpg",
+            caption="Test caption"
+        )
+        
+        # Assert
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        
+        # Verify URL
+        self.assertEqual(
+            call_args[0][0],
+            "https://api.telegram.org/bot123456:ABC-DEF/sendPhoto"
+        )
+        
+        # Verify payload
+        payload = call_args[1]["json"]
+        self.assertEqual(payload["chat_id"], "123456789")
+        self.assertEqual(payload["photo"], "https://example.com/photo.jpg")
+        self.assertEqual(payload["caption"], "Test caption")
+
+
+class TelegramUtilityFunctionsTest(TestCase):
+    """Tests for Telegram utility functions"""
+    
+    def test_detect_start_command(self):
+        """Test /start command detection"""
+        from service.telegram import detect_start_command
+        
+        self.assertTrue(detect_start_command("/start"))
+        self.assertTrue(detect_start_command("/START"))
+        self.assertTrue(detect_start_command("  /start  "))
+        self.assertTrue(detect_start_command("/start hello"))
+        self.assertFalse(detect_start_command("start"))
+        self.assertFalse(detect_start_command("hello /start"))
+        self.assertFalse(detect_start_command(""))
+        self.assertFalse(detect_start_command(None))
+    
+    def test_get_telegram_welcome_message(self):
+        """Test Telegram welcome message generation"""
+        from service.telegram import get_telegram_welcome_message
+        
+        message = get_telegram_welcome_message("Davi")
+        
+        self.assertIn("Davi", message)
+        self.assertIn("amigo bíblico", message.lower())
+        self.assertTrue(len(message) > 0)
+
+
+class TelegramIntegrationTest(TestCase):
+    """Integration tests for Telegram flow"""
+    
+    @patch("service.whatsapp.get_llm_client")
+    @patch("messaging.tasks.get_provider_for_channel")
+    def test_handle_telegram_start_command(self, mock_get_provider, mock_get_llm):
+        """Test handling /start command from Telegram"""
+        from messaging.types import IncomingMessage
+        from service.whatsapp import handle_incoming_message
+        from django.contrib.auth.models import User
+        
+        # Arrange
+        telegram_payload = {
+            "update_id": 123456789,
+            "message": {
+                "message_id": 1,
+                "from": {
+                    "id": 987654321,
+                    "is_bot": False,
+                    "first_name": "João",
+                    "last_name": "Silva"
+                },
+                "chat": {
+                    "id": 987654321,
+                    "type": "private"
+                },
+                "date": 1234567890,
+                "text": "/start"
+            }
+        }
+        
+        incoming_msg = IncomingMessage(
+            channel="telegram",
+            from_="987654321",
+            to="bot",
+            text="/start",
+            raw_payload=telegram_payload,
+        )
+        
+        # Act
+        outgoing = handle_incoming_message(incoming_msg)
+        
+        # Assert
+        self.assertEqual(outgoing.channel, "telegram")
+        self.assertEqual(outgoing.to, "987654321")
+        self.assertIn("amigo bíblico", outgoing.text.lower())
+        self.assertFalse(outgoing.reply_as_audio)
+        
+        # Verify user was created
+        user = User.objects.filter(username="987654321").first()
+        self.assertIsNotNone(user)
+        self.assertEqual(user.first_name, "João")
+        self.assertEqual(user.last_name, "Silva")

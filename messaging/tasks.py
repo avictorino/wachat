@@ -7,11 +7,32 @@ from service.whatsapp import FacebookWhatsAppProvider, handle_incoming_message
 logger = logging.getLogger(__name__)
 
 
+def get_provider_for_channel(channel: str):
+    """
+    Get the appropriate provider instance for a given channel.
+    
+    Args:
+        channel: The channel type (whatsapp_facebook, telegram, etc.)
+        
+    Returns:
+        Provider instance for sending messages
+        
+    Raises:
+        ValueError: If channel is not supported or provider cannot be initialized
+    """
+    if channel in ("whatsapp_facebook", "facebook", "twilio", "twilio_whatsapp"):
+        return FacebookWhatsAppProvider.from_settings()
+    elif channel == "telegram":
+        from service.telegram import TelegramProvider
+        return TelegramProvider.from_settings()
+    else:
+        raise ValueError(f"Unsupported channel: {channel}")
+
+
 def process_message_task(incoming_message: IncomingMessage) -> None:
     try:
-
         outgoing = handle_incoming_message(incoming_message)
-        provider = FacebookWhatsAppProvider.from_settings()
+        provider = get_provider_for_channel(outgoing.channel)
         provider.send(outgoing)
 
     except Exception as ex:
