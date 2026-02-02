@@ -101,7 +101,15 @@ class TelegramWebhookView(View):
 
         # Handle /simulate command
         if message_text and message_text.strip().startswith("/simulate"):
-            return self._handle_simulate_command(chat_id)
+            # Parse optional num_messages parameter
+            parts = message_text.strip().split()
+            num_messages = None
+            if len(parts) > 1:
+                try:
+                    num_messages = int(parts[1])
+                except ValueError:
+                    pass  # Will use default
+            return self._handle_simulate_command(chat_id, num_messages)
 
         # Handle regular text messages
         if message_text:
@@ -272,7 +280,7 @@ class TelegramWebhookView(View):
             logger.error(f"Error handling /reset command: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
-    def _handle_simulate_command(self, chat_id: str):
+    def _handle_simulate_command(self, chat_id: str, num_messages: int = None):
         """
         Handle the /simulate command to run a conversation simulation.
 
@@ -286,6 +294,7 @@ class TelegramWebhookView(View):
 
         Args:
             chat_id: Telegram chat ID
+            num_messages: Optional number of messages to generate (6-10, default 8)
 
         Returns:
             JsonResponse indicating success
@@ -305,16 +314,24 @@ class TelegramWebhookView(View):
 
             simulation_service = SimulationService(groq_api_key)
 
+            # Validate and set num_messages parameter
+            if num_messages is None:
+                num_messages = 8  # Default value
+            elif num_messages < 6 or num_messages > 10:
+                error_msg = "❌ Número de mensagens inválido. Use um valor entre 6 e 10.\n\nExemplo: /simulate 8"
+                telegram_service.send_message(chat_id, error_msg)
+                logger.warning(f"Invalid num_messages parameter: {num_messages}")
+                return JsonResponse({"status": "ok"}, status=200)
+
             # Send initial message
-            init_msg = "🔄 Iniciando simulação de conversa...\n\nGerando diálogo entre um buscador espiritual e um ouvinte empático."
+            init_msg = f"🔄 Iniciando simulação de conversa...\n\nGerando {num_messages} mensagens de diálogo entre um buscador espiritual e um ouvinte empático."
             telegram_service.send_message(chat_id, init_msg)
 
             # Step 1: Create new profile for simulation
             profile = simulation_service.create_simulation_profile()
             logger.info(f"Created simulation profile {profile.id}")
 
-            # Step 2: Generate simulated conversation (6-10 messages, alternating)
-            num_messages = 8  # Default to 8 messages (4 per role)
+            # Step 2: Generate simulated conversation with specified num_messages
             conversation = simulation_service.generate_simulated_conversation(
                 profile, num_messages
             )
