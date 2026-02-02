@@ -327,9 +327,9 @@ Sua resposta DEVE incluir PELO MENOS UM dos seguintes:
    - SEM citações bíblicas
    - SEM tom de autoridade religiosa
    Exemplos conceituais:
-   - "Você não está sozinho nessa caminhada."
    - "Há uma força que te sustenta, mesmo quando não dá pra ver."
    - "No meio disso tudo, tem algo que te ampara."
+   - "Você está sendo cuidado, mesmo no meio da dificuldade."
 
 2) Imagem pastoral suave ou metáfora:
    - luz em momento difícil
