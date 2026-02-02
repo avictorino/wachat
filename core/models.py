@@ -3,15 +3,16 @@ from django.db import models
 
 class Profile(models.Model):
     """
-    User profile for storing Telegram user information.
+    User profile for storing user information across multiple channels.
 
     This model represents the long-term identity of a user interacting
-    with the bot through Telegram.
+    with the bot through various channels (Telegram, WhatsApp, etc.).
     """
 
     telegram_user_id = models.CharField(
         max_length=100,
-        unique=True,
+        blank=True,
+        null=True,
         db_index=True,
         help_text="Telegram user ID (unique identifier from Telegram)",
     )
@@ -54,6 +55,12 @@ class Message(models.Model):
         ("user", "User"),
     ]
 
+    CHANNEL_CHOICES = [
+        ("telegram", "Telegram"),
+        ("whatsapp", "WhatsApp"),
+        ("other", "Other"),
+    ]
+
     profile = models.ForeignKey(
         Profile,
         on_delete=models.CASCADE,
@@ -64,6 +71,12 @@ class Message(models.Model):
         max_length=20, choices=ROLE_CHOICES, help_text="Role of the message sender"
     )
     content = models.TextField(help_text="Message text content")
+    channel = models.CharField(
+        max_length=20,
+        choices=CHANNEL_CHOICES,
+        default="telegram",
+        help_text="Channel through which the message was sent",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
