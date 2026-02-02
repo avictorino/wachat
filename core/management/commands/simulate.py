@@ -30,7 +30,7 @@ class Command(BaseCommand):
     it to the console, and provides a critical analysis of the conversation.
     """
 
-    help = "Simulate a conversation between a seeker (buscador) and listener (ouvinte)"
+    help = "Simulate a conversation between a seeker (pessoa) and listener (BOT)"
 
     def add_arguments(self, parser):
         """Add command line arguments."""
@@ -122,10 +122,10 @@ class Command(BaseCommand):
 
             for msg in conversation:
                 if msg["role"] == "ROLE_A":
-                    prefix = "🧑‍💬 Buscador:"
+                    prefix = "🧑‍💬 Pessoa:"
                     style = self.style.WARNING  # Yellow/orange for seeker
                 else:  # ROLE_B
-                    prefix = "🌿 Ouvinte:"
+                    prefix = "🌿 BOT:"
                     style = self.style.SUCCESS  # Green for listener
 
                 self.stdout.write(style(prefix))

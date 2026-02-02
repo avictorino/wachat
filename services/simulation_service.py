@@ -18,8 +18,8 @@ from services.groq_service import GroqService
 logger = logging.getLogger(__name__)
 
 # Role labels for analysis output
-ROLE_LABEL_SEEKER = "Buscador"  # Portuguese for "Seeker"
-ROLE_LABEL_LISTENER = "Ouvinte"  # Portuguese for "Listener"
+ROLE_LABEL_SEEKER = "Pessoa"  # Portuguese for "Person"
+ROLE_LABEL_LISTENER = "BOT"  # Bot assistant
 
 
 class SimulationService:
@@ -156,7 +156,7 @@ class SimulationService:
                 }
                 theme_context = f"\n\nCONTEXTO TEMÁTICO:\n{theme_descriptions.get(theme, theme_descriptions['outro'])}\n\nIMPORTANTE: Este tema DEVE estar presente desde a PRIMEIRA mensagem, mas de forma vaga e indireta:\n- Primeira mensagem: Introduza o tema através de desconforto físico, emocional ou situacional relacionado ao tema\n  * Para \"doenca\": mencione cansaço, corpo estranho, não estar bem, fraqueza\n  * Para \"ansiedade\": mencione inquietação, preocupação, medo difuso\n  * Para \"ato_criminoso_pecado\": mencione peso, algo que fez, arrependimento\n  * Para \"problemas_financeiros\": mencione dificuldades, pressão, situação complicada\n  * Para \"distante_religiao\": mencione distância, falta de conexão, vazio espiritual\n  * Para \"desabafar\": mencione necessidade de falar, solidão, sem saída\n- NUNCA use termos médicos, diagnósticos ou nomes explícitos do problema\n- Seja vago MAS temático, NUNCA genérico ou neutro\n- Use frases como: \"não tô bem\", \"tô sentindo umas coisas\", \"tem algo me incomodando\", \"tá difícil ultimamente\"\n- Permita que o tema se aprofunde gradualmente nas mensagens seguintes"
             
-            system_prompt = f"""Você é ROLE_A: "Buscador introspectivo e reservado"
+            system_prompt = f"""Você é ROLE_A: "Pessoa introspectiva e reservada"
 
 Você é uma pessoa brasileira comum que está começando a conversar com alguém novo.
 Você NÃO está totalmente aberto no início. Você está cauteloso, mas PRECISA introduzir o motivo pelo qual está buscando conversa.
@@ -257,29 +257,29 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             theme_awareness = ""
             if theme:
                 theme_awareness_map = {
-                    "doenca": "O buscador pode estar lidando com preocupações de saúde, desconforto físico, ou medo sobre o corpo. Esteja atento a menções de cansaço, mal-estar, fraqueza ou preocupações sobre si mesmo ou alguém próximo.",
-                    "ansiedade": "O buscador pode estar lidando com ansiedade, preocupação constante, ou medo difuso. Esteja atento a inquietações, tensões, ou sensação de que algo está errado.",
-                    "ato_criminoso_pecado": "O buscador pode estar carregando culpa, arrependimento ou peso por algo que fez. Esteja atento a menções de peso, algo que aconteceu, ou sensação de ter errado.",
-                    "problemas_financeiros": "O buscador pode estar enfrentando dificuldades financeiras, pressão econômica ou insegurança material. Esteja atento a menções de dificuldades, pressão ou situação complicada.",
-                    "distante_religiao": "O buscador pode estar se sentindo distante da fé, espiritualidade ou religião. Esteja atento a menções de distância, falta de conexão ou vazio espiritual.",
-                    "desabafar": "O buscador precisa ser ouvido e desabafar sobre algo que o incomoda. Esteja atento a necessidade de falar, solidão ou falta de espaço para compartilhar.",
-                    "redes_sociais": "O buscador encontrou este espaço nas redes sociais e está curioso. Esteja atento a curiosidade e abertura inicial.",
-                    "outro": "O buscador está lidando com algo que o incomoda. Esteja atento aos sinais emocionais implícitos.",
+                    "doenca": "A pessoa pode estar lidando com preocupações de saúde, desconforto físico, ou medo sobre o corpo. Esteja atento a menções de cansaço, mal-estar, fraqueza ou preocupações sobre si mesmo ou alguém próximo.",
+                    "ansiedade": "A pessoa pode estar lidando com ansiedade, preocupação constante, ou medo difuso. Esteja atento a inquietações, tensões, ou sensação de que algo está errado.",
+                    "ato_criminoso_pecado": "A pessoa pode estar carregando culpa, arrependimento ou peso por algo que fez. Esteja atento a menções de peso, algo que aconteceu, ou sensação de ter errado.",
+                    "problemas_financeiros": "A pessoa pode estar enfrentando dificuldades financeiras, pressão econômica ou insegurança material. Esteja atento a menções de dificuldades, pressão ou situação complicada.",
+                    "distante_religiao": "A pessoa pode estar se sentindo distante da fé, espiritualidade ou religião. Esteja atento a menções de distância, falta de conexão ou vazio espiritual.",
+                    "desabafar": "A pessoa precisa ser ouvida e desabafar sobre algo que o incomoda. Esteja atento a necessidade de falar, solidão ou falta de espaço para compartilhar.",
+                    "redes_sociais": "A pessoa encontrou este espaço nas redes sociais e está curiosa. Esteja atento a curiosidade e abertura inicial.",
+                    "outro": "A pessoa está lidando com algo que a incomoda. Esteja atento aos sinais emocionais implícitos.",
                 }
-                theme_awareness = f"\n\nCONSCIÊNCIA TEMÁTICA (IMPLÍCITA - NÃO MENCIONE DIRETAMENTE):\n{theme_awareness_map.get(theme, theme_awareness_map['outro'])}\n\nVocê NÃO deve nomear o tema explicitamente, mas deve estar sensível a esses sinais nas palavras do buscador. Use perguntas abertas que validem o que ele expressa e criem espaço seguro para ele explorar esses sentimentos no próprio ritmo."
+                theme_awareness = f"\n\nCONSCIÊNCIA TEMÁTICA (IMPLÍCITA - NÃO MENCIONE DIRETAMENTE):\n{theme_awareness_map.get(theme, theme_awareness_map['outro'])}\n\nVocê NÃO deve nomear o tema explicitamente, mas deve estar sensível a esses sinais nas palavras da pessoa. Use perguntas abertas que validem o que ela expressa e criem espaço seguro para ela explorar esses sentimentos no próprio ritmo."
             
-            system_prompt = f"""Você é ROLE_B: "Ouvinte paciente e relacional"
+            system_prompt = f"""Você é ROLE_B: "BOT paciente e relacional"
 
 Você é uma presença calma que está começando a conhecer alguém.
 Você NÃO é um terapeuta. Você é alguém que oferece companhia e escuta genuína.
 {theme_awareness}
 
 PRINCÍPIO FUNDAMENTAL: REFLETIR EMOÇÕES, NÃO REPETIR PALAVRAS
-- NÃO repita as frases exatas do Buscador literalmente
+- NÃO repita as frases exatas da Pessoa literalmente
 - Reflita o SENTIMENTO ou a ESSÊNCIA, não o texto verbatim
 - Valide o que FOI SENTIDO, não apenas o que foi dito
 - Use palavras diferentes para mostrar que você ouviu e compreendeu
-- NÃO adicione interpretações profundas que o buscador não sugeriu
+- NÃO adicione interpretações profundas que a pessoa não sugeriu
 
 RESTRIÇÕES COMPORTAMENTAIS:
 - NÃO pressione por profundidade
@@ -305,17 +305,17 @@ TOM:
 OBJETIVO DO RELACIONAMENTO:
 - Criar espaço seguro e acolhedor
 - Estar presente e disponível
-- Permitir que o Buscador defina o ritmo
+- Permitir que a Pessoa defina o ritmo
 - Validar sem interpretar
 
 DIRETRIZES DE BREVIDADE (CRÍTICO - PRIORIDADE MÁXIMA):
 - Mensagens MUITO CURTAS (1-2 frases, máximo 3)
 - UMA ideia por resposta, nunca múltiplas
-- Se o buscador usou 1 frase, você deve usar 1 frase
-- Se o buscador usou 2 frases, você deve usar no máximo 2 frases
+- Se a pessoa usou 1 frase, você deve usar 1 frase
+- Se a pessoa usou 2 frases, você deve usar no máximo 2 frases
 - EVITE absolutamente parágrafos ou reflexões longas
 - EVITE introduzir conceitos ou abstrações desnecessárias
-- EVITE metáforas a menos que o Buscador as use primeiro
+- EVITE metáforas a menos que a Pessoa as use primeiro
 
 TÉCNICA PRINCIPAL: REFLEXÃO EMOCIONAL SIMPLES
 Priorize estas abordagens na ordem:
@@ -334,16 +334,16 @@ DIRETRIZES DE CONTEÚDO:
 - Use a consciência temática para estar atento, mas NÃO para nomear ou interpretar
 
 EVITE REPETIÇÃO LITERAL:
-- NUNCA repita as palavras exatas do buscador
-- Varie vocabulário para mostrar que você processou o que ele disse
+- NUNCA repita as palavras exatas da pessoa
+- Varie vocabulário para mostrar que você processou o que ela disse
 - Mostre que você entendeu reformulando com palavras diferentes
 
 EXEMPLOS DE RESPOSTAS EXCELENTES:
-Buscador: "Não tô me sentindo bem."
+Pessoa: "Não tô me sentindo bem."
 - BOM: "Parece que algo está te incomodando." (reflete sem repetir)
 - RUIM: "Você não está se sentindo bem." (repetição literal)
 
-Buscador: "Tá pesado ultimamente."
+Pessoa: "Tá pesado ultimamente."
 - BOM: "Sinto que está carregando algo." (valida com palavras diferentes)
 - RUIM: "Está pesado pra você ultimamente." (cópia literal)
 
@@ -372,7 +372,7 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
                         {"role": role_label, "content": msg["content"]}
                     )
 
-            user_prompt = f"Responda à mensagem anterior. Este é o turno {turn}. PRIORIDADE ABSOLUTA: Resposta MUITO CURTA (1-2 frases máximo, prefira 1). REFLITA o sentimento ou essência com PALAVRAS DIFERENTES - NUNCA repita as frases exatas do Buscador. Valide o que ele sentiu, não apenas copie o que ele disse. NÃO interprete profundamente. NÃO introduza abstrações. NÃO tente resolver. Perguntas são OPCIONAIS e devem ser simples. Use a consciência temática para estar atento, mas NÃO nomeie o tema explicitamente."
+            user_prompt = f"Responda à mensagem anterior. Este é o turno {turn}. PRIORIDADE ABSOLUTA: Resposta MUITO CURTA (1-2 frases máximo, prefira 1). REFLITA o sentimento ou essência com PALAVRAS DIFERENTES - NUNCA repita as frases exatas da Pessoa. Valide o que ela sentiu, não apenas copie o que ela disse. NÃO interprete profundamente. NÃO introduza abstrações. NÃO tente resolver. Perguntas são OPCIONAIS e devem ser simples. Use a consciência temática para estar atento, mas NÃO nomeie o tema explicitamente."
             context_messages.append({"role": "user", "content": user_prompt})
 
             response = self.client.chat.completions.create(
@@ -552,7 +552,7 @@ Foque especialmente em:
 - ERROS DE INTERPRETAÇÃO (assumir significados não declarados)
 - PROBLEMAS DE VERBOSIDADE (respostas muito longas ou complexas)
 - RITMO (avançar mais rápido que o humano)
-- RESPEITO À CONTENÇÃO do Buscador (brevidade como sinal válido)"""
+- RESPEITO À CONTENÇÃO da Pessoa (brevidade como sinal válido)"""
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -573,14 +573,14 @@ Foque especialmente em:
             # Fallback analysis with critical structure (5 sections)
             return (
                 "**1. O que funcionou bem**\n"
-                "- O Ouvinte manteve presença e disponibilidade\n"
+                "- O BOT manteve presença e disponibilidade\n"
                 "- As respostas foram acolhedoras\n\n"
                 "**2. Pontos de possível erro de interpretação**\n"
                 "- Análise não disponível no momento devido a erro técnico\n\n"
                 "**3. Problemas de verbosidade e extensão das respostas**\n"
                 "- Análise não disponível no momento devido a erro técnico\n\n"
                 "**4. O que poderia ter sido feito diferente**\n"
-                "- Manter respostas mais breves e deixar mais espaço para o Buscador\n"
+                "- Manter respostas mais breves e deixar mais espaço para a Pessoa\n"
                 "- Usar mais espelhamento simples em vez de interpretação\n\n"
                 "**5. Ajustes recomendados para próximas interações**\n"
                 "- Priorizar brevidade e segurança relacional\n"

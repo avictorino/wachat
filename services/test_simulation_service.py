@@ -64,11 +64,11 @@ class SimulationServiceAnalysisTest(TestCase):
             MagicMock(
                 message=MagicMock(
                     content="""**1. O que funcionou bem**
-- O Ouvinte manteve tom acolhedor
+- O BOT manteve tom acolhedor
 - Perguntas abertas foram utilizadas
 
 **2. Pontos de possível erro de interpretação**
-- Em alguns momentos, o Ouvinte pode ter inferido estados emocionais não explicitados
+- Em alguns momentos, o BOT pode ter inferido estados emocionais não explicitados
 
 **3. Problemas de verbosidade e extensão das respostas**
 - Algumas respostas foram mais longas que o necessário
@@ -76,7 +76,7 @@ class SimulationServiceAnalysisTest(TestCase):
 
 **4. O que poderia ter sido feito diferente**
 - Usar respostas mais curtas (1-3 frases)
-- Espelhar palavras do Buscador antes de expandir
+- Espelhar palavras da Pessoa antes de expandir
 
 **5. Ajustes recomendados para próximas interações**
 - Reduzir extensão das respostas

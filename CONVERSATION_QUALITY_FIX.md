@@ -4,25 +4,25 @@
 
 The `/simulate enfermidade` command produced low-quality conversations with two critical issues:
 
-1. **Seeker Issue**: Failed to introduce the illness theme in the first message, leading to generic openings like "Às vezes sinto que falta alguma coisa" with no connection to health concerns.
+1. **Pessoa Issue**: Failed to introduce the illness theme in the first message, leading to generic openings like "Às vezes sinto que falta alguma coisa" with no connection to health concerns.
 
-2. **Listener Issue**: Either repeated the seeker's words verbatim ("Às vezes sinto que falta alguma coisa") or responded with abstract, disconnected statements, resulting in inhuman and incoherent dialogue.
+2. **BOT Issue**: Either repeated the Pessoa's words verbatim ("Às vezes sinto que falta alguma coisa") or responded with abstract, disconnected statements, resulting in inhuman and incoherent dialogue.
 
 ## Root Cause Analysis
 
-### Seeker Problems
-- **Contradictory instructions**: System prompt told the seeker "NÃO revele ou nomeie este tema explicitamente" while also expecting theme introduction
+### Pessoa Problems
+- **Contradictory instructions**: System prompt told the Pessoa "NÃO revele ou nomeie este tema explicitamente" while also expecting theme introduction
 - **Generic first messages**: No guidance to anchor the conversation in the theme from the start
 - **Lack of specificity**: Theme context didn't provide concrete examples of how to introduce themes vaguely
 
-### Listener Problems  
-- **No theme awareness**: Listener had zero knowledge of the conversation theme
+### BOT Problems  
+- **No theme awareness**: BOT had zero knowledge of the conversation theme
 - **Verbatim repetition**: Instructions to "espelhar as palavras exatas" led to literal parroting
-- **Disconnected responses**: Without theme context, listener couldn't respond appropriately to implicit emotional cues
+- **Disconnected responses**: Without theme context, BOT couldn't respond appropriately to implicit emotional cues
 
 ## Solution Implemented
 
-### 1. Seeker Improvements (lines 144-235 in simulation_service.py)
+### 1. Pessoa Improvements (lines 144-235 in simulation_service.py)
 
 **Changed theme context instruction from:**
 ```
@@ -46,12 +46,12 @@ Mencione o desconforto relacionado ao tema, mas sem nomear diretamente.
 DEVE ter conexão clara com o contexto temático fornecido."
 ```
 
-### 2. Listener Improvements (lines 237-365 in simulation_service.py)
+### 2. BOT Improvements (lines 237-365 in simulation_service.py)
 
 **Added theme awareness context:**
 ```python
 theme_awareness_map = {
-    "doenca": "O buscador pode estar lidando com preocupações de saúde, 
+    "doenca": "A pessoa pode estar lidando com preocupações de saúde, 
                desconforto físico, ou medo sobre o corpo. Esteja atento a 
                menções de cansaço, mal-estar, fraqueza...",
     # ... for each theme
@@ -60,20 +60,20 @@ theme_awareness_map = {
 
 **Changed core principle from:**
 ```
-"Espelhe as palavras exatas do Buscador sempre que possível"
+"Espelhe as palavras exatas da Pessoa sempre que possível"
 ```
 
 **To:**
 ```
 "REFLITA o sentimento ou a ESSÊNCIA, não o texto verbatim
-NÃO repita as frases exatas do Buscador literalmente
+NÃO repita as frases exatas da Pessoa literalmente
 Use palavras diferentes para mostrar que você ouviu e compreendeu"
 ```
 
 **Updated user prompt:**
 ```
 "REFLITA o sentimento com PALAVRAS DIFERENTES - NUNCA repita as frases 
-exatas do Buscador. Use a consciência temática para estar atento, mas 
+exatas da Pessoa. Use a consciência temática para estar atento, mas 
 NÃO nomeie o tema explicitamente."
 ```
 
@@ -113,9 +113,9 @@ All existing tests pass:
 
 ## Key Improvements
 
-1. ✅ **Theme grounding from first message**: Seeker now introduces theme vaguely but concretely
-2. ✅ **Bidirectional theme awareness**: Both seeker and listener are aware of theme context
-3. ✅ **No more verbatim repetition**: Listener reflects emotions with different words
+1. ✅ **Theme grounding from first message**: Pessoa now introduces theme vaguely but concretely
+2. ✅ **Bidirectional theme awareness**: Both Pessoa and BOT are aware of theme context
+3. ✅ **No more verbatim repetition**: BOT reflects emotions with different words
 4. ✅ **Human dialogue quality**: Conversations feel natural, slow, and meaningful
 5. ✅ **Theme persistence**: Theme flows naturally through entire conversation
 6. ✅ **No generic responses**: Every message connects to the theme
