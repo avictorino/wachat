@@ -15,6 +15,7 @@ from services.groq_service import GroqService
 from services.reset_user_data import ResetUserDataUseCase
 from services.simulation_service import SimulationService
 from services.telegram_service import TelegramService
+from services.theme_selector import select_theme_from_intent_and_message
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +298,9 @@ class TelegramWebhookView(View):
             JsonResponse indicating success
         """
         try:
-            logger.info(f"Starting /simulate command for chat {chat_id} with theme: {theme}")
+            logger.info(
+                f"Starting /simulate command for chat {chat_id} with theme: {theme}"
+            )
 
             # Initialize services
             telegram_service = TelegramService()
@@ -316,17 +319,17 @@ class TelegramWebhookView(View):
             if theme:
                 original_theme = theme
                 theme = theme.lower()
-                
+
                 # Use LLM to approximate the theme to one of the valid categories
                 approximated_theme = groq_service.approximate_theme(theme)
-                
+
                 if approximated_theme == "outro":
                     # Theme couldn't be clearly mapped
                     error_msg = f"❌ Não consegui identificar o tema '{original_theme}'.\n\nExemplos de temas válidos:\n- doenca / enfermidade\n- ansiedade / medo\n- pecado / culpa\n- desabafar / solidão\n- financeiro / dinheiro\n- religiao / fé\n- redes_sociais\n\nTente usar uma palavra relacionada a esses temas."
                     telegram_service.send_message(chat_id, error_msg)
                     logger.warning(f"Could not approximate theme: {original_theme}")
                     return JsonResponse({"status": "ok"}, status=200)
-                
+
                 theme = approximated_theme
                 logger.info(f"Theme approximated: '{original_theme}' -> '{theme}'")
             else:
@@ -361,7 +364,9 @@ class TelegramWebhookView(View):
                 # Small pause between messages for readability
                 time.sleep(0.8)
 
-            logger.info(f"Sent {len(conversation)} simulated messages to chat {chat_id}")
+            logger.info(
+                f"Sent {len(conversation)} simulated messages to chat {chat_id}"
+            )
 
             # Step 4: Generate critical analysis of conversation
             analysis = simulation_service.analyze_conversation_emotions(conversation)
@@ -542,22 +547,53 @@ class TelegramWebhookView(View):
             # Initialize Groq service for intent detection and response generation
             groq_service = GroqService()
 
-            # Detect intent if not already detected
-            # We only detect intent on the first user message (when there are 2 messages total: welcome + first user message)
-            # or on the very first message if user didn't start with /start
+            # Detect intent (and optionally activate a thematic prompt)
+            # - We still prioritize intent detection early in the conversation.
+            # - Additionally, we allow theme activation later if the user reveals a theme mid-chat.
             message_count = Message.objects.filter(profile=profile).count()
 
-            if not profile.detected_intent and message_count <= 2:
-                # Detect and store intent
-                detected_intent = groq_service.detect_intent(message_text)
-                profile.detected_intent = detected_intent
-                profile.save()
-                logger.info(
-                    f"Detected and stored intent '{detected_intent}' for profile {profile.id}"
-                )
+            existing_intent = profile.detected_intent
+            detected_intent = existing_intent
+
+            selection_pre = select_theme_from_intent_and_message(
+                intent=existing_intent,
+                message_text=message_text,
+                existing_theme_id=profile.prompt_theme,
+            )
+
+            should_detect_intent = (not existing_intent and message_count <= 2) or (
+                selection_pre.reason == "keyword_match" and not profile.prompt_theme
+            )
+
+            if should_detect_intent:
+                new_intent = groq_service.detect_intent(message_text)
+                detected_intent = new_intent
+
+                # Persist the most useful/clear intent for routing.
+                # If the model is uncertain ("outro") and we already have an intent, keep the existing one.
+                if new_intent != "outro" or not existing_intent:
+                    profile.detected_intent = new_intent
+                    profile.save(update_fields=["detected_intent"])
+                    logger.info(
+                        f"Detected and stored intent '{new_intent}' for profile {profile.id}"
+                    )
+                else:
+                    detected_intent = existing_intent or "outro"
             else:
-                # Use previously detected intent or default
-                detected_intent = profile.detected_intent or "outro"
+                detected_intent = existing_intent or "outro"
+
+            # Select/persist an active theme (Base + Theme prompt composition)
+            selection = select_theme_from_intent_and_message(
+                intent=detected_intent,
+                message_text=message_text,
+                existing_theme_id=profile.prompt_theme,
+            )
+            if selection.theme_id and selection.theme_id != profile.prompt_theme:
+                profile.prompt_theme = selection.theme_id
+                profile.save(update_fields=["prompt_theme"])
+                logger.info(
+                    f"Activated theme '{selection.theme_id}' for profile {profile.id} via {selection.reason}"
+                )
 
             # Choose response generation strategy based on intent
             if detected_intent == "outro":
@@ -575,6 +611,7 @@ class TelegramWebhookView(View):
                     conversation_context=context,
                     name=profile.name,
                     inferred_gender=profile.inferred_gender,
+                    theme_id=profile.prompt_theme,
                 )
 
                 # Persist each assistant response separately
@@ -598,6 +635,7 @@ class TelegramWebhookView(View):
                     intent=detected_intent,
                     name=profile.name,
                     inferred_gender=profile.inferred_gender,
+                    theme_id=profile.prompt_theme,
                 )
 
                 # Persist each assistant response separately

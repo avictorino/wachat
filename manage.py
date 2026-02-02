@@ -3,13 +3,17 @@
 import os
 import sys
 
-# Load environment variables from .env file
-import dotenv
+try:
+    # python-dotenv
+    from dotenv import load_dotenv
+except Exception:  # pragma: no cover
+    load_dotenv = None
 
 
 def main():
     """Run administrative tasks."""
-    dotenv.read_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+    if load_dotenv:
+        load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
     try:

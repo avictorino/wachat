@@ -212,7 +212,9 @@ class AddictionIntentResponseTest(TestCase):
         # Setup mock
         mock_response = Mock()
         mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "Entendo que você está passando por uma luta difícil."
+        mock_response.choices[
+            0
+        ].message.content = "Entendo que você está passando por uma luta difícil."
 
         mock_groq_instance = Mock()
         mock_groq_instance.chat.completions.create.return_value = mock_response
@@ -223,7 +225,7 @@ class AddictionIntentResponseTest(TestCase):
             user_message="Estou lutando com drogas",
             intent="drogas",
             name="João",
-            inferred_gender="male"
+            inferred_gender="male",
         )
 
         # Verify response was generated
@@ -256,14 +258,16 @@ class AddictionIntentResponseTest(TestCase):
                 user_message=f"Test message for {addiction_intent}",
                 intent=addiction_intent,
                 name="Test User",
-                inferred_gender="unknown"
+                inferred_gender="unknown",
             )
             self.assertIsNotNone(response_messages)
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
     @patch("services.groq_service.Groq")
-    def test_addiction_response_guidance_contains_empathy_keywords(self, mock_groq_client):
-        """Test that addiction intent guidance includes empathy and non-judgment."""
+    def test_addiction_response_guidance_contains_empathy_keywords(
+        self, mock_groq_client
+    ):
+        """Test that addiction intents automatically layer the addiction theme prompt."""
         from services.groq_service import GroqService
 
         # We can directly check the intent_guidance dict in the method
@@ -277,7 +281,7 @@ class AddictionIntentResponseTest(TestCase):
         mock_groq_client.return_value = mock_groq_instance
 
         service = GroqService()
-        
+
         # Generate response for each addiction intent
         addiction_intents = ["drogas", "alcool", "sexo", "cigarro"]
         for addiction_intent in addiction_intents:
@@ -285,18 +289,25 @@ class AddictionIntentResponseTest(TestCase):
                 user_message=f"Test for {addiction_intent}",
                 intent=addiction_intent,
                 name="Test",
-                inferred_gender="unknown"
+                inferred_gender="unknown",
             )
-            
-            # Check that the system prompt contains empathy-related guidance
+
             call_args = mock_groq_instance.chat.completions.create.call_args
             messages = call_args.kwargs["messages"]
             system_message = next(m for m in messages if m["role"] == "system")
             system_content = system_message["content"].lower()
-            
-            # Verify empathetic keywords are present in the system prompt
-            # These keywords indicate the guidance is being used
-            empathy_keywords = ["sem julgamento", "empático", "condição real", "não como fraqueza"]
-            has_empathy = any(keyword in system_content for keyword in empathy_keywords)
-            self.assertTrue(has_empathy, 
-                f"System prompt for {addiction_intent} should contain empathy guidance")
+
+            # Theme marker
+            self.assertIn("tema: drogas / álcool / cigarro / vícios", system_content)
+
+            # Core non-judgment / condition framing
+            required_phrases = [
+                "condição real",
+                "não como falha moral",
+                "sem julgamento",
+                "não envergonhe",
+            ]
+            self.assertTrue(
+                any(p in system_content for p in required_phrases),
+                f"System prompt for {addiction_intent} should contain addiction theme guidance",
+            )

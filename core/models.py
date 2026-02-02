@@ -38,6 +38,12 @@ class Profile(models.Model):
         null=True,
         help_text="Primary intent/concern detected from user's first response",
     )
+    prompt_theme = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        help_text="Active thematic prompt id to apply to this user's conversation",
+    )
     pending_reset_confirmation = models.BooleanField(
         default=False,
         help_text="True if user has initiated /reset and is awaiting confirmation",
