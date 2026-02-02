@@ -471,7 +471,7 @@ IMPORTANTE:
                 model=self.model,
                 messages=[{"role": "system", "content": system_prompt}]
                 + context_messages,
-                temperature=0.85,  # Slightly higher for natural conversation
+                temperature=0.85,  # Higher than 0.8 for intent responses, for more natural conversation
                 max_tokens=500,
             )
 

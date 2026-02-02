@@ -275,7 +275,7 @@ class TelegramWebhookView(View):
                     f"Using fallback conversational flow for profile {profile.id}"
                 )
 
-                # Get conversation context (last 5 messages, excluding the current user message)
+                # Get conversation context (last 5 messages for continuity)
                 context = self._get_conversation_context(profile, limit=5)
 
                 # Generate fallback response (may return multiple messages)

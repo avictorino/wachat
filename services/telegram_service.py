@@ -100,7 +100,8 @@ class TelegramService:
                 logger.error(f"Failed to send message {i + 1}/{len(messages)}")
 
             # Pause between messages (except after the last one)
-            if i < len(messages) - 1 and message_sent:
+            # Pause even if previous message failed to maintain timing consistency
+            if i < len(messages) - 1:
                 time.sleep(pause_seconds)
                 logger.debug(f"Paused {pause_seconds}s before next message")
 
