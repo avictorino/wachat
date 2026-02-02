@@ -206,10 +206,12 @@ class TelegramWebhookView(View):
         This method implements the conversational flow after the welcome message:
         1. Retrieves or creates user profile
         2. Persists the user's message
-        3. Detects intent from the message
-        4. Generates an empathetic response using Groq
-        5. Persists the assistant's response
-        6. Sends the response back to the user via Telegram
+        3. Detects intent from the message (if not already detected)
+        4. Generates a response using Groq:
+           - If intent is clear and matches a category: uses intent-based response
+           - If intent is "outro" (unclear/ambiguous): uses context-aware fallback
+        5. Persists the assistant's response(s)
+        6. Sends the response(s) back to the user via Telegram
 
         Args:
             sender: Telegram sender data (from webhook payload)
@@ -266,22 +268,55 @@ class TelegramWebhookView(View):
                 # Use previously detected intent or default
                 detected_intent = profile.detected_intent or "outro"
 
-            # Generate response based on intent
-            response_message = groq_service.generate_intent_response(
-                user_message=message_text,
-                intent=detected_intent,
-                name=profile.name,
-                inferred_gender=profile.inferred_gender,
-            )
+            # Choose response generation strategy based on intent
+            if detected_intent == "outro":
+                # Use context-aware fallback for ambiguous/unclear intent
+                logger.info(
+                    f"Using fallback conversational flow for profile {profile.id}"
+                )
 
-            # Persist assistant response
-            Message.objects.create(
-                profile=profile, role="assistant", content=response_message
-            )
-            logger.info(f"Persisted assistant response for profile {profile.id}")
+                # Get conversation context (last 5 messages, excluding the current user message)
+                context = self._get_conversation_context(profile, limit=5)
 
-            # Send response to Telegram
-            success = telegram_service.send_message(chat_id, response_message)
+                # Generate fallback response (may return multiple messages)
+                response_messages = groq_service.generate_fallback_response(
+                    user_message=message_text,
+                    conversation_context=context,
+                    name=profile.name,
+                    inferred_gender=profile.inferred_gender,
+                )
+
+                # Persist each assistant response separately
+                for response_msg in response_messages:
+                    Message.objects.create(
+                        profile=profile, role="assistant", content=response_msg
+                    )
+                logger.info(
+                    f"Persisted {len(response_messages)} fallback response(s) for profile {profile.id}"
+                )
+
+                # Send all responses sequentially with pauses
+                success = telegram_service.send_messages(
+                    chat_id, response_messages, pause_seconds=1.5
+                )
+
+            else:
+                # Use intent-based response for clear intent
+                response_message = groq_service.generate_intent_response(
+                    user_message=message_text,
+                    intent=detected_intent,
+                    name=profile.name,
+                    inferred_gender=profile.inferred_gender,
+                )
+
+                # Persist assistant response
+                Message.objects.create(
+                    profile=profile, role="assistant", content=response_message
+                )
+                logger.info(f"Persisted assistant response for profile {profile.id}")
+
+                # Send response to Telegram
+                success = telegram_service.send_message(chat_id, response_message)
 
             if success:
                 logger.info(f"Response sent to chat {chat_id}")
@@ -293,3 +328,32 @@ class TelegramWebhookView(View):
         except Exception as e:
             logger.error(f"Error handling regular message: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
+
+    def _get_conversation_context(self, profile, limit: int = 5) -> list:
+        """
+        Get recent conversation context for the LLM.
+
+        Retrieves the last N messages (both user and assistant) to provide
+        context for generating contextually-aware responses.
+
+        Args:
+            profile: The user Profile object
+            limit: Maximum number of recent messages to retrieve
+
+        Returns:
+            List of dicts with 'role' and 'content' keys
+        """
+        # Get the most recent messages (excluding system messages)
+        recent_messages = (
+            Message.objects.filter(profile=profile)
+            .exclude(role="system")
+            .order_by("-created_at")[:limit]
+        )
+
+        # Reverse to get chronological order (oldest to newest)
+        context = []
+        for msg in reversed(recent_messages):
+            context.append({"role": msg.role, "content": msg.content})
+
+        logger.info(f"Retrieved {len(context)} messages for conversation context")
+        return context
