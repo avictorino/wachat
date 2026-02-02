@@ -439,8 +439,8 @@ IMPORTANTE:
 
         except Exception as e:
             logger.error(f"Error generating intent response: {str(e)}", exc_info=True)
-            # Fallback to a simple empathetic message
-            return ["Obrigado por compartilhar isso comigo. Estou aqui, ouvindo você."]
+            # Fallback to a simple empathetic message with a follow-up question
+            return ["Obrigado por compartilhar isso comigo. O que mais te incomoda agora?"]
 
     def generate_fallback_response(
         self,
@@ -528,8 +528,8 @@ IMPORTANTE:
 
         except Exception as e:
             logger.error(f"Error generating fallback response: {str(e)}", exc_info=True)
-            # Fallback to a simple empathetic message
-            return ["Obrigado por compartilhar isso comigo. Estou aqui, ouvindo você."]
+            # Fallback to a simple empathetic message with a follow-up question
+            return ["Obrigado por compartilhar isso comigo. Como você está se sentindo agora?"]
 
     def _split_response_messages(self, response: str) -> List[str]:
         """
