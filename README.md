@@ -185,6 +185,35 @@ python manage.py simulate_conversation --mock-telegram --turns 3
 
 Para documentação completa, veja [docs/SIMULATE_CONVERSATION.md](docs/SIMULATE_CONVERSATION.md).
 
+## 💬 Comandos do Telegram Bot
+
+Os seguintes comandos estão disponíveis no bot do Telegram:
+
+### `/start`
+Inicia uma nova conversa com o bot. Cria um perfil de usuário, infere gênero a partir do nome e envia uma mensagem de boas-vindas personalizada.
+
+### `/reset`
+Inicia o processo de exclusão de dados do usuário. Solicita confirmação antes de deletar permanentemente o perfil, conversas e mensagens. O usuário deve responder com "CONFIRM" dentro de 5 minutos.
+
+### `/simulate`
+**Novo!** Executa uma simulação completa de conversa entre dois papéis de IA:
+- 🧑‍💬 **Buscador**: Uma pessoa em busca espiritual, vulnerável e questionadora
+- 🌿 **Ouvinte**: Um assistente espiritual empático e não-julgador
+
+O comando gera 6-10 mensagens alternadas, persiste tudo no banco de dados, e retorna:
+1. Cada mensagem da conversa simulada com identificação de papel
+2. Uma análise emocional final da conversa, incluindo:
+   - Tom emocional predominante
+   - Emoções dominantes detectadas
+   - Evolução emocional ao longo da conversa
+   - Qualidade geral da interação
+
+**Útil para:**
+- Demonstrar as capacidades do bot
+- Testar o fluxo conversacional
+- Visualizar análise emocional em ação
+- Gerar exemplos de conversas
+
 ## 📝 Variáveis de Ambiente
 
 | Variável | Descrição | Padrão | Obrigatória |
