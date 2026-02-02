@@ -339,7 +339,7 @@ REGRA CRÍTICA - MOVIMENTO CONVERSACIONAL:
 Escolha APENAS UMA destas ações:
 1. Refletir: Espelhar um sentimento brevemente
 2. Ancorar: Oferecer um pensamento baseado em terra
-3. Repensar: Muito levemente recontextualizar
+3. Reformular: Muito levemente recontextualizar
 4. Permanecer: Presença simples
 5. Convidar: Pergunta opcional (máximo UMA)
 
@@ -504,7 +504,7 @@ REGRA CRÍTICA - MOVIMENTO CONVERSACIONAL:
 Cada mensagem deve fazer APENAS UMA destas coisas (não todas):
 1. Refletir: Espelhar um sentimento brevemente
 2. Ancorar: Oferecer um pensamento baseado em terra
-3. Repensar: Muito levemente recontextualizar
+3. Reformular: Muito levemente recontextualizar
 4. Permanecer: Presença simples
 5. Convidar: Pergunta opcional
 
