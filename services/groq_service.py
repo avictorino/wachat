@@ -174,7 +174,8 @@ Crie sensação de presença humana genuína."""
         5. Ansiedade
         6. Desabafar
         7. Viu nas redes sociais
-        8. Outro (for unmatched cases)
+        8. Addiction-related conditions (drogas, alcool, sexo, cigarro)
+        9. Outro (for unmatched cases)
 
         Args:
             user_message: The user's text message
@@ -194,13 +195,18 @@ Sua tarefa é identificar qual das seguintes categorias melhor representa a preo
 5. "ansiedade" - Pessoa está ansiosa, estressada, com medo, ou preocupada
 6. "desabafar" - Pessoa só precisa conversar, desabafar, ser ouvida
 7. "redes_sociais" - Pessoa viu o número nas redes sociais e está curiosa
-8. "outro" - Nenhuma das categorias acima se aplica claramente
+8. "drogas" - Pessoa está lutando com uso de drogas, substâncias, dependência química
+9. "alcool" - Pessoa está lutando com uso de álcool, bebida, dependência alcoólica
+10. "sexo" - Pessoa está lutando com compulsão sexual, comportamento sexual compulsivo
+11. "cigarro" - Pessoa está lutando com cigarro, tabagismo, nicotina
+12. "outro" - Nenhuma das categorias acima se aplica claramente
 
 IMPORTANTE:
 - Seja flexível - permita variações e formas diferentes de expressar cada intenção
 - Considere o contexto emocional da mensagem
 - Se houver múltiplas intenções, escolha a mais proeminente
-- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas_financeiros")
+- ATENÇÃO: Trate drogas, alcool, sexo, cigarro como condições reais e sérias, não como escolhas ou fraquezas
+- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas_financeiros", "drogas")
 - Não adicione explicações ou pontuação"""
 
             user_prompt = f"Mensagem do usuário: {user_message}"
@@ -226,6 +232,10 @@ IMPORTANTE:
                 "ansiedade",
                 "desabafar",
                 "redes_sociais",
+                "drogas",  # Addiction: drug use/dependency
+                "alcool",  # Addiction: alcohol use/dependency
+                "sexo",  # Addiction: sexual compulsion
+                "cigarro",  # Addiction: smoking/nicotine
                 "outro",
             ]
 
@@ -275,7 +285,11 @@ Sua tarefa é identificar qual das seguintes categorias melhor representa a pala
 5. "ansiedade" - Relacionado a ansiedade, estresse, medo, nervosismo, preocupação
 6. "desabafar" - Relacionado a necessidade de conversar, desabafar, ser ouvido, solidão
 7. "redes_sociais" - Relacionado a redes sociais, curiosidade vinda das redes
-8. "outro" - Nenhuma das categorias acima se aplica claramente
+8. "drogas" - Relacionado a uso de drogas, substâncias, dependência química, entorpecentes
+9. "alcool" - Relacionado a uso de álcool, bebida, dependência alcoólica, alcoolismo
+10. "sexo" - Relacionado a compulsão sexual, vício sexual, comportamento sexual compulsivo
+11. "cigarro" - Relacionado a cigarro, fumo, tabagismo, nicotina, vício em tabaco
+12. "outro" - Nenhuma das categorias acima se aplica claramente
 
 IMPORTANTE:
 - Seja flexível e considere sinônimos e variações
@@ -284,7 +298,11 @@ IMPORTANTE:
 - Palavras como "dinheiro", "financeiro", "desemprego" devem mapear para "problemas_financeiros"
 - Palavras como "religião", "fé", "distante" devem mapear para "distante_religiao"
 - Palavras como "solidão", "conversar", "sozinho" devem mapear para "desabafar"
-- Responda APENAS com o identificador da categoria (ex: "doenca", "problemas_financeiros")
+- Palavras como "cocaína", "maconha", "crack", "vício", "dependência química" devem mapear para "drogas"
+- Palavras como "bebida", "beber", "álcool", "alcoolismo", "bêbado" devem mapear para "alcool"
+- Palavras como "pornografia", "compulsão sexual", "vício sexual" devem mapear para "sexo"
+- Palavras como "fumo", "tabaco", "fumar", "tabagismo" devem mapear para "cigarro"
+- Responda APENAS com o identificador da categoria (ex: "doenca", "problemas_financeiros", "drogas")
 - Não adicione explicações ou pontuação"""
 
             user_prompt = f"Palavra ou frase: {sanitized_input}"
@@ -310,6 +328,10 @@ IMPORTANTE:
                 "ansiedade",
                 "desabafar",
                 "redes_sociais",
+                "drogas",  # Addiction: drug use/dependency
+                "alcool",  # Addiction: alcohol use/dependency
+                "sexo",  # Addiction: sexual compulsion
+                "cigarro",  # Addiction: smoking/nicotine
                 "outro",
             ]
 
@@ -380,6 +402,19 @@ Tom: Silêncio respeitoso, escuta.""",
                 "redes_sociais": """A pessoa chegou por curiosidade das redes sociais.
 Abordagem: Acolha curiosidade. Espaço sem pressão. NÃO seja muito sério logo de início.
 Tom: Leve, acolhedor.""",
+                # ADDICTION-RELATED INTENTS (treated as real conditions, not moral failures)
+                "drogas": """A pessoa está lutando com uso de drogas ou dependência química.
+Abordagem: Trate como condição real e séria, não como fraqueza moral. Reconheça a luta sem julgamento. Normalize a dificuldade sem normalizar o comportamento. NÃO moralize, pregue, ou pressione abstinência imediata. Enfatize que dependência é real, não fraqueza. Encoraje reflexão suave e busca de ajuda quando apropriado.
+Tom: Empático, sério, presente, sem julgamento. Apoio firme mas gentil.""",
+                "alcool": """A pessoa está lutando com uso de álcool ou dependência alcoólica.
+Abordagem: Trate como condição real e séria, não como fraqueza moral. Reconheça a luta sem julgamento. Normalize a dificuldade sem normalizar o comportamento. NÃO moralize, pregue, ou pressione abstinência imediata. Enfatize que dependência é real, não fraqueza. Encoraje reflexão suave e busca de ajuda quando apropriado.
+Tom: Empático, sério, presente, sem julgamento. Apoio firme mas gentil.""",
+                "sexo": """A pessoa está lutando com compulsão sexual ou comportamento sexual compulsivo.
+Abordagem: Trate como condição real e séria, não como fraqueza moral. Reconheça a luta sem julgamento. Normalize a dificuldade sem normalizar o comportamento. NÃO use linguagem religiosa como punição. NÃO mencione pecado ou consequências. Enfatize que compulsão é real, não fraqueza. Encoraje reflexão suave sobre gatilhos emocionais e busca de ajuda quando apropriado.
+Tom: Empático, sério, presente, sem julgamento. Apoio firme mas gentil.""",
+                "cigarro": """A pessoa está lutando com cigarro, tabagismo ou nicotina.
+Abordagem: Trate como condição real e séria, não como fraqueza moral. Reconheça a luta sem julgamento. Normalize a dificuldade sem normalizar o comportamento. NÃO moralize, pregue, ou pressione abstinência imediata. Enfatize que dependência é real, não fraqueza. Encoraje reflexão suave sobre padrões e busca de ajuda quando apropriado.
+Tom: Empático, sério, presente, sem julgamento. Apoio firme mas gentil.""",
                 "outro": """Intenção não identificada claramente.
 Abordagem: Acolhedor e aberto. Convide sem forçar.
 Tom: Presente, sem assumir.""",
