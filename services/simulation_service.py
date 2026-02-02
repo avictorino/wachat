@@ -318,7 +318,7 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
 Sua tarefa é analisar a conversa fornecida e criar um resumo emocional reflexivo que respeite a natureza gradual da conexão.
 
 Análise deve incluir:
-1. RESTRIÇÃO EMOCIONAL: Como o buscador dosou sua abertura? Foi gradual ou rápido demais?
+1. DOSAGEM EMOCIONAL: Como o buscador dosou sua abertura? Foi gradual ou rápido demais?
 2. PROGRESSÃO DA CONFIANÇA: Como a confiança se desenvolveu (ou não) ao longo da conversa?
 3. SINAIS DE SEGURANÇA E ABERTURA: Quando o buscador pareceu se sentir mais seguro?
 4. QUALIDADE DO ACOMPANHAMENTO: O ouvinte criou espaço sem pressionar?
