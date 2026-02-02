@@ -33,9 +33,9 @@ class SimulateCommandTest(TestCase):
         mock_simulation_instance = MagicMock()
         mock_simulation_service.return_value = mock_simulation_instance
 
-        # Create a fake profile
+        # Create a fake profile with default theme "desabafar"
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="simulation"
+            name="Simulation_123456789", inferred_gender="unknown", detected_intent="desabafar"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 
@@ -54,7 +54,7 @@ class SimulateCommandTest(TestCase):
         fake_analysis = "Esta conversa refletiu uma busca espiritual genuína."
         mock_simulation_instance.analyze_conversation_emotions.return_value = fake_analysis
 
-        # Send /simulate command
+        # Send /simulate command (without theme, should use default "desabafar")
         payload = {
             "update_id": 1,
             "message": {
@@ -78,10 +78,10 @@ class SimulateCommandTest(TestCase):
         # Verify SimulationService was initialized
         mock_simulation_service.assert_called_once_with("test-groq-key")
 
-        # Verify simulation methods were called
-        mock_simulation_instance.create_simulation_profile.assert_called_once()
+        # Verify simulation methods were called with theme "desabafar"
+        mock_simulation_instance.create_simulation_profile.assert_called_once_with("desabafar")
         mock_simulation_instance.generate_simulated_conversation.assert_called_once_with(
-            fake_profile, 8
+            fake_profile, 8, "desabafar"
         )
         mock_simulation_instance.analyze_conversation_emotions.assert_called_once_with(
             fake_conversation
@@ -171,10 +171,10 @@ class SimulateCommandTest(TestCase):
             "GROQ_API_KEY": "test-groq-key",
         },
     )
-    def test_simulate_command_with_valid_parameter(
+    def test_simulate_command_with_theme_parameter(
         self, mock_telegram_service, mock_simulation_service
     ):
-        """Test that /simulate command accepts valid num_messages parameter."""
+        """Test that /simulate command accepts theme parameter (e.g., /simulate doenca)."""
         # Setup mocks
         mock_telegram_instance = MagicMock()
         mock_telegram_service.return_value = mock_telegram_instance
@@ -183,37 +183,37 @@ class SimulateCommandTest(TestCase):
         mock_simulation_instance = MagicMock()
         mock_simulation_service.return_value = mock_simulation_instance
 
-        # Create a fake profile
+        # Create a fake profile with "doenca" theme
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="simulation"
+            name="Simulation_123456789", inferred_gender="unknown", detected_intent="doenca"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 
         # Create fake conversation
         fake_conversation = [
-            {"role": "ROLE_A", "content": "Message 1"},
-            {"role": "ROLE_B", "content": "Message 2"},
-            {"role": "ROLE_A", "content": "Message 3"},
-            {"role": "ROLE_B", "content": "Message 4"},
-            {"role": "ROLE_A", "content": "Message 5"},
-            {"role": "ROLE_B", "content": "Message 6"},
+            {"role": "ROLE_A", "content": "Não tô me sentindo bem ultimamente..."},
+            {"role": "ROLE_B", "content": "Quer me contar mais sobre isso?"},
+            {"role": "ROLE_A", "content": "É difícil explicar..."},
+            {"role": "ROLE_B", "content": "Estou aqui, sem pressa."},
+            {"role": "ROLE_A", "content": "Talvez seja só cansaço."},
+            {"role": "ROLE_B", "content": "Como você se sente com esse cansaço?"},
         ]
         mock_simulation_instance.generate_simulated_conversation.return_value = (
             fake_conversation
         )
 
         # Create fake analysis
-        fake_analysis = "Analysis of 6-message conversation."
+        fake_analysis = "A conversa abordou preocupações de saúde de forma cautelosa."
         mock_simulation_instance.analyze_conversation_emotions.return_value = fake_analysis
 
-        # Send /simulate 6 command
+        # Send /simulate doenca command
         payload = {
             "update_id": 1,
             "message": {
                 "message_id": 1,
                 "from": {"id": 12345, "first_name": "Test"},
                 "chat": {"id": 12345, "type": "private"},
-                "text": "/simulate 6",
+                "text": "/simulate doenca",
             },
         }
 
@@ -227,9 +227,12 @@ class SimulateCommandTest(TestCase):
         # Verify response
         self.assertEqual(response.status_code, 200)
 
-        # Verify generate_simulated_conversation was called with 6
+        # Verify create_simulation_profile was called with "doenca" theme
+        mock_simulation_instance.create_simulation_profile.assert_called_once_with("doenca")
+        
+        # Verify generate_simulated_conversation was called with theme "doenca"
         mock_simulation_instance.generate_simulated_conversation.assert_called_once_with(
-            fake_profile, 6
+            fake_profile, 8, "doenca"
         )
 
     @patch("core.views.TelegramService")
@@ -240,21 +243,21 @@ class SimulateCommandTest(TestCase):
             "GROQ_API_KEY": "test-groq-key",
         },
     )
-    def test_simulate_command_with_invalid_parameter_too_low(self, mock_telegram_service):
-        """Test that /simulate command rejects num_messages < 6."""
+    def test_simulate_command_with_invalid_theme(self, mock_telegram_service):
+        """Test that /simulate command rejects invalid theme."""
         # Setup mock
         mock_telegram_instance = MagicMock()
         mock_telegram_service.return_value = mock_telegram_instance
         mock_telegram_instance.send_message.return_value = True
 
-        # Send /simulate 4 command (invalid, too low)
+        # Send /simulate invalid_theme command
         payload = {
             "update_id": 1,
             "message": {
                 "message_id": 1,
                 "from": {"id": 12345, "first_name": "Test"},
                 "chat": {"id": 12345, "type": "private"},
-                "text": "/simulate 4",
+                "text": "/simulate invalid_theme",
             },
         }
 
@@ -272,49 +275,7 @@ class SimulateCommandTest(TestCase):
         self.assertGreaterEqual(mock_telegram_instance.send_message.call_count, 1)
         first_call_args = mock_telegram_instance.send_message.call_args_list[0]
         self.assertIn("inválido", first_call_args[0][1])
-        self.assertIn("6 e 10", first_call_args[0][1])
-
-    @patch("core.views.TelegramService")
-    @patch.dict(
-        "os.environ",
-        {
-            "TELEGRAM_WEBHOOK_SECRET": "test-secret",
-            "GROQ_API_KEY": "test-groq-key",
-        },
-    )
-    def test_simulate_command_with_invalid_parameter_too_high(self, mock_telegram_service):
-        """Test that /simulate command rejects num_messages > 10."""
-        # Setup mock
-        mock_telegram_instance = MagicMock()
-        mock_telegram_service.return_value = mock_telegram_instance
-        mock_telegram_instance.send_message.return_value = True
-
-        # Send /simulate 12 command (invalid, too high)
-        payload = {
-            "update_id": 1,
-            "message": {
-                "message_id": 1,
-                "from": {"id": 12345, "first_name": "Test"},
-                "chat": {"id": 12345, "type": "private"},
-                "text": "/simulate 12",
-            },
-        }
-
-        response = self.client.post(
-            "/webhooks/telegram/",
-            data=payload,
-            content_type="application/json",
-            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-secret",
-        )
-
-        # Verify response
-        self.assertEqual(response.status_code, 200)
-
-        # Verify error message was sent
-        self.assertGreaterEqual(mock_telegram_instance.send_message.call_count, 1)
-        first_call_args = mock_telegram_instance.send_message.call_args_list[0]
-        self.assertIn("inválido", first_call_args[0][1])
-        self.assertIn("6 e 10", first_call_args[0][1])
+        self.assertIn("doenca", first_call_args[0][1])  # Should list valid themes
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
@@ -325,10 +286,10 @@ class SimulateCommandTest(TestCase):
             "GROQ_API_KEY": "test-groq-key",
         },
     )
-    def test_simulate_command_with_invalid_parameter_non_numeric(
+    def test_simulate_command_with_theme_alias(
         self, mock_telegram_service, mock_simulation_service
     ):
-        """Test that /simulate command handles non-numeric parameters gracefully."""
+        """Test that /simulate command accepts theme aliases (e.g., pecado -> ato_criminoso_pecado)."""
         # Setup mocks
         mock_telegram_instance = MagicMock()
         mock_telegram_service.return_value = mock_telegram_instance
@@ -339,7 +300,7 @@ class SimulateCommandTest(TestCase):
 
         # Create a fake profile
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="simulation"
+            name="Simulation_123456789", inferred_gender="unknown", detected_intent="ato_criminoso_pecado"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 
@@ -356,14 +317,14 @@ class SimulateCommandTest(TestCase):
         fake_analysis = "Analysis"
         mock_simulation_instance.analyze_conversation_emotions.return_value = fake_analysis
 
-        # Send /simulate abc command (non-numeric, should use default)
+        # Send /simulate pecado command (alias should map to ato_criminoso_pecado)
         payload = {
             "update_id": 1,
             "message": {
                 "message_id": 1,
                 "from": {"id": 12345, "first_name": "Test"},
                 "chat": {"id": 12345, "type": "private"},
-                "text": "/simulate abc",
+                "text": "/simulate pecado",
             },
         }
 
@@ -377,8 +338,11 @@ class SimulateCommandTest(TestCase):
         # Verify response
         self.assertEqual(response.status_code, 200)
 
-        # Verify generate_simulated_conversation was called with default value (8)
+        # Verify create_simulation_profile was called with "ato_criminoso_pecado" (mapped from "pecado")
+        mock_simulation_instance.create_simulation_profile.assert_called_once_with("ato_criminoso_pecado")
+        
+        # Verify generate_simulated_conversation was called with mapped theme
         mock_simulation_instance.generate_simulated_conversation.assert_called_once_with(
-            fake_profile, 8
+            fake_profile, 8, "ato_criminoso_pecado"
         )
 

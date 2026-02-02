@@ -22,7 +22,7 @@ class SimulationServiceProfileTest(TestCase):
 
         # Create multiple profiles to test randomness
         # With 20 profiles and 3 options, probability of all same is (1/3)^19 ≈ 0.00000000258
-        profiles = [service.create_simulation_profile() for _ in range(20)]
+        profiles = [service.create_simulation_profile("ansiedade") for _ in range(20)]
 
         # Verify all profiles have a valid gender
         for profile in profiles:
@@ -32,9 +32,9 @@ class SimulationServiceProfileTest(TestCase):
                 "Profile should have one of the valid gender values",
             )
 
-        # Verify profiles have the simulation intent
+        # Verify profiles have the specified intent (not "simulation")
         for profile in profiles:
-            self.assertEqual(profile.detected_intent, "simulation")
+            self.assertEqual(profile.detected_intent, "ansiedade")
 
         # Verify randomness: with 20 profiles, we should get more than one unique gender
         unique_genders = set(p.inferred_gender for p in profiles)
