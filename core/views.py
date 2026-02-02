@@ -275,8 +275,8 @@ class TelegramWebhookView(View):
                     f"Using fallback conversational flow for profile {profile.id}"
                 )
 
-                # Get conversation context (last 5 messages for continuity)
-                context = self._get_conversation_context(profile, limit=5)
+                # Get conversation context (last 8 messages for continuity)
+                context = self._get_conversation_context(profile, limit=8)
 
                 # Generate fallback response (may return multiple messages)
                 response_messages = groq_service.generate_fallback_response(
@@ -334,7 +334,7 @@ class TelegramWebhookView(View):
             logger.error(f"Error handling regular message: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
-    def _get_conversation_context(self, profile, limit: int = 5) -> list:
+    def _get_conversation_context(self, profile, limit: int = 8) -> list:
         """
         Get recent conversation context for the LLM.
 
