@@ -404,7 +404,9 @@ LEMBRE-SE:
             # Split response into multiple messages if separator is used
             messages = self._split_response_messages(generated_response)
 
-            logger.info(f"Generated intent-based response with {len(messages)} message(s) for intent: {intent}")
+            logger.info(
+                f"Generated intent-based response with {len(messages)} message(s) for intent: {intent}"
+            )
             return messages
 
         except Exception as e:
@@ -582,13 +584,9 @@ LEMBRE-SE:
             return messages
 
         except Exception as e:
-            logger.error(
-                f"Error generating fallback response: {str(e)}", exc_info=True
-            )
+            logger.error(f"Error generating fallback response: {str(e)}", exc_info=True)
             # Fallback to a simple empathetic message
-            return [
-                "Obrigado por compartilhar isso comigo. Estou aqui, ouvindo você."
-            ]
+            return ["Obrigado por compartilhar isso comigo. Estou aqui, ouvindo você."]
 
     def _split_response_messages(self, response: str) -> List[str]:
         """
