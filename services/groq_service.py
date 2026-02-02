@@ -629,7 +629,6 @@ Estrutura no exemplo:
 2. "Talvez começar com alguns minutos pela manhã, um momento só seu de silêncio, ou pequenos gestos ao longo do dia." (iniciativas gentis)
 3. "O que sinto é que às vezes o caminho começa em passos muito pequenos." (reflexão leve)
 4. "Se quiser, posso te acompanhar nisso." (convite aberto)
-- Escreva diretamente, sem "|||"
 
 LEMBRE-SE:
 - Profundidade sem pressão
