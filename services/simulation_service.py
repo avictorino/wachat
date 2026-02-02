@@ -6,6 +6,7 @@ and manages emotional analysis of the conversation.
 """
 
 import logging
+import random
 import uuid
 from typing import List, Tuple
 
@@ -54,14 +55,17 @@ class SimulationService:
         sim_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
         sim_name = f"Simulation_{sim_id}"
 
+        # Randomly choose a gender for the simulated profile
+        gender = random.choice(["male", "female", "unknown"])
+
         # Create profile without telegram_user_id (to avoid conflicts)
         profile = Profile.objects.create(
             name=sim_name,
-            inferred_gender="unknown",
+            inferred_gender=gender,
             detected_intent="simulation",  # Mark as simulation
         )
 
-        logger.info(f"Created simulation profile: {profile.id}")
+        logger.info(f"Created simulation profile: {profile.id} with gender: {gender}")
         return profile
 
     def generate_simulated_conversation(

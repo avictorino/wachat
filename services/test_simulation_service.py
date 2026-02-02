@@ -9,6 +9,46 @@ from django.test import TestCase
 from services.simulation_service import SimulationService
 
 
+class SimulationServiceProfileTest(TestCase):
+    """Tests for the create_simulation_profile method."""
+
+    @patch("services.simulation_service.GroqService")
+    @patch("services.simulation_service.Groq")
+    def test_create_simulation_profile_has_random_gender(
+        self, mock_groq_client, mock_groq_service
+    ):
+        """Test that created simulation profiles have a randomly assigned gender."""
+        service = SimulationService("test-api-key")
+
+        # Create multiple profiles to test randomness
+        # With 20 profiles and 3 options, probability of all same is (1/3)^19 ≈ 0.00000000258
+        profiles = [service.create_simulation_profile() for _ in range(20)]
+
+        # Verify all profiles have a valid gender
+        for profile in profiles:
+            self.assertIn(
+                profile.inferred_gender,
+                ["male", "female", "unknown"],
+                "Profile should have one of the valid gender values",
+            )
+
+        # Verify profiles have the simulation intent
+        for profile in profiles:
+            self.assertEqual(profile.detected_intent, "simulation")
+
+        # Verify randomness: with 20 profiles, we should get more than one unique gender
+        unique_genders = set(p.inferred_gender for p in profiles)
+        self.assertGreater(
+            len(unique_genders),
+            1,
+            "With 20 profiles, randomness should produce more than one gender value",
+        )
+
+        # Clean up
+        for profile in profiles:
+            profile.delete()
+
+
 class SimulationServiceAnalysisTest(TestCase):
     """Tests for the analyze_conversation_emotions method."""
 
