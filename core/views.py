@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from django.http import JsonResponse
 from django.utils import timezone
@@ -228,8 +228,7 @@ class TelegramWebhookView(View):
             except Profile.DoesNotExist:
                 # User doesn't exist, nothing to reset
                 message = (
-                    "You don't have any data in our system yet. "
-                    "Use /start to begin."
+                    "You don't have any data in our system yet. " "Use /start to begin."
                 )
                 telegram_service.send_message(chat_id, message)
                 logger.info(f"Reset attempted for non-existent user: {sender_id}")
@@ -256,7 +255,9 @@ class TelegramWebhookView(View):
                 "or send any other message to cancel."
             )
 
-            telegram_service.send_message(chat_id, confirmation_message, parse_mode="Markdown")
+            telegram_service.send_message(
+                chat_id, confirmation_message, parse_mode="Markdown"
+            )
             logger.info(f"Confirmation message sent to chat {chat_id}")
 
             return JsonResponse({"status": "ok"}, status=200)
@@ -305,9 +306,7 @@ class TelegramWebhookView(View):
                         "Please use /reset again if you still want to delete your data."
                     )
                     telegram_service.send_message(chat_id, message)
-                    logger.info(
-                        f"Reset confirmation timeout for profile {profile.id}"
-                    )
+                    logger.info(f"Reset confirmation timeout for profile {profile.id}")
 
                     # Persist user message and continue with regular flow
                     Message.objects.create(
@@ -331,9 +330,7 @@ class TelegramWebhookView(View):
                         "You can start over anytime by using /start."
                     )
                     telegram_service.send_message(chat_id, final_message)
-                    logger.info(
-                        f"Successfully reset data for user {sender_id}"
-                    )
+                    logger.info(f"Successfully reset data for user {sender_id}")
                 else:
                     # This shouldn't happen since we already checked profile exists
                     message = "An error occurred. Please try again later."
@@ -360,9 +357,7 @@ class TelegramWebhookView(View):
             return JsonResponse({"status": "ok"}, status=200)
 
         except Exception as e:
-            logger.error(
-                f"Error handling reset confirmation: {str(e)}", exc_info=True
-            )
+            logger.error(f"Error handling reset confirmation: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
     def _handle_regular_message(
