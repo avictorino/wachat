@@ -5,6 +5,9 @@ These tests verify that the system prompt changes ensure:
 1. Repetitive emotional acknowledgments are prevented
 2. Spiritual comfort is provided when user expresses suffering and asks for it
 3. Conversational progression happens after validation
+4. Direct questions are answered directly (identity, religion)
+5. Grave situations (hunger, risk) trigger objective questions
+6. Single message responses (no ||| separator)
 """
 
 from unittest.mock import Mock, patch
@@ -217,10 +220,10 @@ class GroqServiceSpiritualComfortTest(TestCase):
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
     @patch("services.groq_service.Groq")
     @patch("services.groq_service.sanitize_input")
-    def test_system_prompt_includes_suggestion_request_rules(
+    def test_system_prompt_enforces_single_message_response(
         self, mock_sanitize, mock_groq_client
     ):
-        """Test that system prompt includes special handling for suggestion/advice requests."""
+        """Test that system prompt enforces one response = one message rule."""
         from services.groq_service import GroqService
 
         # Setup mocks
@@ -228,17 +231,18 @@ class GroqServiceSpiritualComfortTest(TestCase):
 
         mock_response = Mock()
         mock_response.choices = [Mock()]
+        # Single message response without ||| separator
         mock_response.choices[0].message.content = (
-            "Isso mostra que você está buscando um caminho.|||"
-            "Talvez começar com pequenos gestos de auto-cuidado.|||"
-            "Posso te acompanhar nisso."
+            "Isso mostra que você está buscando um caminho. "
+            "Talvez começar com pequenos gestos de auto-cuidado, alguns minutos pela manhã, "
+            "ou pausas para respirar com mais calma. Posso te acompanhar nisso."
         )
 
         mock_groq_instance = Mock()
         mock_groq_instance.chat.completions.create.return_value = mock_response
         mock_groq_client.return_value = mock_groq_instance
 
-        # Create service and call fallback response with suggestion request
+        # Create service and call fallback response
         service = GroqService()
         conversation_context = [
             {"role": "assistant", "content": "Olá! O que te trouxe aqui?"}
@@ -251,21 +255,148 @@ class GroqServiceSpiritualComfortTest(TestCase):
             inferred_gender="male",
         )
 
-        # Verify the system prompt includes suggestion handling rules
+        # Verify the system prompt enforces single message
         call_args = mock_groq_instance.chat.completions.create.call_args
         messages = call_args.kwargs["messages"]
         system_message = next(m for m in messages if m["role"] == "system")
 
-        # Check that system prompt contains suggestion request rules
-        self.assertIn("PEDIDOS DE SUGESTÕES OU CONSELHOS", system_message["content"])
-        self.assertIn("PEDIR EXPLICITAMENTE sugestões", system_message["content"])
-        self.assertIn("4-6 sugestões", system_message["content"])
-        self.assertIn("NÃO termine de forma abrupta ou seca", system_message["content"])
-        self.assertIn("Equilíbrio entre prático e espiritual", system_message["content"])
-
-        # Check that system prompt includes the suggestion example
-        self.assertIn("EXEMPLO DE PEDIDO DE SUGESTÕES", system_message["content"])
-        self.assertIn("bom dia, me dê algumas sugestões", system_message["content"])
+        # Check that system prompt contains single message rule
+        self.assertIn("UMA RESPOSTA = UMA MENSAGEM", system_message["content"])
+        self.assertIn("Nunca quebre uma resposta em várias mensagens curtas", system_message["content"])
+        self.assertIn("NÃO use \"|||\" para separar mensagens", system_message["content"])
+        self.assertIn("Uma resposta = uma mensagem (NUNCA use \"|||\")", system_message["content"])
         
-        # Verify result has multiple messages (split by |||)
-        self.assertGreaterEqual(len(result), 2, "Should return multiple messages for suggestions")
+        # Verify result is a single message (list with one element)
+        self.assertEqual(len(result), 1, "Should return a single message")
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
+    @patch("services.groq_service.Groq")
+    @patch("services.groq_service.sanitize_input")
+    def test_system_prompt_includes_identity_response_rule(
+        self, mock_sanitize, mock_groq_client
+    ):
+        """Test that system prompt includes direct response for identity questions."""
+        from services.groq_service import GroqService
+
+        # Setup mocks
+        mock_sanitize.return_value = "Quem é você?"
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = (
+            "Sou um assistente criado para ouvir, orientar e ajudar dentro do que for possível por aqui."
+        )
+
+        mock_groq_instance = Mock()
+        mock_groq_instance.chat.completions.create.return_value = mock_response
+        mock_groq_client.return_value = mock_groq_instance
+
+        # Create service and call fallback response
+        service = GroqService()
+        conversation_context = []
+
+        service.generate_fallback_response(
+            user_message="Quem é você?",
+            conversation_context=conversation_context,
+            name="João",
+            inferred_gender="male",
+        )
+
+        # Verify the system prompt includes identity response rule
+        call_args = mock_groq_instance.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        system_message = next(m for m in messages if m["role"] == "system")
+
+        # Check that system prompt contains identity response
+        self.assertIn("RESPONDA PERGUNTAS DIRETAS DE FORMA DIRETA", system_message["content"])
+        self.assertIn("Se o usuário perguntar quem você é, diga claramente", system_message["content"])
+        self.assertIn("Sou um assistente criado para ouvir, orientar e ajudar", system_message["content"])
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
+    @patch("services.groq_service.Groq")
+    @patch("services.groq_service.sanitize_input")
+    def test_system_prompt_includes_hunger_situation_rule(
+        self, mock_sanitize, mock_groq_client
+    ):
+        """Test that system prompt includes special handling for hunger/grave situations."""
+        from services.groq_service import GroqService
+
+        # Setup mocks
+        mock_sanitize.return_value = "Estou com fome e não tenho o que dar para meus filhos"
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = (
+            "Entendo a gravidade disso. Você está sem comida agora ou é uma situação recorrente? "
+            "Quantas pessoas dependem de você nesse momento?"
+        )
+
+        mock_groq_instance = Mock()
+        mock_groq_instance.chat.completions.create.return_value = mock_response
+        mock_groq_client.return_value = mock_groq_instance
+
+        # Create service and call fallback response
+        service = GroqService()
+        conversation_context = []
+
+        service.generate_fallback_response(
+            user_message="Estou com fome e não tenho o que dar para meus filhos",
+            conversation_context=conversation_context,
+            name="Maria",
+            inferred_gender="female",
+        )
+
+        # Verify the system prompt includes hunger situation rules
+        call_args = mock_groq_instance.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        system_message = next(m for m in messages if m["role"] == "system")
+
+        # Check that system prompt contains grave situation handling
+        self.assertIn("DIRETRIZ CRÍTICA PARA SITUAÇÕES GRAVES", system_message["content"])
+        self.assertIn("fome ou falta de comida", system_message["content"])
+        self.assertIn("Perguntar algo objetivo imediatamente", system_message["content"])
+        self.assertIn("Você está sem comida agora ou é uma situação recorrente?", system_message["content"])
+        self.assertIn("EVITAR perguntas filosóficas ou abertas demais", system_message["content"])
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
+    @patch("services.groq_service.Groq")
+    @patch("services.groq_service.sanitize_input")
+    def test_system_prompt_includes_prohibited_actions(
+        self, mock_sanitize, mock_groq_client
+    ):
+        """Test that system prompt includes clear list of prohibited actions."""
+        from services.groq_service import GroqService
+
+        # Setup mocks
+        mock_sanitize.return_value = "test"
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = "Test response"
+
+        mock_groq_instance = Mock()
+        mock_groq_instance.chat.completions.create.return_value = mock_response
+        mock_groq_client.return_value = mock_groq_instance
+
+        # Create service and call fallback response
+        service = GroqService()
+        conversation_context = []
+
+        service.generate_fallback_response(
+            user_message="test",
+            conversation_context=conversation_context,
+            name="Test",
+            inferred_gender=None,
+        )
+
+        # Verify the system prompt includes prohibited actions
+        call_args = mock_groq_instance.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        system_message = next(m for m in messages if m["role"] == "system")
+
+        # Check that system prompt contains prohibited actions section
+        self.assertIn("O QUE É PROIBIDO", system_message["content"])
+        self.assertIn("Repetir a mesma frase emocional", system_message["content"])
+        self.assertIn("Ignorar perguntas diretas", system_message["content"])
+        self.assertIn("Enrolar quando o usuário pede ajuda concreta", system_message["content"])
+        self.assertIn("Quebrar resposta em múltiplas mensagens", system_message["content"])
