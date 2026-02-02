@@ -38,6 +38,15 @@ class Profile(models.Model):
         null=True,
         help_text="Primary intent/concern detected from user's first response",
     )
+    pending_reset_confirmation = models.BooleanField(
+        default=False,
+        help_text="True if user has initiated /reset and is awaiting confirmation",
+    )
+    reset_confirmation_timestamp = models.DateTimeField(
+        blank=True,
+        null=True,
+        help_text="Timestamp when /reset was initiated (expires after timeout)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
