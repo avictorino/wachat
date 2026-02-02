@@ -223,7 +223,9 @@ IMPORTANTE:
             ]
 
             if intent not in valid_intents:
-                logger.warning(f"Unexpected intent detected: {intent}, defaulting to 'outro'")
+                logger.warning(
+                    f"Unexpected intent detected: {intent}, defaulting to 'outro'"
+                )
                 intent = "outro"
 
             logger.info(f"Intent detected: {intent}")
@@ -234,7 +236,11 @@ IMPORTANTE:
             return "outro"
 
     def generate_intent_response(
-        self, user_message: str, intent: str, name: str, inferred_gender: Optional[str] = None
+        self,
+        user_message: str,
+        intent: str,
+        name: str,
+        inferred_gender: Optional[str] = None,
     ) -> str:
         """
         Generate an empathetic, spiritually-aware response based on detected intent.

@@ -92,7 +92,9 @@ class TelegramWebhookView(View):
 
         # Handle regular text messages
         if message_text:
-            return self._handle_regular_message(sender, sender_id, chat_id, message_text)
+            return self._handle_regular_message(
+                sender, sender_id, chat_id, message_text
+            )
 
         return JsonResponse({"status": "ok"}, status=200)
 
@@ -231,17 +233,13 @@ class TelegramWebhookView(View):
                 if not name:
                     name = "Amigo"
 
-                profile = Profile.objects.create(
-                    telegram_user_id=sender_id, name=name
-                )
+                profile = Profile.objects.create(telegram_user_id=sender_id, name=name)
                 logger.info(
                     f"Created profile for user {sender_id} without /start command"
                 )
 
             # Persist user message
-            Message.objects.create(
-                profile=profile, role="user", content=message_text
-            )
+            Message.objects.create(profile=profile, role="user", content=message_text)
             logger.info(f"Persisted user message for profile {profile.id}")
 
             # Initialize services
@@ -289,7 +287,5 @@ class TelegramWebhookView(View):
             return JsonResponse({"status": "ok"}, status=200)
 
         except Exception as e:
-            logger.error(
-                f"Error handling regular message: {str(e)}", exc_info=True
-            )
+            logger.error(f"Error handling regular message: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
