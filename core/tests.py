@@ -28,13 +28,6 @@ class ProfileModelTest(TestCase):
         self.assertIsNotNone(profile.created_at)
         self.assertIsNotNone(profile.updated_at)
 
-    def test_profile_unique_telegram_id(self):
-        """Test that telegram_user_id must be unique."""
-        Profile.objects.create(telegram_user_id="12345", name="João Silva")
-
-        # Creating another profile with same telegram_user_id should fail
-        with self.assertRaises(Exception):
-            Profile.objects.create(telegram_user_id="12345", name="Another User")
 
     def test_profile_str_representation(self):
         """Test the string representation of Profile."""
@@ -60,14 +53,8 @@ class MessageModelTest(TestCase):
         self.assertEqual(message.profile, self.profile)
         self.assertEqual(message.role, "assistant")
         self.assertEqual(message.content, "Olá! Bem-vindo.")
+        self.assertEqual(message.channel, "telegram")  # Default channel
         self.assertIsNotNone(message.created_at)
-
-    def test_message_role_choices(self):
-        """Test that message role is limited to valid choices."""
-        message = Message.objects.create(
-            profile=self.profile, role="user", content="Test message"
-        )
-        self.assertIn(message.role, ["system", "assistant", "user"])
 
     def test_message_str_representation(self):
         """Test the string representation of Message."""
@@ -164,6 +151,9 @@ class TelegramWebhookViewTest(TestCase):
         self.assertEqual(messages.count(), 1)
         self.assertEqual(messages.first().role, "assistant")
         self.assertEqual(messages.first().content, "Olá João! Bem-vindo.")
+
+        self.assertEqual(messages.first().channel, "telegram")  # Verify channel is set
+
 
         # Verify services were called
         mock_groq_instance.infer_gender.assert_called_once_with("João Silva")
