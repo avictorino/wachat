@@ -101,15 +101,12 @@ class TelegramWebhookView(View):
 
         # Handle /simulate command
         if message_text and message_text.strip().startswith("/simulate"):
-            # Parse optional num_messages parameter
+            # Parse optional theme parameter (e.g., /simulate doenca)
             parts = message_text.strip().split()
-            num_messages = None
+            theme = None
             if len(parts) > 1:
-                try:
-                    num_messages = int(parts[1])
-                except ValueError:
-                    pass  # Will use default
-            return self._handle_simulate_command(chat_id, num_messages)
+                theme = parts[1].lower()
+            return self._handle_simulate_command(chat_id, theme)
 
         # Handle regular text messages
         if message_text:
@@ -280,12 +277,12 @@ class TelegramWebhookView(View):
             logger.error(f"Error handling /reset command: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
-    def _handle_simulate_command(self, chat_id: str, num_messages: int = None):
+    def _handle_simulate_command(self, chat_id: str, theme: str = None):
         """
         Handle the /simulate command to run a conversation simulation.
 
         This method:
-        1. Creates a new simulation profile
+        1. Creates a new simulation profile with the specified theme as detected_intent
         2. Generates a simulated conversation between ROLE_A (seeker) and ROLE_B (listener)
         3. Persists all messages to the database
         4. Sends the conversation transcript back to Telegram with role identification
@@ -294,13 +291,13 @@ class TelegramWebhookView(View):
 
         Args:
             chat_id: Telegram chat ID
-            num_messages: Optional number of messages to generate (6-10, default 8)
+            theme: Optional theme/intent for the conversation (e.g., "doenca", "ansiedade")
 
         Returns:
             JsonResponse indicating success
         """
         try:
-            logger.info(f"Starting /simulate command for chat {chat_id}")
+            logger.info(f"Starting /simulate command for chat {chat_id} with theme: {theme}")
 
             # Initialize services
             telegram_service = TelegramService()
@@ -314,26 +311,57 @@ class TelegramWebhookView(View):
 
             simulation_service = SimulationService(groq_api_key)
 
-            # Validate and set num_messages parameter
-            if num_messages is None:
-                num_messages = 8  # Default value
-            elif num_messages < 6 or num_messages > 10:
-                error_msg = "❌ Número de mensagens inválido. Use um valor entre 6 e 10.\n\nExemplo: /simulate 8"
-                telegram_service.send_message(chat_id, error_msg)
-                logger.warning(f"Invalid num_messages parameter: {num_messages}")
-                return JsonResponse({"status": "ok"}, status=200)
+            # Validate theme parameter if provided
+            valid_themes = [
+                "problemas_financeiros",
+                "distante_religiao",
+                "ato_criminoso_pecado",
+                "doenca",
+                "ansiedade",
+                "desabafar",
+                "redes_sociais",
+                "outro",
+                # Allow short aliases
+                "pecado",  # alias for ato_criminoso_pecado
+                "financeiro",  # alias for problemas_financeiros
+                "solidao",  # alias for desabafar
+                "religiao",  # alias for distante_religiao
+            ]
+            
+            # Normalize theme aliases
+            theme_mapping = {
+                "pecado": "ato_criminoso_pecado",
+                "financeiro": "problemas_financeiros",
+                "solidao": "desabafar",
+                "religiao": "distante_religiao",
+            }
+            
+            if theme:
+                theme = theme.lower()
+                if theme not in valid_themes:
+                    error_msg = f"❌ Tema inválido: '{theme}'\n\nTemas válidos:\n- doenca\n- ansiedade\n- pecado\n- desabafar\n- solidao\n- financeiro\n- religiao\n- redes_sociais\n- outro\n\nExemplo: /simulate doenca"
+                    telegram_service.send_message(chat_id, error_msg)
+                    logger.warning(f"Invalid theme parameter: {theme}")
+                    return JsonResponse({"status": "ok"}, status=200)
+                
+                # Apply alias mapping
+                theme = theme_mapping.get(theme, theme)
+            else:
+                # Default theme if none provided
+                theme = "desabafar"
 
             # Send initial message
-            init_msg = f"🔄 Iniciando simulação de conversa...\n\nGerando {num_messages} mensagens de diálogo entre um buscador espiritual e um ouvinte empático."
-            telegram_service.send_message(chat_id, init_msg)
+            init_msg = f"🔄 Iniciando simulação de conversa...\n\nGerando diálogo sobre tema: *{theme}*"
+            telegram_service.send_message(chat_id, init_msg, parse_mode="Markdown")
 
-            # Step 1: Create new profile for simulation
-            profile = simulation_service.create_simulation_profile()
-            logger.info(f"Created simulation profile {profile.id}")
+            # Step 1: Create new profile for simulation with theme as detected_intent
+            profile = simulation_service.create_simulation_profile(theme)
+            logger.info(f"Created simulation profile {profile.id} with intent: {theme}")
 
-            # Step 2: Generate simulated conversation with specified num_messages
+            # Step 2: Generate simulated conversation with theme context
+            num_messages = 8  # Fixed number of messages for simplicity
             conversation = simulation_service.generate_simulated_conversation(
-                profile, num_messages
+                profile, num_messages, theme
             )
             logger.info(f"Generated {len(conversation)} simulated messages")
 
