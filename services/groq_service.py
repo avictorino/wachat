@@ -154,3 +154,197 @@ A mensagem deve ter 3-4 frases, ser genuína e criar uma sensação de presença
             logger.error(f"Error generating welcome message: {str(e)}", exc_info=True)
             # Fallback to a simple message if API fails
             return f"Olá, {name}. Este é um espaço seguro de escuta espiritual. O que te trouxe aqui hoje?"
+
+    def detect_intent(self, user_message: str) -> str:
+        """
+        Detect and normalize user intent from their message.
+
+        Maps the user's message to one of the predefined intent categories:
+        1. Problemas financeiros
+        2. Distante da religião/espiritualidade
+        3. Ato criminoso ou pecado
+        4. Doença (própria ou familiar)
+        5. Ansiedade
+        6. Desabafar
+        7. Viu nas redes sociais
+        8. Outro (for unmatched cases)
+
+        Args:
+            user_message: The user's text message
+
+        Returns:
+            The detected intent category as a string
+        """
+        try:
+            system_prompt = """Você é um assistente que detecta a intenção principal de uma mensagem.
+
+Sua tarefa é identificar qual das seguintes categorias melhor representa a preocupação ou motivo principal da pessoa:
+
+1. "problemas_financeiros" - Pessoa está com dificuldades financeiras, desemprego, dívidas
+2. "distante_religiao" - Pessoa sente distância da religião, espiritualidade, ou fé
+3. "ato_criminoso_pecado" - Pessoa cometeu algo que considera errado, pecado, ou crime
+4. "doenca" - Pessoa ou familiar está doente, enfrentando problemas de saúde
+5. "ansiedade" - Pessoa está ansiosa, estressada, com medo, ou preocupada
+6. "desabafar" - Pessoa só precisa conversar, desabafar, ser ouvida
+7. "redes_sociais" - Pessoa viu o número nas redes sociais e está curiosa
+8. "outro" - Nenhuma das categorias acima se aplica claramente
+
+IMPORTANTE:
+- Seja flexível - permita variações e formas diferentes de expressar cada intenção
+- Considere o contexto emocional da mensagem
+- Se houver múltiplas intenções, escolha a mais proeminente
+- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas_financeiros")
+- Não adicione explicações ou pontuação"""
+
+            user_prompt = f"Mensagem do usuário: {user_message}"
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,  # Low temperature for more deterministic classification
+                max_tokens=20,
+            )
+
+            intent = response.choices[0].message.content.strip().lower()
+
+            # Validate and normalize the response
+            valid_intents = [
+                "problemas_financeiros",
+                "distante_religiao",
+                "ato_criminoso_pecado",
+                "doenca",
+                "ansiedade",
+                "desabafar",
+                "redes_sociais",
+                "outro",
+            ]
+
+            if intent not in valid_intents:
+                logger.warning(f"Unexpected intent detected: {intent}, defaulting to 'outro'")
+                intent = "outro"
+
+            logger.info(f"Intent detected: {intent}")
+            return intent
+
+        except Exception as e:
+            logger.error(f"Error detecting intent: {str(e)}", exc_info=True)
+            return "outro"
+
+    def generate_intent_response(
+        self, user_message: str, intent: str, name: str, inferred_gender: Optional[str] = None
+    ) -> str:
+        """
+        Generate an empathetic, spiritually-aware response based on detected intent.
+
+        The response:
+        - Acknowledges the user's situation
+        - Validates feelings without reinforcing despair
+        - Includes subtle spiritual undertones
+        - Ends with an open-ended follow-up question
+        - Is warm, calm, and non-judgmental
+        - Avoids preaching, sermons, or explicit religious content
+
+        Args:
+            user_message: The user's original message
+            intent: The detected intent category
+            name: The user's name
+            inferred_gender: Inferred gender (male/female/unknown or None)
+
+        Returns:
+            The generated response in Brazilian Portuguese
+        """
+        try:
+            # Map intent to guidance for tone and approach
+            intent_guidance = {
+                "problemas_financeiros": """A pessoa está enfrentando dificuldades financeiras.
+Abordagem: Reconheça a pressão e o peso material, mas traga a noção de que ela não está sozinha nessa caminhada.
+Evite: Soluções práticas, conselhos financeiros, promessas de prosperidade.""",
+                "distante_religiao": """A pessoa sente distância da religião ou espiritualidade.
+Abordagem: Valide que sentir essa distância é humano. Ofereça presença, não doutrina.
+Evite: Culpa, cobrança religiosa, pressão para 'voltar'.""",
+                "ato_criminoso_pecado": """A pessoa cometeu algo que considera errado ou pecado.
+Abordagem: Escute sem julgar. Reconheça o peso emocional sem rotular a ação.
+Evite: Julgamento moral, menção de punição, conceito explícito de pecado.""",
+                "doenca": """A pessoa ou alguém próximo está doente.
+Abordagem: Reconheça a fragilidade e o medo. Traga a ideia de que estar presente já é algo.
+Evite: Promessas de cura, frases como 'vai ficar tudo bem'.""",
+                "ansiedade": """A pessoa está ansiosa, estressada, ou preocupada.
+Abordagem: Valide a ansiedade como real. Ofereça espaço para respirar e ser ouvida.
+Evite: Minimizar ('não é nada'), soluções rápidas.""",
+                "desabafar": """A pessoa só precisa conversar e ser ouvida.
+Abordagem: Seja presença pura. Crie espaço seguro para ela se expressar.
+Evite: Tentar resolver ou consertar.""",
+                "redes_sociais": """A pessoa chegou por curiosidade das redes sociais.
+Abordagem: Acolha a curiosidade. Apresente o espaço como seguro e sem pressão.
+Evite: Ser muito sério ou pesado logo de início.""",
+                "outro": """Intenção não identificada claramente.
+Abordagem: Seja acolhedor e aberto. Convide a pessoa a compartilhar mais.
+Evite: Assumir demais ou forçar uma direção.""",
+            }
+
+            guidance = intent_guidance.get(intent, intent_guidance["outro"])
+
+            gender_context = ""
+            if inferred_gender and inferred_gender != "unknown":
+                gender_context = f"\nGênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
+
+            system_prompt = f"""Você é uma presença espiritual acolhedora e reflexiva.
+
+Sua função é responder a alguém que está compartilhando uma preocupação ou situação pessoal.
+
+CONTEXTO DA INTENÇÃO:
+{guidance}
+
+DIRETRIZES ESSENCIAIS:
+- Escreva em português brasileiro, de forma natural e humana
+- Seja caloroso(a), calmo(a) e empático(a)
+- NÃO use emojis
+- NÃO pregue, não dê sermão, não julgue
+- NÃO mencione pecado, punição, ou regras explicitamente
+- NÃO tente 'consertar' a pessoa
+- NÃO cite versículos bíblicos
+- NÃO mencione o gênero da pessoa explicitamente
+
+TOM ESPIRITUAL (muito sutil):
+- Use referências leves a esperança, caminhada conjunta, presença
+- Máximo 1 frase curta com toque espiritual
+- Exemplos de elementos sutis: "caminhar junto", "não está sozinho(a)", "tem espaço aqui", "há significado"
+
+ESTRUTURA DA RESPOSTA (3-4 frases):
+1. Reconheça a situação da pessoa primeiro
+2. Valide o sentimento sem reforçar desespero
+3. (Opcional) Adicione 1 frase curta com toque espiritual sutil
+4. Termine com UMA pergunta aberta que convide continuação
+
+EXEMPLOS DE PERGUNTAS FINAIS:
+- "Quer me contar um pouco mais sobre isso?"
+- "Desde quando você sente isso?"
+- "O que tem sido mais pesado nesses dias?"
+- "Como você está lidando com isso?"
+
+A mensagem deve criar uma sensação de presença humana genuína, não de sistema ou chatbot."""
+
+            user_prompt = f"Nome da pessoa: {name}\nMensagem dela: {user_message}{gender_context}\n\nCrie uma resposta empática e acolhedora."
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.8,  # Higher temperature for more natural, varied responses
+                max_tokens=400,
+            )
+
+            generated_response = response.choices[0].message.content.strip()
+
+            logger.info(f"Generated intent-based response for intent: {intent}")
+            return generated_response
+
+        except Exception as e:
+            logger.error(f"Error generating intent response: {str(e)}", exc_info=True)
+            # Fallback to a simple empathetic message
+            return "Obrigado por compartilhar isso comigo. Estou aqui para ouvir. Quer me contar um pouco mais sobre o que está sentindo?"
