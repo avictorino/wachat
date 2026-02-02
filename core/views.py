@@ -1,14 +1,17 @@
 import json
 import logging
 import os
+from datetime import datetime, timedelta
 
 from django.http import JsonResponse
+from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from core.models import Message, Profile
 from services.groq_service import GroqService
+from services.reset_user_data import ResetUserDataUseCase
 from services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
@@ -89,6 +92,10 @@ class TelegramWebhookView(View):
         # Handle /start command
         if message_text and message_text.strip().startswith("/start"):
             return self._handle_start_command(sender, chat_id)
+
+        # Handle /reset command
+        if message_text and message_text.strip().startswith("/reset"):
+            return self._handle_reset_command(sender_id, chat_id)
 
         # Handle regular text messages
         if message_text:
@@ -197,6 +204,167 @@ class TelegramWebhookView(View):
             logger.error(f"Error handling /start command: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
+    def _handle_reset_command(self, sender_id: str, chat_id: str):
+        """
+        Handle the /reset command for permanently deleting user data.
+
+        This method implements a two-step confirmation process:
+        1. On first /reset: asks for confirmation and sets pending state
+        2. Awaits "CONFIRM" response to proceed with deletion
+
+        Args:
+            sender_id: Telegram user ID
+            chat_id: Telegram chat ID
+
+        Returns:
+            JsonResponse indicating success
+        """
+        try:
+            telegram_service = TelegramService()
+
+            # Try to get user profile
+            try:
+                profile = Profile.objects.get(telegram_user_id=sender_id)
+            except Profile.DoesNotExist:
+                # User doesn't exist, nothing to reset
+                message = (
+                    "You don't have any data in our system yet. "
+                    "Use /start to begin."
+                )
+                telegram_service.send_message(chat_id, message)
+                logger.info(f"Reset attempted for non-existent user: {sender_id}")
+                return JsonResponse({"status": "ok"}, status=200)
+
+            # Set confirmation pending state
+            profile.pending_reset_confirmation = True
+            profile.reset_confirmation_timestamp = timezone.now()
+            profile.save()
+
+            logger.info(
+                f"Reset initiated for profile {profile.id}. Waiting for confirmation."
+            )
+
+            # Send confirmation request
+            confirmation_message = (
+                "⚠️ *WARNING: This action cannot be undone!*\n\n"
+                "This will permanently delete:\n"
+                "• Your profile\n"
+                "• All your conversations\n"
+                "• All your messages\n"
+                "• All your preferences\n\n"
+                "Type *CONFIRM* to proceed with deletion, "
+                "or send any other message to cancel."
+            )
+
+            telegram_service.send_message(chat_id, confirmation_message, parse_mode="Markdown")
+            logger.info(f"Confirmation message sent to chat {chat_id}")
+
+            return JsonResponse({"status": "ok"}, status=200)
+
+        except Exception as e:
+            logger.error(f"Error handling /reset command: {str(e)}", exc_info=True)
+            return JsonResponse({"status": "error"}, status=500)
+
+    def _handle_reset_confirmation(
+        self,
+        profile: Profile,
+        sender_id: str,
+        chat_id: str,
+        message_text: str,
+        telegram_service: TelegramService,
+    ):
+        """
+        Handle user's response to reset confirmation request.
+
+        Checks if the user typed "CONFIRM" to proceed with deletion,
+        or cancels the reset if they send anything else.
+
+        Args:
+            profile: The user's Profile object
+            sender_id: Telegram user ID
+            chat_id: Telegram chat ID
+            message_text: The user's message (should be "CONFIRM" or something else)
+            telegram_service: TelegramService instance for sending messages
+
+        Returns:
+            JsonResponse indicating success
+        """
+        try:
+            # Check for timeout (5 minutes)
+            if profile.reset_confirmation_timestamp:
+                timeout_minutes = 5
+                elapsed = timezone.now() - profile.reset_confirmation_timestamp
+                if elapsed > timedelta(minutes=timeout_minutes):
+                    # Timeout expired, cancel reset
+                    profile.pending_reset_confirmation = False
+                    profile.reset_confirmation_timestamp = None
+                    profile.save()
+
+                    message = (
+                        "Reset confirmation timeout expired. "
+                        "Please use /reset again if you still want to delete your data."
+                    )
+                    telegram_service.send_message(chat_id, message)
+                    logger.info(
+                        f"Reset confirmation timeout for profile {profile.id}"
+                    )
+
+                    # Persist user message and continue with regular flow
+                    Message.objects.create(
+                        profile=profile, role="user", content=message_text
+                    )
+                    return JsonResponse({"status": "ok"}, status=200)
+
+            # Check if user confirmed
+            if message_text.strip().upper() == "CONFIRM":
+                logger.info(
+                    f"User {sender_id} confirmed reset. Proceeding with deletion."
+                )
+
+                # Execute the reset
+                success = ResetUserDataUseCase.execute(sender_id)
+
+                if success:
+                    # Send final confirmation message
+                    final_message = (
+                        "✅ Your data has been successfully deleted. "
+                        "You can start over anytime by using /start."
+                    )
+                    telegram_service.send_message(chat_id, final_message)
+                    logger.info(
+                        f"Successfully reset data for user {sender_id}"
+                    )
+                else:
+                    # This shouldn't happen since we already checked profile exists
+                    message = "An error occurred. Please try again later."
+                    telegram_service.send_message(chat_id, message)
+                    logger.error(
+                        f"Reset failed for user {sender_id} despite having profile"
+                    )
+
+            else:
+                # User cancelled
+                profile.pending_reset_confirmation = False
+                profile.reset_confirmation_timestamp = None
+                profile.save()
+
+                message = "Reset cancelled. Your data is safe."
+                telegram_service.send_message(chat_id, message)
+                logger.info(f"User {sender_id} cancelled reset")
+
+                # Persist the cancellation message
+                Message.objects.create(
+                    profile=profile, role="user", content=message_text
+                )
+
+            return JsonResponse({"status": "ok"}, status=200)
+
+        except Exception as e:
+            logger.error(
+                f"Error handling reset confirmation: {str(e)}", exc_info=True
+            )
+            return JsonResponse({"status": "error"}, status=500)
+
     def _handle_regular_message(
         self, sender: dict, sender_id: str, chat_id: str, message_text: str
     ):
@@ -243,13 +411,21 @@ class TelegramWebhookView(View):
                     f"Created profile for user {sender_id} without /start command"
                 )
 
+            # Initialize services
+            telegram_service = TelegramService()
+
+            # Check if user has pending reset confirmation
+            if profile.pending_reset_confirmation:
+                return self._handle_reset_confirmation(
+                    profile, sender_id, chat_id, message_text, telegram_service
+                )
+
             # Persist user message
             Message.objects.create(profile=profile, role="user", content=message_text)
             logger.info(f"Persisted user message for profile {profile.id}")
 
-            # Initialize services
+            # Initialize Groq service
             groq_service = GroqService()
-            telegram_service = TelegramService()
 
             # Detect intent if not already detected
             # We only detect intent on the first user message (when there are 2 messages total: welcome + first user message)
