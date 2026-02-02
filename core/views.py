@@ -335,14 +335,14 @@ class TelegramWebhookView(View):
 
             logger.info(f"Sent {len(conversation)} simulated messages to chat {chat_id}")
 
-            # Step 4: Analyze conversation emotionally
+            # Step 4: Generate critical analysis of conversation
             analysis = simulation_service.analyze_conversation_emotions(conversation)
-            logger.info("Generated emotional analysis")
+            logger.info("Generated critical analysis")
 
-            # Step 5: Send emotional analysis as final message
-            final_msg = f"📊 *Resumo da Conversa*\n\n{analysis}"
+            # Step 5: Send critical analysis as final message
+            final_msg = f"📊 *Análise Crítica da Conversa*\n\n{analysis}"
             telegram_service.send_message(chat_id, final_msg, parse_mode="Markdown")
-            logger.info(f"Sent emotional analysis to chat {chat_id}")
+            logger.info(f"Sent critical analysis to chat {chat_id}")
 
             return JsonResponse({"status": "ok"}, status=200)
 

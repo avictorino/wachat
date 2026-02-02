@@ -16,6 +16,10 @@ from services.groq_service import GroqService
 
 logger = logging.getLogger(__name__)
 
+# Role labels for analysis output
+ROLE_LABEL_SEEKER = "Buscador"  # Portuguese for "Seeker"
+ROLE_LABEL_LISTENER = "Ouvinte"  # Portuguese for "Listener"
+
 
 class SimulationService:
     """
@@ -298,55 +302,101 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
         self, conversation: List[dict]
     ) -> str:
         """
-        Analyze the emotional content of a conversation.
+        Perform critical analysis of a conversation.
+
+        Note: Method name retained for API compatibility. This method now performs
+        critical analysis of conversational quality, not emotional analysis.
+
+        This method analyzes the conversation for interpretation errors, missed opportunities,
+        pacing issues, and over-assumptions. It provides a reflective, analytical review
+        of conversational quality rather than an emotional recap.
 
         Args:
             conversation: List of message dicts with 'role' and 'content'
 
         Returns:
-            Emotional analysis summary as string
+            Critical analysis as structured text in Portuguese
         """
         try:
             # Build transcript for analysis
             transcript_text = ""
             for msg in conversation:
-                role_label = "Seeker" if msg["role"] == "ROLE_A" else "Listener"
+                role_label = ROLE_LABEL_SEEKER if msg["role"] == "ROLE_A" else ROLE_LABEL_LISTENER
                 transcript_text += f"{role_label}: {msg['content']}\n\n"
 
-            system_prompt = """Você é um analista emocional especializado em conversas de construção de relacionamento.
+            system_prompt = """Você é um analista crítico especializado em qualidade conversacional entre humanos e sistemas de IA.
 
-Sua tarefa é analisar a conversa fornecida e criar um resumo emocional reflexivo que respeite a natureza gradual da conexão.
+Sua tarefa é realizar uma ANÁLISE CRÍTICA da conversa fornecida, avaliando qualidade técnica e relacional.
 
-Análise deve incluir:
-1. DOSAGEM EMOCIONAL: Como o buscador dosou sua abertura? Foi gradual ou rápido demais?
-2. PROGRESSÃO DA CONFIANÇA: Como a confiança se desenvolveu (ou não) ao longo da conversa?
-3. SINAIS DE SEGURANÇA E ABERTURA: Quando o buscador pareceu se sentir mais seguro?
-4. QUALIDADE DO ACOMPANHAMENTO: O ouvinte criou espaço sem pressionar?
-5. SENSAÇÃO DE CONTINUIDADE: A conversa terminou com sensação de "posso falar mais depois" ou foi resolvida/fechada?
+CONTEXTO IMPORTANTE:
+- O Buscador (humano) fala MUITO POUCO por design
+- Mensagens curtas, vagas, ambíguas são ESPERADAS e NORMAIS
+- Silêncio, hesitação e brevidade são sinais, não falhas
+- Over-interpretação pelo Ouvinte é um erro potencial
 
-FORMATO DE RESPOSTA:
-- Escreva um resumo em português brasileiro
-- 4-6 frases
-- Tom calmo e reflexivo
-- Use linguagem acessível e humana
-- Sem jargões técnicos
-- Foque no movimento gradual da confiança e no início de um vínculo
-- Reconheça se a conversa respeitou o ritmo lento de construção de amizade
+LENTES DE ANÁLISE (avalie cada uma):
 
-O resumo será enviado como mensagem final para o usuário.
+1) Precisão de Interpretação
+- O Ouvinte inferiu emoções ou significados não explicitamente declarados?
+- Foram feitas suposições muito cedo?
+- O Ouvinte projetou profundidade onde havia apenas ambiguidade?
 
-Responda APENAS com o resumo de análise emocional."""
+2) Ritmo e Timing
+- A profundidade emocional foi introduzida prematuramente?
+- O Ouvinte avançou mais rápido que o Buscador?
+- Houve momentos onde esperar ou espelhar teria sido melhor?
 
-            user_prompt = f"""Analise a seguinte conversa focando na construção gradual de confiança:
+3) Qualidade das Perguntas
+- As perguntas foram abertas e seguras?
+- Alguma pergunta foi sutilmente direcionadora?
+- Alguma pergunta demandou mais vulnerabilidade do que o Buscador ofereceu?
 
+4) Respeito à Contenção Humana
+- O Ouvinte respeitou a brevidade do Buscador?
+- Ou compensou explicando demais ou filosofando?
+
+5) Construção de Relacionamento
+- A interação fortaleceu a confiança?
+- Ou arriscou distância emocional ao soar interpretativo ou "expert"?
+
+ESTRUTURA OBRIGATÓRIA DA RESPOSTA:
+
+**1. O que funcionou bem**
+- Observações breves e concretas (2-3 pontos)
+
+**2. Pontos de possível erro de interpretação**
+- Nomeie explicitamente momentos onde o Ouvinte pode ter assumido demais
+- Seja específico: cite mensagens ou padrões
+
+**3. O que poderia ter sido feito diferente**
+- Sugestões práticas (menos interpretações, mais espelhamento, respostas mais curtas)
+- 2-3 sugestões concretas
+
+**4. Ajustes recomendados para próximas interações**
+- Orientações comportamentais para o Ouvinte
+- Ênfase em paciência, silêncio e segurança relacional
+
+TOM:
+- Neutro e reflexivo
+- NÃO moralizante
+- NÃO emocional
+- Levemente crítico, mas construtivo
+- Como uma revisão profissional, não linguagem terapêutica
+
+Responda APENAS com a análise estruturada. Use português brasileiro natural."""
+
+            user_prompt = f"""Analise criticamente a seguinte conversa, avaliando qualidade conversacional e pontos de melhoria:
+
+TRANSCRIÇÃO:
 {transcript_text}
 
-Crie um resumo que destaque:
-- Como a abertura emocional foi dosada
-- Como a confiança progrediu
-- Se o ritmo foi respeitado (nem muito rápido, nem forçado)
-- A qualidade da presença e acompanhamento
-- Se terminou com sensação de continuidade (não de fechamento)"""
+Forneça uma análise crítica seguindo EXATAMENTE a estrutura de 4 seções:
+1. O que funcionou bem
+2. Pontos de possível erro de interpretação
+3. O que poderia ter sido feito diferente
+4. Ajustes recomendados para próximas interações
+
+Foque em ERROS DE INTERPRETAÇÃO, RITMO, e RESPEITO À CONTENÇÃO do Buscador."""
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -355,19 +405,27 @@ Crie um resumo que destaque:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,  # Moderate temperature for balanced analysis
-                max_tokens=400,
+                max_tokens=800,  # Increased for structured analysis
             )
 
             analysis = response.choices[0].message.content.strip()
-            logger.info("Generated emotional analysis of simulated conversation")
+            logger.info("Generated critical analysis of simulated conversation")
             return analysis
 
         except Exception as e:
-            logger.error(f"Error analyzing conversation emotions: {str(e)}", exc_info=True)
-            # Fallback analysis
+            logger.error(f"Error analyzing conversation: {str(e)}", exc_info=True)
+            # Fallback analysis with critical structure
             return (
-                "Esta conversa mostrou o início de uma conexão. "
-                "O buscador compartilhou de forma cautelosa, no seu ritmo, "
-                "enquanto o ouvinte ofereceu presença sem pressionar. "
-                "A interação deixou espaço para continuidade, como uma amizade começando a se formar."
+                "**1. O que funcionou bem**\n"
+                "- O Ouvinte manteve presença e disponibilidade\n"
+                "- As respostas foram acolhedoras\n\n"
+                "**2. Pontos de possível erro de interpretação**\n"
+                "- Análise não disponível no momento devido a erro técnico\n\n"
+                "**3. O que poderia ter sido feito diferente**\n"
+                "- Manter respostas mais breves e deixar mais espaço para o Buscador\n"
+                "- Usar mais espelhamento simples em vez de interpretação\n\n"
+                "**4. Ajustes recomendados para próximas interações**\n"
+                "- Priorizar brevidade e segurança relacional\n"
+                "- Evitar interpretações profundas precoces\n"
+                "- Respeitar ambiguidade e silêncio como sinais válidos"
             )
