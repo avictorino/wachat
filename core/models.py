@@ -32,6 +32,12 @@ class Profile(models.Model):
         null=True,
         help_text="Gender inferred from name (male/female/unknown)",
     )
+    detected_intent = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Primary intent/concern detected from user's first response",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

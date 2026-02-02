@@ -90,8 +90,11 @@ class TelegramWebhookView(View):
         if message_text and message_text.strip().startswith("/start"):
             return self._handle_start_command(sender, chat_id)
 
-        # TODO: Handle regular messages
-        print(message_text)
+        # Handle regular text messages
+        if message_text:
+            return self._handle_regular_message(
+                sender, sender_id, chat_id, message_text
+            )
 
         return JsonResponse({"status": "ok"}, status=200)
 
@@ -192,4 +195,101 @@ class TelegramWebhookView(View):
 
         except Exception as e:
             logger.error(f"Error handling /start command: {str(e)}", exc_info=True)
+            return JsonResponse({"status": "error"}, status=500)
+
+    def _handle_regular_message(
+        self, sender: dict, sender_id: str, chat_id: str, message_text: str
+    ):
+        """
+        Handle regular text messages from users.
+
+        This method implements the conversational flow after the welcome message:
+        1. Retrieves or creates user profile
+        2. Persists the user's message
+        3. Detects intent from the message
+        4. Generates an empathetic response using Groq
+        5. Persists the assistant's response
+        6. Sends the response back to the user via Telegram
+
+        Args:
+            sender: Telegram sender data (from webhook payload)
+            sender_id: Telegram user ID as string
+            chat_id: Telegram chat ID
+            message_text: The text message from the user
+
+        Returns:
+            JsonResponse indicating success
+        """
+        try:
+            # Get user profile
+            try:
+                profile = Profile.objects.get(telegram_user_id=sender_id)
+            except Profile.DoesNotExist:
+                # If profile doesn't exist, user hasn't used /start yet
+                # Create a minimal profile and handle gracefully
+                first_name = sender.get("first_name", "")
+                last_name = sender.get("last_name", "")
+                name = first_name
+                if last_name:
+                    name = f"{first_name} {last_name}"
+
+                if not name:
+                    name = "Amigo"
+
+                profile = Profile.objects.create(telegram_user_id=sender_id, name=name)
+                logger.info(
+                    f"Created profile for user {sender_id} without /start command"
+                )
+
+            # Persist user message
+            Message.objects.create(profile=profile, role="user", content=message_text)
+            logger.info(f"Persisted user message for profile {profile.id}")
+
+            # Initialize services
+            groq_service = GroqService()
+            telegram_service = TelegramService()
+
+            # Detect intent if not already detected
+            # We only detect intent on the first user message (when there are 2 messages total: welcome + first user message)
+            # or on the very first message if user didn't start with /start
+            message_count = Message.objects.filter(profile=profile).count()
+
+            if not profile.detected_intent and message_count <= 2:
+                # Detect and store intent
+                detected_intent = groq_service.detect_intent(message_text)
+                profile.detected_intent = detected_intent
+                profile.save()
+                logger.info(
+                    f"Detected and stored intent '{detected_intent}' for profile {profile.id}"
+                )
+            else:
+                # Use previously detected intent or default
+                detected_intent = profile.detected_intent or "outro"
+
+            # Generate response based on intent
+            response_message = groq_service.generate_intent_response(
+                user_message=message_text,
+                intent=detected_intent,
+                name=profile.name,
+                inferred_gender=profile.inferred_gender,
+            )
+
+            # Persist assistant response
+            Message.objects.create(
+                profile=profile, role="assistant", content=response_message
+            )
+            logger.info(f"Persisted assistant response for profile {profile.id}")
+
+            # Send response to Telegram
+            success = telegram_service.send_message(chat_id, response_message)
+
+            if success:
+                logger.info(f"Response sent to chat {chat_id}")
+            else:
+                logger.error(f"Failed to send response to chat {chat_id}")
+
+            return JsonResponse({"status": "ok"}, status=200)
+
+        except Exception as e:
+            logger.error(f"Error handling regular message: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
