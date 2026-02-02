@@ -61,12 +61,12 @@ class GroqServiceSpiritualComfortTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
 
         # Check that system prompt contains repetition prevention rules
-        self.assertIn("PROIBIÇÃO DE REPETIÇÃO", system_message["content"])
+        self.assertIn("NUNCA REPITA FRASES OU ESTRUTURAS EMOCIONAIS", system_message["content"])
         self.assertIn(
             "Repetição sem progressão é INACEITÁVEL", system_message["content"]
         )
         self.assertIn(
-            "NUNCA repetida se foi usada nas últimas 1-2 mensagens",
+            "Se você já usou validação emocional similar, você está PROIBIDO de repetir",
             system_message["content"],
         )
 
@@ -114,13 +114,13 @@ class GroqServiceSpiritualComfortTest(TestCase):
 
         # Check that system prompt contains spiritual comfort requirements
         self.assertIn("SOFRIMENTO + PEDIDO DE CONFORTO", system_message["content"])
-        self.assertIn("Presença espiritual gentil", system_message["content"])
+        self.assertIn("presença espiritual gentil", system_message["content"])
         self.assertIn(
             "Você NÃO pode responder a sofrimento + pedido de conforto APENAS com validação emocional",
             system_message["content"],
         )
         self.assertIn(
-            "presença espiritual é obrigatória", system_message["content"]
+            "Referência sutil a esperança, cuidado que sustenta", system_message["content"]
         )
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
@@ -164,15 +164,11 @@ class GroqServiceSpiritualComfortTest(TestCase):
 
         # Check that system prompt contains progression requirements
         self.assertIn(
-            "Você DEVE introduzir uma nova função conversacional",
+            "Se você já fez validação/reflexão recentemente, escolha outra opção",
             system_message["content"],
         )
         self.assertIn(
-            "Se você já fez validação/reflexão nas últimas 1-2 mensagens, escolha uma das outras opções",
-            system_message["content"],
-        )
-        self.assertIn(
-            "Progresso conversacional é mais importante que validação repetida",
+            "Priorize progressão sobre repetição",
             system_message["content"],
         )
 
@@ -213,7 +209,7 @@ class GroqServiceSpiritualComfortTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
 
         # Check that system prompt contains the spiritual comfort example
-        self.assertIn("EXEMPLO DE SOFRIMENTO + PEDIDO DE CONFORTO", system_message["content"])
+        self.assertIn("EXEMPLO 3 - Sofrimento + pedido de conforto", system_message["content"])
         self.assertIn("Há uma força que não vem só de nós", system_message["content"])
         self.assertIn("cuidado que nos cerca", system_message["content"])
 
