@@ -14,6 +14,7 @@ class SimulateCommandTest(TestCase):
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
+    @patch("core.views.GroqService")
     @patch.dict(
         "os.environ",
         {
@@ -22,7 +23,7 @@ class SimulateCommandTest(TestCase):
         },
     )
     def test_simulate_command_creates_profile_and_conversation(
-        self, mock_telegram_service, mock_simulation_service
+        self, mock_groq_service, mock_telegram_service, mock_simulation_service
     ):
         """Test that /simulate command creates a profile and generates a conversation."""
         # Setup mocks
@@ -32,6 +33,9 @@ class SimulateCommandTest(TestCase):
 
         mock_simulation_instance = MagicMock()
         mock_simulation_service.return_value = mock_simulation_instance
+
+        mock_groq_instance = MagicMock()
+        mock_groq_service.return_value = mock_groq_instance
 
         # Create a fake profile with default theme "desabafar"
         fake_profile = Profile.objects.create(
@@ -77,6 +81,9 @@ class SimulateCommandTest(TestCase):
 
         # Verify SimulationService was initialized
         mock_simulation_service.assert_called_once_with("test-groq-key")
+
+        # Verify LLM approximation was NOT called (no theme provided)
+        mock_groq_instance.approximate_theme.assert_not_called()
 
         # Verify simulation methods were called with theme "desabafar"
         mock_simulation_instance.create_simulation_profile.assert_called_once_with("desabafar")
@@ -164,6 +171,7 @@ class SimulateCommandTest(TestCase):
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
+    @patch("core.views.GroqService")
     @patch.dict(
         "os.environ",
         {
@@ -172,9 +180,9 @@ class SimulateCommandTest(TestCase):
         },
     )
     def test_simulate_command_with_theme_parameter(
-        self, mock_telegram_service, mock_simulation_service
+        self, mock_groq_service, mock_telegram_service, mock_simulation_service
     ):
-        """Test that /simulate command accepts theme parameter (e.g., /simulate doenca)."""
+        """Test that /simulate command accepts theme parameter and uses LLM approximation."""
         # Setup mocks
         mock_telegram_instance = MagicMock()
         mock_telegram_service.return_value = mock_telegram_instance
@@ -182,6 +190,11 @@ class SimulateCommandTest(TestCase):
 
         mock_simulation_instance = MagicMock()
         mock_simulation_service.return_value = mock_simulation_instance
+
+        mock_groq_instance = MagicMock()
+        mock_groq_service.return_value = mock_groq_instance
+        # Mock LLM approximation - "doenca" stays as "doenca"
+        mock_groq_instance.approximate_theme.return_value = "doenca"
 
         # Create a fake profile with "doenca" theme
         fake_profile = Profile.objects.create(
@@ -227,6 +240,9 @@ class SimulateCommandTest(TestCase):
         # Verify response
         self.assertEqual(response.status_code, 200)
 
+        # Verify LLM approximation was called
+        mock_groq_instance.approximate_theme.assert_called_once_with("doenca")
+
         # Verify create_simulation_profile was called with "doenca" theme
         mock_simulation_instance.create_simulation_profile.assert_called_once_with("doenca")
         
@@ -235,6 +251,7 @@ class SimulateCommandTest(TestCase):
             fake_profile, 8, "doenca"
         )
 
+    @patch("core.views.GroqService")
     @patch("core.views.TelegramService")
     @patch.dict(
         "os.environ",
@@ -243,12 +260,17 @@ class SimulateCommandTest(TestCase):
             "GROQ_API_KEY": "test-groq-key",
         },
     )
-    def test_simulate_command_with_invalid_theme(self, mock_telegram_service):
-        """Test that /simulate command rejects invalid theme."""
+    def test_simulate_command_with_invalid_theme(self, mock_telegram_service, mock_groq_service):
+        """Test that /simulate command handles themes that LLM can't map."""
         # Setup mock
         mock_telegram_instance = MagicMock()
         mock_telegram_service.return_value = mock_telegram_instance
         mock_telegram_instance.send_message.return_value = True
+
+        mock_groq_instance = MagicMock()
+        mock_groq_service.return_value = mock_groq_instance
+        # Mock LLM approximation returning "outro" (couldn't map)
+        mock_groq_instance.approximate_theme.return_value = "outro"
 
         # Send /simulate invalid_theme command
         payload = {
@@ -271,14 +293,18 @@ class SimulateCommandTest(TestCase):
         # Verify response
         self.assertEqual(response.status_code, 200)
 
+        # Verify LLM approximation was called
+        mock_groq_instance.approximate_theme.assert_called_once_with("invalid_theme")
+
         # Verify error message was sent
         self.assertGreaterEqual(mock_telegram_instance.send_message.call_count, 1)
         first_call_args = mock_telegram_instance.send_message.call_args_list[0]
-        self.assertIn("inválido", first_call_args[0][1])
-        self.assertIn("doenca", first_call_args[0][1])  # Should list valid themes
+        self.assertIn("identificar", first_call_args[0][1])  # "Não consegui identificar"
+        self.assertIn("doenca", first_call_args[0][1])  # Should list valid theme examples
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
+    @patch("core.views.GroqService")
     @patch.dict(
         "os.environ",
         {
@@ -287,9 +313,9 @@ class SimulateCommandTest(TestCase):
         },
     )
     def test_simulate_command_with_theme_alias(
-        self, mock_telegram_service, mock_simulation_service
+        self, mock_groq_service, mock_telegram_service, mock_simulation_service
     ):
-        """Test that /simulate command accepts theme aliases (e.g., pecado -> ato_criminoso_pecado)."""
+        """Test that /simulate command uses LLM to map theme aliases (e.g., pecado -> ato_criminoso_pecado)."""
         # Setup mocks
         mock_telegram_instance = MagicMock()
         mock_telegram_service.return_value = mock_telegram_instance
@@ -297,6 +323,11 @@ class SimulateCommandTest(TestCase):
 
         mock_simulation_instance = MagicMock()
         mock_simulation_service.return_value = mock_simulation_instance
+
+        mock_groq_instance = MagicMock()
+        mock_groq_service.return_value = mock_groq_instance
+        # Mock LLM approximation - "pecado" maps to "ato_criminoso_pecado"
+        mock_groq_instance.approximate_theme.return_value = "ato_criminoso_pecado"
 
         # Create a fake profile
         fake_profile = Profile.objects.create(
@@ -317,7 +348,7 @@ class SimulateCommandTest(TestCase):
         fake_analysis = "Analysis"
         mock_simulation_instance.analyze_conversation_emotions.return_value = fake_analysis
 
-        # Send /simulate pecado command (alias should map to ato_criminoso_pecado)
+        # Send /simulate pecado command (should be approximated by LLM to ato_criminoso_pecado)
         payload = {
             "update_id": 1,
             "message": {
@@ -338,11 +369,92 @@ class SimulateCommandTest(TestCase):
         # Verify response
         self.assertEqual(response.status_code, 200)
 
+        # Verify LLM approximation was called
+        mock_groq_instance.approximate_theme.assert_called_once_with("pecado")
+
         # Verify create_simulation_profile was called with "ato_criminoso_pecado" (mapped from "pecado")
         mock_simulation_instance.create_simulation_profile.assert_called_once_with("ato_criminoso_pecado")
         
         # Verify generate_simulated_conversation was called with mapped theme
         mock_simulation_instance.generate_simulated_conversation.assert_called_once_with(
             fake_profile, 8, "ato_criminoso_pecado"
+        )
+
+    @patch("core.views.SimulationService")
+    @patch("core.views.TelegramService")
+    @patch("core.views.GroqService")
+    @patch.dict(
+        "os.environ",
+        {
+            "TELEGRAM_WEBHOOK_SECRET": "test-secret",
+            "GROQ_API_KEY": "test-groq-key",
+        },
+    )
+    def test_simulate_command_with_enfermidade_approximation(
+        self, mock_groq_service, mock_telegram_service, mock_simulation_service
+    ):
+        """Test that /simulate command uses LLM to approximate 'enfermidade' to 'doenca'."""
+        # Setup mocks
+        mock_telegram_instance = MagicMock()
+        mock_telegram_service.return_value = mock_telegram_instance
+        mock_telegram_instance.send_message.return_value = True
+
+        mock_simulation_instance = MagicMock()
+        mock_simulation_service.return_value = mock_simulation_instance
+
+        mock_groq_instance = MagicMock()
+        mock_groq_service.return_value = mock_groq_instance
+        # Mock LLM approximation - "enfermidade" maps to "doenca"
+        mock_groq_instance.approximate_theme.return_value = "doenca"
+
+        # Create a fake profile
+        fake_profile = Profile.objects.create(
+            name="Simulation_123456789", inferred_gender="unknown", detected_intent="doenca"
+        )
+        mock_simulation_instance.create_simulation_profile.return_value = fake_profile
+
+        # Create fake conversation
+        fake_conversation = [
+            {"role": "ROLE_A", "content": "Message 1"},
+            {"role": "ROLE_B", "content": "Message 2"},
+        ]
+        mock_simulation_instance.generate_simulated_conversation.return_value = (
+            fake_conversation
+        )
+
+        # Create fake analysis
+        fake_analysis = "Analysis"
+        mock_simulation_instance.analyze_conversation_emotions.return_value = fake_analysis
+
+        # Send /simulate enfermidade command (should be approximated by LLM to doenca)
+        payload = {
+            "update_id": 1,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 12345, "first_name": "Test"},
+                "chat": {"id": 12345, "type": "private"},
+                "text": "/simulate enfermidade",
+            },
+        }
+
+        response = self.client.post(
+            "/webhooks/telegram/",
+            data=payload,
+            content_type="application/json",
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-secret",
+        )
+
+        # Verify response
+        self.assertEqual(response.status_code, 200)
+
+        # Verify LLM approximation was called with "enfermidade"
+        mock_groq_instance.approximate_theme.assert_called_once_with("enfermidade")
+
+        # Verify create_simulation_profile was called with "doenca" (approximated from "enfermidade")
+        mock_simulation_instance.create_simulation_profile.assert_called_once_with("doenca")
+        
+        # Verify generate_simulated_conversation was called with mapped theme
+        mock_simulation_instance.generate_simulated_conversation.assert_called_once_with(
+            fake_profile, 8, "doenca"
         )
 

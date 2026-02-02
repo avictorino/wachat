@@ -242,6 +242,91 @@ IMPORTANTE:
             logger.error(f"Error detecting intent: {str(e)}", exc_info=True)
             return "outro"
 
+    def approximate_theme(self, user_input: str) -> str:
+        """
+        Approximate user input to one of the predefined theme categories using LLM.
+
+        This method takes a user's theme input (which may be in natural language,
+        synonyms, or variations) and maps it to the closest predefined theme category.
+
+        For example:
+        - "enfermidade" -> "doenca"
+        - "problemas de dinheiro" -> "problemas_financeiros"
+        - "pecado" -> "ato_criminoso_pecado"
+
+        Args:
+            user_input: The user's theme input (e.g., "enfermidade", "pecado")
+
+        Returns:
+            The approximated theme category as a string (one of the valid themes)
+        """
+        try:
+            # Sanitize input before sending to LLM
+            sanitized_input = sanitize_input(user_input)
+
+            system_prompt = """Você é um assistente que mapeia palavras-chave para categorias de temas predefinidas.
+
+Sua tarefa é identificar qual das seguintes categorias melhor representa a palavra ou frase fornecida:
+
+1. "problemas_financeiros" - Relacionado a dificuldades financeiras, dinheiro, desemprego, dívidas
+2. "distante_religiao" - Relacionado a distância da religião, espiritualidade, fé, afastamento espiritual
+3. "ato_criminoso_pecado" - Relacionado a atos errados, pecados, crimes, culpa, arrependimento
+4. "doenca" - Relacionado a doenças, saúde, enfermidades, mal-estar, problemas de saúde
+5. "ansiedade" - Relacionado a ansiedade, estresse, medo, nervosismo, preocupação
+6. "desabafar" - Relacionado a necessidade de conversar, desabafar, ser ouvido, solidão
+7. "redes_sociais" - Relacionado a redes sociais, curiosidade vinda das redes
+8. "outro" - Nenhuma das categorias acima se aplica claramente
+
+IMPORTANTE:
+- Seja flexível e considere sinônimos e variações
+- Palavras como "enfermidade", "mal", "doente" devem mapear para "doenca"
+- Palavras como "pecado", "erro", "culpa" devem mapear para "ato_criminoso_pecado"
+- Palavras como "dinheiro", "financeiro", "desemprego" devem mapear para "problemas_financeiros"
+- Palavras como "religião", "fé", "distante" devem mapear para "distante_religiao"
+- Palavras como "solidão", "conversar", "sozinho" devem mapear para "desabafar"
+- Responda APENAS com o identificador da categoria (ex: "doenca", "problemas_financeiros")
+- Não adicione explicações ou pontuação"""
+
+            user_prompt = f"Palavra ou frase: {sanitized_input}"
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.2,  # Low temperature for more deterministic classification
+                max_tokens=20,
+            )
+
+            theme = response.choices[0].message.content.strip().lower()
+
+            # Validate and normalize the response
+            valid_themes = [
+                "problemas_financeiros",
+                "distante_religiao",
+                "ato_criminoso_pecado",
+                "doenca",
+                "ansiedade",
+                "desabafar",
+                "redes_sociais",
+                "outro",
+            ]
+
+            if theme not in valid_themes:
+                logger.warning(
+                    f"Unexpected theme approximated: {theme}, defaulting to 'outro'"
+                )
+                theme = "outro"
+
+            logger.info(f"Theme approximated: '{user_input}' -> '{theme}'")
+            return theme
+
+        except Exception as e:
+            logger.error(f"Error approximating theme: {str(e)}", exc_info=True)
+            # Default to "outro" on error
+            return "outro"
+
     def generate_intent_response(
         self,
         user_message: str,
