@@ -20,7 +20,7 @@ class TelegramService:
         """Initialize Telegram service with bot token from environment."""
         self.bot_token = os.environ.get("TELEGRAM_BOT_TOKEN")
         if not self.bot_token:
-            logger.error("TELEGRAM_BOT_TOKEN environment variable not set")
+            logger.error("TELEGRAM_BOT_TOKEN environment variable is required")
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
         
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"

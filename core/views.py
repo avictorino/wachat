@@ -141,12 +141,15 @@ class TelegramWebhookView(View):
                 }
             )
             
+            # Track if we need to save the profile
+            needs_save = False
+            
             # Update profile if it already exists
             if not created:
                 profile.name = name
                 if phone_number:
                     profile.phone_number = phone_number
-                profile.save()
+                needs_save = True
                 logger.info(f"Updated existing profile for {telegram_user_id}")
             else:
                 logger.info(f"Created new profile for {telegram_user_id}")
@@ -159,8 +162,12 @@ class TelegramWebhookView(View):
             if not profile.inferred_gender:
                 inferred_gender = groq_service.infer_gender(name)
                 profile.inferred_gender = inferred_gender
-                profile.save()
+                needs_save = True
                 logger.info(f"Inferred gender for {name}: {inferred_gender}")
+            
+            # Save profile if needed (consolidate all updates into one save)
+            if needs_save:
+                profile.save()
             
             # Generate welcome message
             welcome_message = groq_service.generate_welcome_message(

@@ -22,7 +22,7 @@ class GroqService:
         """Initialize Groq client with API key from environment."""
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
-            logger.error("GROQ_API_KEY environment variable not set")
+            logger.error("GROQ_API_KEY environment variable is required")
             raise ValueError("GROQ_API_KEY environment variable is required")
         
         self.client = Groq(api_key=api_key)
