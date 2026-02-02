@@ -158,7 +158,32 @@ python manage.py test
 
 # Coletar arquivos estáticos
 python manage.py collectstatic
+
+# Simular conversa (útil para testar o bot)
+python manage.py simulate_conversation --turns 5 --domain spiritual
 ```
+
+## 🤖 Simulação de Conversas
+
+O projeto inclui um comando de gerenciamento para simular conversas realistas entre um usuário humano (simulado por IA) e o bot. Isso é útil para:
+
+- Testar o fluxo completo de conversação
+- Validar progressão do funil e gerenciamento de estado
+- Gerar dados de teste para desenvolvimento
+- Demonstrar capacidades conversacionais do bot
+
+```bash
+# Simulação básica com 5 turnos
+python manage.py simulate_conversation
+
+# Simulação personalizada
+python manage.py simulate_conversation --turns 10 --domain grief --name "Ana Costa"
+
+# Modo de teste (sem chamadas reais de API)
+python manage.py simulate_conversation --mock-telegram --turns 3
+```
+
+Para documentação completa, veja [docs/SIMULATE_CONVERSATION.md](docs/SIMULATE_CONVERSATION.md).
 
 ## 📝 Variáveis de Ambiente
 
