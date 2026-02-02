@@ -3,10 +3,6 @@ import logging
 
 from messaging.types import (
     IncomingMessage,
-    CHANNEL_WHATSAPP_FACEBOOK,
-    CHANNEL_FACEBOOK,
-    CHANNEL_TWILIO,
-    CHANNEL_TWILIO_WHATSAPP,
     CHANNEL_TELEGRAM,
 )
 
@@ -18,7 +14,7 @@ def get_provider_for_channel(channel: str):
     Get the appropriate provider instance for a given channel.
 
     Args:
-        channel: The channel type (whatsapp_facebook, telegram, etc.)
+        channel: The channel type (telegram)
 
     Returns:
         Provider instance for sending messages
@@ -26,16 +22,7 @@ def get_provider_for_channel(channel: str):
     Raises:
         ValueError: If channel is not supported or provider cannot be initialized
     """
-    if channel in (
-        CHANNEL_WHATSAPP_FACEBOOK,
-        CHANNEL_FACEBOOK,
-        CHANNEL_TWILIO,
-        CHANNEL_TWILIO_WHATSAPP,
-    ):
-        from service.whatsapp import FacebookWhatsAppProvider
-
-        return FacebookWhatsAppProvider.from_settings()
-    elif channel == CHANNEL_TELEGRAM:
+    if channel == CHANNEL_TELEGRAM:
         from service.telegram import TelegramProvider
 
         return TelegramProvider.from_settings()
@@ -45,7 +32,7 @@ def get_provider_for_channel(channel: str):
 
 def process_message_task(incoming_message: IncomingMessage) -> None:
     try:
-        from service.whatsapp import handle_incoming_message
+        from service.telegram import handle_incoming_message
 
         outgoing = handle_incoming_message(incoming_message)
         provider = get_provider_for_channel(outgoing.channel)

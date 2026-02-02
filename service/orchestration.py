@@ -89,7 +89,7 @@ def upsert_memory(
 # ============================================================================
 
 
-def is_whatsapp_window_open(conversation: Conversation) -> bool:
+def is_conversation_window_open(conversation: Conversation) -> bool:
     last_user_msg = conversation.context.get("last_user_message_at")
     if not last_user_msg:
         return False
@@ -104,18 +104,11 @@ def get_or_create_open_conversation(
     title: str = "",
 ) -> Conversation:
     """
-    Get or create an open conversation for a friend on a specific channel.
-    
-    Supports multiple channels:
-    - whatsapp_facebook
-    - telegram
-    - facebook
-    - twilio
-    - slack
+    Get or create an open conversation for a friend on Telegram.
     
     Args:
         friend: The VirtualFriend instance
-        channel: The channel type (whatsapp_facebook, telegram, etc.)
+        channel: The channel type (telegram)
         channel_user_id: The user ID on that channel
         title: Optional conversation title
         
@@ -134,7 +127,7 @@ def get_or_create_open_conversation(
     )
 
     if convo:
-        if not is_whatsapp_window_open(convo):
+        if not is_conversation_window_open(convo):
             convo.is_closed = True
             convo.save()
         else:
@@ -184,7 +177,7 @@ def chat_with_friend(
     Main conversation orchestration function.
     
     Handles conversation flow, memory management, and response generation
-    for all supported channels.
+    for Telegram.
     
     Args:
         friend: The VirtualFriend instance
@@ -195,12 +188,12 @@ def chat_with_friend(
     Returns:
         Tuple of (ChatResult, Conversation)
     """
-    from messaging.types import CHANNEL_WHATSAPP_FACEBOOK
+    from messaging.types import CHANNEL_TELEGRAM
     
     conversation = get_or_create_open_conversation(
         friend=friend,
-        channel=identity.get("channel", CHANNEL_WHATSAPP_FACEBOOK),
-        channel_user_id=identity.get("user_id", identity.get("wa_id")),
+        channel=identity.get("channel", CHANNEL_TELEGRAM),
+        channel_user_id=identity.get("user_id", ""),
     )
 
     user_msg = Message.objects.create(

@@ -43,10 +43,9 @@ heroku config:set ALLOWED_HOSTS="your-app-name.herokuapp.com"
 # Configure CSRF trusted origins (replace with your Heroku app domain)
 heroku config:set CSRF_TRUSTED_ORIGINS="https://your-app-name.herokuapp.com"
 
-# Facebook WhatsApp Business API (if needed)
-heroku config:set FACEBOOK_TOKEN="your-facebook-access-token"
-heroku config:set FACEBOOK_PHONE_NUMBER_ID="your-phone-number-id"
-heroku config:set FACEBOOK_WEBHOOK_VERIFICATION="your-webhook-verification-token"
+# Telegram Bot API
+heroku config:set TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+heroku config:set TELEGRAM_WEBHOOK_SECRET="your-webhook-secret"
 ```
 
 **Important**: Replace `your-app-name` with your actual Heroku app name.
@@ -199,9 +198,8 @@ heroku run python manage.py migrate
 | `ALLOWED_HOSTS` | Comma-separated list of allowed hosts | Yes | `your-app-name.herokuapp.com` |
 | `CSRF_TRUSTED_ORIGINS` | Comma-separated CSRF trusted origins | Yes | `https://your-app-name.herokuapp.com` |
 | `DATABASE_URL` | PostgreSQL connection URL | Auto-set | Heroku sets this automatically |
-| `FACEBOOK_TOKEN` | Facebook API token | Optional | `your-token` |
-| `FACEBOOK_PHONE_NUMBER_ID` | WhatsApp phone number ID | Optional | `your-phone-id` |
-| `FACEBOOK_WEBHOOK_VERIFICATION` | Webhook verification token | Optional | `your-verification-token` |
+| `TELEGRAM_BOT_TOKEN` | Telegram Bot API token | Yes | `your-telegram-token` |
+| `TELEGRAM_WEBHOOK_SECRET` | Telegram webhook secret | Yes | `your-webhook-secret` |
 
 ## Production Security
 

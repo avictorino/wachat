@@ -21,11 +21,11 @@
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         h1 {
-            color: #25D366;
+            color: #0088cc;
             margin-bottom: 10px;
         }
         h2 {
-            color: #128C7E;
+            color: #0088cc;
             margin-top: 20px;
             font-size: 1.2em;
         }
@@ -39,9 +39,9 @@
             display: block;
             margin-bottom: 8px;
             font-weight: bold;
-            color: #128C7E;
+            color: #0088cc;
         }
-        input[type="tel"] {
+        input[type="text"] {
             width: 100%;
             padding: 12px;
             border: 2px solid #ddd;
@@ -49,12 +49,12 @@
             font-size: 16px;
             box-sizing: border-box;
         }
-        input[type="tel"]:focus {
+        input[type="text"]:focus {
             outline: none;
-            border-color: #25D366;
+            border-color: #0088cc;
         }
         button {
-            background-color: #25D366;
+            background-color: #0088cc;
             color: white;
             padding: 12px 30px;
             border: none;
@@ -65,7 +65,7 @@
             margin-top: 10px;
         }
         button:hover {
-            background-color: #128C7E;
+            background-color: #006699;
         }
         .help-text {
             font-size: 0.9em;
@@ -73,8 +73,8 @@
             margin-top: 5px;
         }
         .info-box {
-            background-color: #e8f5e9;
-            border-left: 4px solid #25D366;
+            background-color: #e3f2fd;
+            border-left: 4px solid #0088cc;
             padding: 15px;
             margin: 20px 0;
         }
@@ -101,7 +101,7 @@
             margin: 20px 0;
         }
         a {
-            color: #25D366;
+            color: #0088cc;
             text-decoration: none;
         }
         a:hover {
@@ -116,7 +116,7 @@
     <div class="container">
         <h1>Solicitação de Exclusão de Dados</h1>
         
-        <p>Use este formulário para solicitar a exclusão dos seus dados do WaChat, conforme exigido pelas políticas da Meta (Facebook/WhatsApp).</p>
+        <p>Use este formulário para solicitar a exclusão dos seus dados do WaChat.</p>
         
         <div class="info-box">
             <strong>O que será excluído:</strong>
@@ -135,8 +135,8 @@
         {% if success %}
         <div class="success-message">
             <strong>✓ Solicitação Recebida</strong><br>
-            Se o número fornecido existir em nosso sistema, seus dados serão excluídos. 
-            Por motivos de segurança, não podemos confirmar se o número está registrado.
+            Se o ID fornecido existir em nosso sistema, seus dados serão excluídos. 
+            Por motivos de segurança, não podemos confirmar se o ID está registrado.
         </div>
         {% endif %}
         
@@ -158,19 +158,18 @@
             {% csrf_token %}
             
             <div class="form-group">
-                <label for="phone">Número de Telefone (WhatsApp)</label>
+                <label for="phone">ID do Usuário (Telegram)</label>
                 <input 
-                    type="tel" 
+                    type="text" 
                     id="phone" 
                     name="phone" 
-                    placeholder="+5511999999999" 
+                    placeholder="123456789" 
                     required
-                    pattern="\+?[0-9]{10,15}"
-                    title="Digite seu número no formato E.164 (ex: +5511999999999)"
+                    title="Digite seu ID de usuário do Telegram"
                 >
                 <div class="help-text">
-                    Digite seu número de telefone no formato internacional E.164.<br>
-                    Exemplo: <strong>+55 11 99999-9999</strong> ou <strong>+5511999999999</strong>
+                    Digite seu ID de usuário do Telegram.<br>
+                    Você pode obter isso usando bots como @userinfobot no Telegram.
                 </div>
             </div>
             
@@ -179,7 +178,7 @@
         
         <h2>Informações Adicionais</h2>
         <p>
-            Esta página atende aos requisitos da Meta para fornecer uma URL de instruções de exclusão de dados.
+            Esta página permite que você solicite a exclusão de seus dados.
             Para mais informações sobre como tratamos seus dados, consulte nossa
             <a href="{% url 'privacy_policy' %}">Política de Privacidade</a>.
         </p>

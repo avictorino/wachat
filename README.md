@@ -2,7 +2,7 @@
 
 ✨ O que você é
 
-Um espaço seguro de escuta espiritual, com reflexões cristãs e respostas personalizadas via chat, sem julgamento.
+Um espaço seguro de escuta espiritual, com reflexões cristãs e respostas personalizadas via Telegram, sem julgamento.
 
 Frase-guia interna
 
@@ -12,9 +12,7 @@ Frase-guia interna
 
 postgres hosted at: https://supabase.com/dashboard/project/
 
-My whatsapp app: https://developers.facebook.com/apps/
-
-WaChat é um projeto Django para aplicação de chat.
+WaChat é um projeto Django para aplicação de chat via Telegram.
 
 cloudflared tunnel --url http://localhost:9000
 
