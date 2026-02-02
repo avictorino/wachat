@@ -322,7 +322,7 @@ class TelegramWebhookView(View):
                 
                 if approximated_theme == "outro":
                     # Theme couldn't be clearly mapped
-                    error_msg = f"❌ Não consegui identificar o tema '{original_theme}'.\n\nExemplos de temas válidos:\n- doenca / enfermidade\n- ansiedade / medo\n- pecado / culpa\n- desabafar / solidao\n- financeiro / dinheiro\n- religiao / fé\n- redes_sociais\n\nTente usar uma palavra relacionada a esses temas."
+                    error_msg = f"❌ Não consegui identificar o tema '{original_theme}'.\n\nExemplos de temas válidos:\n- doenca / enfermidade\n- ansiedade / medo\n- pecado / culpa\n- desabafar / solidão\n- financeiro / dinheiro\n- religiao / fé\n- redes_sociais\n\nTente usar uma palavra relacionada a esses temas."
                     telegram_service.send_message(chat_id, error_msg)
                     logger.warning(f"Could not approximate theme: {original_theme}")
                     return JsonResponse({"status": "ok"}, status=200)
