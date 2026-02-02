@@ -97,7 +97,7 @@ class TelegramService:
 
             if not message_sent:
                 success = False
-                logger.error(f"Failed to send message {i+1}/{len(messages)}")
+                logger.error(f"Failed to send message {i + 1}/{len(messages)}")
 
             # Pause between messages (except after the last one)
             if i < len(messages) - 1 and message_sent:

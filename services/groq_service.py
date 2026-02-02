@@ -9,7 +9,6 @@ This module handles interactions with the Groq API for:
 
 import logging
 import os
-import re
 from typing import List, Optional
 
 from groq import Groq
