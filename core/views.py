@@ -228,7 +228,7 @@ class TelegramWebhookView(View):
             except Profile.DoesNotExist:
                 # User doesn't exist, nothing to reset
                 message = (
-                    "You don't have any data in our system yet. " "Use /start to begin."
+                    "You don't have any data in our system yet. Use /start to begin."
                 )
                 telegram_service.send_message(chat_id, message)
                 logger.info(f"Reset attempted for non-existent user: {sender_id}")
@@ -419,7 +419,7 @@ class TelegramWebhookView(View):
             Message.objects.create(profile=profile, role="user", content=message_text)
             logger.info(f"Persisted user message for profile {profile.id}")
 
-            # Initialize Groq service
+            # Initialize Groq service for intent detection and response generation
             groq_service = GroqService()
 
             # Detect intent if not already detected
