@@ -132,8 +132,12 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 # Read database URL from environment variable
 # Falls back to SQLite if DATABASE_URL is not set
-DATABASES = {}
-DATABASES["default"] = dj_database_url.config(conn_max_age=600)
+DATABASES = {
+    "default": dj_database_url.config(
+        conn_max_age=600,
+        default="sqlite:///db.sqlite3"
+    )
+}
 
 
 LOGGING = {
