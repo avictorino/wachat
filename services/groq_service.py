@@ -189,24 +189,52 @@ Crie sensação de presença humana genuína."""
 Sua tarefa é identificar qual das seguintes categorias melhor representa a preocupação ou motivo principal da pessoa:
 
 1. "problemas_financeiros" - Pessoa está com dificuldades financeiras, desemprego, dívidas
-2. "distante_religiao" - Pessoa sente distância da religião, espiritualidade, ou fé
+2. "distant religião" - Pessoa sente distância da religião, espiritualidade, ou fé
 3. "ato_criminoso_pecado" - Pessoa cometeu algo que considera errado, pecado, ou crime
-4. "doenca" - Pessoa ou familiar está doente, enfrentando problemas de saúde
+4. "doença" - Pessoa ou familiar está doente, enfrentando problemas de saúde
 5. "ansiedade" - Pessoa está ansiosa, estressada, com medo, ou preocupada
 6. "desabafar" - Pessoa só precisa conversar, desabafar, ser ouvida
-7. "redes_sociais" - Pessoa viu o número nas redes sociais e está curiosa
+7. "redes sociais" - Pessoa viu o número nas redes sociais e está curiosa
 8. "drogas" - Pessoa está lutando com uso de drogas, substâncias, dependência química
 9. "alcool" - Pessoa está lutando com uso de álcool, bebida, dependência alcoólica
 10. "sexo" - Pessoa está lutando com compulsão sexual, comportamento sexual compulsivo
 11. "cigarro" - Pessoa está lutando com cigarro, tabagismo, nicotina
 12. "outro" - Nenhuma das categorias acima se aplica claramente
+13.	“luto” – Pessoa perdeu alguém importante (morte de familiar, amigo, cônjuge)
+14.	“separação divorcio” – Término de relacionamento, divórcio ou crise conjugal
+15.	“solidão” – Pessoa se sente sozinha, sem apoio emocional ou social
+16.	“culpa vergonha” – Sentimento intenso de culpa, vergonha ou arrependimento
+17.	“sentido da vida” – Busca por propósito, significado ou direção para a vida
+18.	“medo do futuro” – Insegurança com o futuro, decisões importantes ou mudanças
+19.	“crise existencial” – Questionamentos profundos sobre existência, morte, fé ou Deus
+20.	“familia” – Conflitos familiares (pais, filhos, irmãos)
+21.	“filhos” – Dificuldades na criação dos filhos, culpa parental, medo de errar
+22.	“casamento” – Problemas conjugais, rotina, traição, esfriamento emocional
+23.	“trabalho” – Burnout, pressão profissional, conflitos no trabalho, falta de sentido na carreira
+24.	“depressão” – Tristeza persistente, desânimo, sensação de vazio
+25.	“perda material” – Perda de bens, falência, prejuízo financeiro relevante
+26.	“trauma” – Experiências traumáticas passadas (violência, abuso, acidentes)
+27.	“busca de perdao” – Desejo de perdão divino ou de perdoar alguém
+28.	“agradecimento” – Pessoa quer agradecer por algo que deu certo
+29.	“milagre intervencao” – Busca por ajuda sobrenatural, milagre ou intervenção divina
+30.	“rotina devocional” – Pessoa já é religiosa e busca oração, leitura ou reflexão diária
+31.	“curiosidade espiritual” – Interesse intelectual ou cultural sobre fé e espiritualidade
+32.	“conversao” – Interesse em se aproximar ou retornar à religião
+33.	“pressão social_familiar” – Influência de família, amigos ou comunidade religiosa
+34.	“valores morais” – Busca por orientação ética, certo e errado
+35.	“esperança” – Necessidade de esperança em um momento difícil
+36.	“medo da morte” – Medo de morrer ou de perder alguém
+37.	“agravamento_crise” – Vários problemas acumulados ao mesmo tempo
+38.	“orientacao decisao” – Busca por direção antes de uma decisão importante
+39.	“paz interior” – Desejo de calma, equilíbrio emocional e espiritual
+40.	“outro” – Motivo não identificado ou combinação complexa de fatores
 
 IMPORTANTE:
 - Seja flexível - permita variações e formas diferentes de expressar cada intenção
 - Considere o contexto emocional da mensagem
 - Se houver múltiplas intenções, escolha a mais proeminente
 - ATENÇÃO: Trate drogas, alcool, sexo, cigarro como condições reais e sérias, não como escolhas ou fraquezas
-- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas_financeiros", "drogas")
+- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas financeiros", "drogas")
 - Não adicione explicações ou pontuação"""
 
             user_prompt = f"Mensagem do usuário: {user_message}"
@@ -222,28 +250,6 @@ IMPORTANTE:
             )
 
             intent = response.choices[0].message.content.strip().lower()
-
-            # Validate and normalize the response
-            valid_intents = [
-                "problemas_financeiros",
-                "distante_religiao",
-                "ato_criminoso_pecado",
-                "doenca",
-                "ansiedade",
-                "desabafar",
-                "redes_sociais",
-                "drogas",  # Addiction: drug use/dependency
-                "alcool",  # Addiction: alcohol use/dependency
-                "sexo",  # Addiction: sexual compulsion
-                "cigarro",  # Addiction: smoking/nicotine
-                "outro",
-            ]
-
-            if intent not in valid_intents:
-                logger.warning(
-                    f"Unexpected intent detected: {intent}, defaulting to 'outro'"
-                )
-                intent = "outro"
 
             logger.info(f"Intent detected: {intent}")
             return intent
