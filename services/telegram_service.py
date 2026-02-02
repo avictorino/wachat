@@ -22,39 +22,33 @@ class TelegramService:
         if not self.bot_token:
             logger.error("TELEGRAM_BOT_TOKEN environment variable is required")
             raise ValueError("TELEGRAM_BOT_TOKEN environment variable is required")
-        
+
         self.base_url = f"https://api.telegram.org/bot{self.bot_token}"
 
     def send_message(
-        self, 
-        chat_id: str, 
-        text: str,
-        parse_mode: Optional[str] = None
+        self, chat_id: str, text: str, parse_mode: Optional[str] = None
     ) -> bool:
         """
         Send a text message to a Telegram chat.
-        
+
         Args:
             chat_id: The Telegram chat ID to send the message to
             text: The message text to send
             parse_mode: Optional parse mode (e.g., 'Markdown', 'HTML')
-            
+
         Returns:
             True if the message was sent successfully, False otherwise
         """
         try:
             url = f"{self.base_url}/sendMessage"
-            
-            payload = {
-                "chat_id": chat_id,
-                "text": text
-            }
-            
+
+            payload = {"chat_id": chat_id, "text": text}
+
             if parse_mode:
                 payload["parse_mode"] = parse_mode
-            
+
             response = requests.post(url, json=payload, timeout=10)
-            
+
             if response.status_code == 200:
                 logger.info(f"Message sent successfully to chat {chat_id}")
                 return True
@@ -64,7 +58,7 @@ class TelegramService:
                     f"Status: {response.status_code}, Response: {response.text}"
                 )
                 return False
-                
+
         except requests.exceptions.RequestException as e:
             logger.error(f"Error sending message to Telegram: {str(e)}", exc_info=True)
             return False

@@ -92,13 +92,13 @@ class TelegramWebhookView(View):
 
         # TODO: Handle regular messages
         print(message_text)
-        
+
         return JsonResponse({"status": "ok"}, status=200)
 
     def _handle_start_command(self, sender: dict, chat_id: str):
         """
         Handle the /start command for first-time onboarding.
-        
+
         This method:
         1. Extracts user data from Telegram
         2. Creates or retrieves user Profile
@@ -106,11 +106,11 @@ class TelegramWebhookView(View):
         4. Generates personalized welcome message
         5. Persists the welcome message
         6. Sends the message to the user
-        
+
         Args:
             sender: Telegram sender data (from webhook payload)
             chat_id: Telegram chat ID
-            
+
         Returns:
             JsonResponse indicating success
         """
@@ -120,30 +120,27 @@ class TelegramWebhookView(View):
             first_name = sender.get("first_name", "")
             last_name = sender.get("last_name", "")
             phone_number = sender.get("phone_number")  # May not be available
-            
+
             # Construct full name
             name = first_name
             if last_name:
                 name = f"{first_name} {last_name}"
-            
+
             if not telegram_user_id or not name:
                 logger.error("Missing required user data from Telegram")
                 return JsonResponse({"status": "ok"}, status=200)
-            
+
             logger.info(f"Handling /start for user: {name} ({telegram_user_id})")
-            
+
             # Create or get user profile
             profile, created = Profile.objects.get_or_create(
                 telegram_user_id=telegram_user_id,
-                defaults={
-                    "name": name,
-                    "phone_number": phone_number
-                }
+                defaults={"name": name, "phone_number": phone_number},
             )
-            
+
             # Track if we need to save the profile
             needs_save = False
-            
+
             # Update profile if it already exists
             if not created:
                 profile.name = name
@@ -153,46 +150,43 @@ class TelegramWebhookView(View):
                 logger.info(f"Updated existing profile for {telegram_user_id}")
             else:
                 logger.info(f"Created new profile for {telegram_user_id}")
-            
+
             # Initialize services
             groq_service = GroqService()
             telegram_service = TelegramService()
-            
+
             # Infer gender if not already done
             if not profile.inferred_gender:
                 inferred_gender = groq_service.infer_gender(name)
                 profile.inferred_gender = inferred_gender
                 needs_save = True
                 logger.info(f"Inferred gender for {name}: {inferred_gender}")
-            
+
             # Save profile if needed (consolidate all updates into one save)
             if needs_save:
                 profile.save()
-            
+
             # Generate welcome message
             welcome_message = groq_service.generate_welcome_message(
-                name=name,
-                inferred_gender=profile.inferred_gender
+                name=name, inferred_gender=profile.inferred_gender
             )
-            
+
             # Persist the welcome message
             Message.objects.create(
-                profile=profile,
-                role="assistant",
-                content=welcome_message
+                profile=profile, role="assistant", content=welcome_message
             )
             logger.info(f"Persisted welcome message for profile {profile.id}")
-            
+
             # Send the message to Telegram
             success = telegram_service.send_message(chat_id, welcome_message)
-            
+
             if success:
                 logger.info(f"Welcome message sent to chat {chat_id}")
             else:
                 logger.error(f"Failed to send welcome message to chat {chat_id}")
-            
+
             return JsonResponse({"status": "ok"}, status=200)
-            
+
         except Exception as e:
             logger.error(f"Error handling /start command: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
