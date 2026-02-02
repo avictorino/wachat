@@ -173,7 +173,10 @@ class TelegramWebhookView(View):
 
             # Persist the welcome message
             Message.objects.create(
-                profile=profile, role="assistant", content=welcome_message
+                profile=profile,
+                role="assistant",
+                content=welcome_message,
+                channel="telegram",
             )
             logger.info(f"Persisted welcome message for profile {profile.id}")
 

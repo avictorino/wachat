@@ -3,11 +3,33 @@ from django.contrib import admin
 from core.models import Message, Profile
 
 
+class MessageInline(admin.TabularInline):
+    """
+    Inline admin for displaying messages within Profile admin.
+
+    Messages are read-only in the admin because they should only be created
+    through the application logic (webhook handlers, conversation flows, etc.)
+    to maintain data integrity and proper channel tracking.
+    """
+
+    model = Message
+    extra = 0
+    readonly_fields = ["role", "content", "channel", "created_at"]
+    can_delete = False
+    fields = ["role", "channel", "content", "created_at"]
+    ordering = ["-created_at"]
+
+    def has_add_permission(self, request, obj=None):
+        """Disable adding messages directly from admin - they should be created via app logic."""
+        return False
+
+
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
     """Admin interface for Profile model."""
 
     list_display = [
+        "id",
         "telegram_user_id",
         "name",
         "phone_number",
@@ -18,20 +40,4 @@ class ProfileAdmin(admin.ModelAdmin):
     search_fields = ["telegram_user_id", "name", "phone_number"]
     readonly_fields = ["created_at", "updated_at"]
     ordering = ["-created_at"]
-
-
-@admin.register(Message)
-class MessageAdmin(admin.ModelAdmin):
-    """Admin interface for Message model."""
-
-    list_display = ["id", "profile", "role", "content_preview", "created_at"]
-    list_filter = ["role", "created_at"]
-    search_fields = ["content", "profile__name", "profile__telegram_user_id"]
-    readonly_fields = ["created_at"]
-    ordering = ["-created_at"]
-
-    def content_preview(self, obj):
-        """Show a preview of the message content."""
-        return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
-
-    content_preview.short_description = "Content"
+    inlines = [MessageInline]
