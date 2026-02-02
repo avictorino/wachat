@@ -233,23 +233,29 @@ Inicia uma nova conversa com o bot. Cria um perfil de usuário, infere gênero a
 ### `/reset`
 Inicia o processo de exclusão de dados do usuário. Solicita confirmação antes de deletar permanentemente o perfil, conversas e mensagens. O usuário deve responder com "CONFIRM" dentro de 5 minutos.
 
-### `/simulate`
+### `/simulate [número]`
 **Novo!** Executa uma simulação completa de conversa entre dois papéis de IA:
 - 🧑‍💬 **Buscador**: Uma pessoa em busca espiritual, vulnerável e questionadora
 - 🌿 **Ouvinte**: Um assistente espiritual empático e não-julgador
 
+**Uso:**
+- `/simulate` - Gera 8 mensagens (padrão)
+- `/simulate 6` - Gera 6 mensagens (mínimo)
+- `/simulate 10` - Gera 10 mensagens (máximo)
+
 O comando gera 6-10 mensagens alternadas, persiste tudo no banco de dados, e retorna:
 1. Cada mensagem da conversa simulada com identificação de papel
-2. Uma análise emocional final da conversa, incluindo:
-   - Tom emocional predominante
-   - Emoções dominantes detectadas
-   - Evolução emocional ao longo da conversa
-   - Qualidade geral da interação
+2. Uma análise crítica final da conversa, incluindo:
+   - O que funcionou bem
+   - Pontos de possível erro de interpretação
+   - Problemas de verbosidade e extensão das respostas
+   - O que poderia ter sido feito diferente
+   - Ajustes recomendados para próximas interações
 
 **Útil para:**
 - Demonstrar as capacidades do bot
 - Testar o fluxo conversacional
-- Visualizar análise emocional em ação
+- Visualizar análise crítica em ação
 - Gerar exemplos de conversas
 
 ## 📝 Variáveis de Ambiente
