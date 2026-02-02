@@ -41,9 +41,7 @@ class HumanSimulator:
             "topics_mentioned": [],
         }
 
-    def generate_message(
-        self, conversation_history: List[dict], turn_number: int
-    ) -> str:
+    def generate_message(self, conversation_history: List[dict], turn_number: int) -> str:
         """
         Generate a realistic human message based on conversation context.
 
@@ -83,9 +81,7 @@ class HumanSimulator:
             return message
 
         except Exception as e:
-            logger.error(
-                f"Error generating simulated human message: {str(e)}", exc_info=True
-            )
+            logger.error(f"Error generating simulated human message: {str(e)}", exc_info=True)
             # Fallback to a basic message
             return self._get_fallback_message(turn_number)
 
@@ -93,7 +89,7 @@ class HumanSimulator:
         """Build the system prompt for the AI."""
         emotional_state = self.conversation_state["emotional_state"]
 
-        base_prompt = f"""Você está simulando uma pessoa brasileira real chamada {self.name} 
+        base_prompt = f"""Você está simulando uma pessoa brasileira real chamada {self.name}
 que está em busca de conforto espiritual e emocional. Esta pessoa:
 
 - Escreve mensagens CURTAS (1-3 frases no máximo)
@@ -116,17 +112,13 @@ Estado emocional atual: {emotional_state}
         elif emotional_state == "vulnerable":
             base_prompt += "\n- Está mais aberto e vulnerável, compartilhando mais profundamente"
         elif emotional_state == "reflective":
-            base_prompt += (
-                "\n- Está refletindo sobre as conversas anteriores e processando"
-            )
+            base_prompt += "\n- Está refletindo sobre as conversas anteriores e processando"
 
         base_prompt += "\n\nResponda APENAS com a mensagem que esta pessoa enviaria. Não adicione explicações, aspas ou contexto."
 
         return base_prompt
 
-    def _build_user_prompt(
-        self, conversation_history: List[dict], turn_number: int
-    ) -> str:
+    def _build_user_prompt(self, conversation_history: List[dict], turn_number: int) -> str:
         """Build the user prompt with conversation context."""
         if turn_number == 1:
             # First message - initiate conversation

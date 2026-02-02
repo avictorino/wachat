@@ -80,7 +80,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"\n{'='*70}\nStarting Conversation Simulation\n{'='*70}"
+                f"\n{'=' * 70}\nStarting Conversation Simulation\n{'=' * 70}"
             )
         )
         self.stdout.write(f"User: {user_name}")
@@ -104,26 +104,18 @@ class Command(BaseCommand):
                     # Mock successful Telegram API responses
                     mock_post.return_value.status_code = 200
                     mock_post.return_value.json.return_value = {"ok": True}
-                    self._run_simulation(
-                        user_name, domain, turns, delay
-                    )
+                    self._run_simulation(user_name, domain, turns, delay)
             else:
                 # Run without mocking (real Telegram API)
                 self._run_simulation(user_name, domain, turns, delay)
 
         except KeyboardInterrupt:
-            self.stdout.write(
-                self.style.WARNING("\n\n⚠️  Simulation interrupted by user")
-            )
+            self.stdout.write(self.style.WARNING("\n\n⚠️  Simulation interrupted by user"))
         except Exception as e:
-            self.stdout.write(
-                self.style.ERROR(f"\n\n❌ Simulation failed: {str(e)}")
-            )
+            self.stdout.write(self.style.ERROR(f"\n\n❌ Simulation failed: {str(e)}"))
             logger.error(f"Simulation error: {str(e)}", exc_info=True)
             raise
 
-    def _run_simulation(self, user_name: str, domain: str, turns: int, delay: float):
-        """Run the actual simulation logic."""
     def _run_simulation(self, user_name: str, domain: str, turns: int, delay: float):
         """Run the actual simulation logic."""
         # Validate environment
@@ -138,12 +130,8 @@ class Command(BaseCommand):
 
         # Start with /start command to initialize the profile properly
         # This will create the profile through the webhook
-        self.stdout.write(
-            self.style.WARNING(f"\n{'-'*70}\nTurn 0: /start command\n{'-'*70}")
-        )
-        self._send_webhook_message(
-            client, simulated_user_id, chat_id, "/start", user_name
-        )
+        self.stdout.write(self.style.WARNING(f"\n{'-' * 70}\nTurn 0: /start command\n{'-' * 70}"))
+        self._send_webhook_message(client, simulated_user_id, chat_id, "/start", user_name)
 
         # Brief pause to let initial processing complete
         time.sleep(delay)
@@ -151,54 +139,36 @@ class Command(BaseCommand):
         # Get the created profile
         profile = Profile.objects.get(telegram_user_id=simulated_user_id)
         self.stdout.write(
-            self.style.SUCCESS(
-                f"✓ Profile created via webhook: {profile.name} (ID: {profile.id})"
-            )
+            self.style.SUCCESS("✓ Profile created via webhook: {profile.name} (ID: {profile.id})")
         )
 
         # Initialize human simulator
         api_key = os.environ.get("GROQ_API_KEY")
-        human_simulator = HumanSimulator(
-            api_key=api_key, name=user_name, domain=domain
-        )
+        human_simulator = HumanSimulator(api_key=api_key, name=user_name, domain=domain)
         self.stdout.write(self.style.SUCCESS("✓ Initialized AI human simulator"))
 
         # Get and display the welcome message
-        welcome_msg = Message.objects.filter(
-            profile=profile, role="assistant"
-        ).first()
+        welcome_msg = Message.objects.filter(profile=profile, role="assistant").first()
         if welcome_msg:
-            self.stdout.write(
-                self.style.SUCCESS(f"🤖 Bot: {welcome_msg.content}\n")
-            )
+            self.stdout.write(self.style.SUCCESS(f"🤖 Bot: {welcome_msg.content}\n"))
         else:
-            self.stdout.write(
-                self.style.WARNING("⚠️  No welcome message generated")
-            )
+            self.stdout.write(self.style.WARNING("⚠️  No welcome message generated"))
 
         # Run conversation turns
         for turn in range(1, turns + 1):
-            self.stdout.write(
-                self.style.WARNING(
-                    f"\n{'-'*70}\nTurn {turn} of {turns}\n{'-'*70}"
-                )
-            )
+            self.stdout.write(self.style.WARNING(f"\n{'-' * 70}\nTurn {turn} of {turns}\n{'-' * 70}"))
 
             # Get conversation history for context
             conversation_history = self._get_conversation_history(profile)
 
             # Generate human message using AI
             self.stdout.write("🤔 Generating human message...")
-            human_message = human_simulator.generate_message(
-                conversation_history, turn
-            )
+            human_message = human_simulator.generate_message(conversation_history, turn)
             self.stdout.write(self.style.SUCCESS(f"👤 Human: {human_message}"))
 
             # Send message through webhook
             time.sleep(delay * 0.5)  # Brief pause before sending
-            self._send_webhook_message(
-                client, simulated_user_id, chat_id, human_message, user_name
-            )
+            self._send_webhook_message(client, simulated_user_id, chat_id, human_message, user_name)
 
             # Wait for processing
             time.sleep(delay)
@@ -207,13 +177,9 @@ class Command(BaseCommand):
             bot_responses = self._get_latest_bot_responses(profile)
             if bot_responses:
                 for response in bot_responses:
-                    self.stdout.write(
-                        self.style.SUCCESS(f"🤖 Bot: {response.content}")
-                    )
+                    self.stdout.write(self.style.SUCCESS(f"🤖 Bot: {response.content}"))
             else:
-                self.stdout.write(
-                    self.style.WARNING("⚠️  No bot response received")
-                )
+                self.stdout.write(self.style.WARNING("⚠️  No bot response received"))
 
         # Show summary
         self._show_simulation_summary(profile, turns)
@@ -224,15 +190,11 @@ class Command(BaseCommand):
         missing = [var for var in required_vars if not os.environ.get(var)]
 
         if missing:
-            raise ValueError(
-                f"Missing required environment variables: {', '.join(missing)}"
-            )
+            raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
 
         # Check for GROQ_API_KEY but allow mocking
         if not os.environ.get("GROQ_API_KEY"):
-            logger.warning(
-                "GROQ_API_KEY not set - human message generation may use fallbacks"
-            )
+            logger.warning("GROQ_API_KEY not set - human message generation may use fallbacks")
 
     def _generate_random_name(self) -> str:
         """Generate a random Brazilian name for the simulated user."""
@@ -322,9 +284,7 @@ class Command(BaseCommand):
         )
 
         if response.status_code != 200:
-            logger.warning(
-                f"Webhook returned status {response.status_code}: {response.content}"
-            )
+            logger.warning(f"Webhook returned status {response.status_code}: {response.content}")
 
     def _get_conversation_history(self, profile: Profile) -> List[dict]:
         """Get conversation history for the profile."""
@@ -342,9 +302,7 @@ class Command(BaseCommand):
         # Get the last few assistant messages
         # (in case of multiple responses in one turn)
         last_user_msg = (
-            Message.objects.filter(profile=profile, role="user")
-            .order_by("-created_at")
-            .first()
+            Message.objects.filter(profile=profile, role="user").order_by("-created_at").first()
         )
 
         if not last_user_msg:
@@ -361,11 +319,7 @@ class Command(BaseCommand):
 
     def _show_simulation_summary(self, profile: Profile, expected_turns: int):
         """Display a summary of the simulation."""
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"\n{'='*70}\nSimulation Complete\n{'='*70}"
-            )
-        )
+        self.stdout.write(self.style.SUCCESS(f"\n{'=' * 70}\nSimulation Complete\n{'=' * 70}"))
 
         # Count messages
         total_messages = Message.objects.filter(profile=profile).count()
@@ -383,21 +337,15 @@ class Command(BaseCommand):
         self.stdout.write(f"  - User: {user_messages}")
         self.stdout.write(f"  - Bot: {bot_messages}")
 
+        self.stdout.write(self.style.SUCCESS("\n✓ All messages persisted in database"))
         self.stdout.write(
-            self.style.SUCCESS(
-                f"\n✓ All messages persisted in database"
-            )
-        )
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"✓ All interactions went through the real webhook/view pipeline"
-            )
+            self.style.SUCCESS("✓ All interactions went through the real webhook/view pipeline")
         )
 
         # Show where to find the data
-        self.stdout.write(f"\nTo review the conversation:")
+        self.stdout.write("\nTo review the conversation:")
         self.stdout.write(
-            f"  python manage.py shell -c \"from core.models import Profile, Message; "
+            f'  python manage.py shell -c "from core.models import Profile, Message; '
             f"p = Profile.objects.get(id={profile.id}); "
             f'[print(f\\"{{m.role}}: {{m.content}}\\") for m in p.messages.all()]"'
         )
