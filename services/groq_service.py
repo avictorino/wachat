@@ -284,7 +284,9 @@ Tom: Acolhedor, sem cobrança.""",
 Abordagem: Escute sem julgar. Reconheça o peso sem rotular. NÃO mencione punição ou pecado.
 Tom: Respeitoso, não julgador.""",
                 "doenca": """A pessoa ou alguém próximo está doente.
-Abordagem: Reconheça fragilidade sem promessas. Presença importa. Se a pessoa pede conforto, ofereça presença espiritual gentil. NÃO diga "vai ficar tudo bem".
+Abordagem: Reconheça fragilidade sem promessas. Presença importa. 
+Se a pessoa pede conforto, ofereça presença espiritual gentil. 
+NÃO diga "vai ficar tudo bem".
 Tom: Calmo, presente, consolador quando pedido.""",
                 "ansiedade": """A pessoa está ansiosa, estressada, ou preocupada.
 Abordagem: Valide como real. Espaço para respirar. NÃO minimize ou ofereça solução rápida.
@@ -425,7 +427,7 @@ TOM GERAL:
 FORMATO DE RESPOSTA:
 Para múltiplas mensagens curtas:
 - Separe com "|||"
-- Exemplo: "Entendo.|||Você não está sozinho nessa caminhada."
+- Exemplo: "Entendo.|||Há uma força que te sustenta."
 - Máximo 2-3 mensagens
 
 Para uma mensagem:
@@ -659,7 +661,7 @@ TOM GERAL:
 FORMATO DE RESPOSTA:
 Para múltiplas mensagens curtas (RECOMENDADO):
 - Separe com "|||"
-- Exemplo: "Entendo.|||Você não está sozinho nessa caminhada."
+- Exemplo: "Entendo.|||No meio disso tudo, tem algo que te ampara."
 - Máximo 2-3 mensagens
 
 Para uma mensagem:
