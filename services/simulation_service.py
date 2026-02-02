@@ -16,6 +16,10 @@ from services.groq_service import GroqService
 
 logger = logging.getLogger(__name__)
 
+# Role labels for analysis output
+ROLE_LABEL_SEEKER = "Buscador"  # Portuguese for "Seeker"
+ROLE_LABEL_LISTENER = "Ouvinte"  # Portuguese for "Listener"
+
 
 class SimulationService:
     """
@@ -300,6 +304,9 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
         """
         Perform critical analysis of a conversation.
 
+        Note: Method name retained for API compatibility. This method now performs
+        critical analysis of conversational quality, not emotional analysis.
+
         This method analyzes the conversation for interpretation errors, missed opportunities,
         pacing issues, and over-assumptions. It provides a reflective, analytical review
         of conversational quality rather than an emotional recap.
@@ -314,7 +321,7 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             # Build transcript for analysis
             transcript_text = ""
             for msg in conversation:
-                role_label = "Buscador" if msg["role"] == "ROLE_A" else "Ouvinte"
+                role_label = ROLE_LABEL_SEEKER if msg["role"] == "ROLE_A" else ROLE_LABEL_LISTENER
                 transcript_text += f"{role_label}: {msg['content']}\n\n"
 
             system_prompt = """Você é um analista crítico especializado em qualidade conversacional entre humanos e sistemas de IA.
