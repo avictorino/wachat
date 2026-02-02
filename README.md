@@ -159,13 +159,20 @@ python manage.py test
 # Coletar arquivos estáticos
 python manage.py collectstatic
 
-# Simular conversa (útil para testar o bot)
+# Simular conversa realista entre humano e bot
 python manage.py simulate_conversation --turns 5 --domain spiritual
+
+# Simular conversa entre dois agentes de IA (buscador e ouvinte)
+python manage.py simulate --num-messages 8
 ```
 
 ## 🤖 Simulação de Conversas
 
-O projeto inclui um comando de gerenciamento para simular conversas realistas entre um usuário humano (simulado por IA) e o bot. Isso é útil para:
+O projeto inclui dois comandos de gerenciamento para simular conversas:
+
+### `simulate_conversation` - Simulação Realista com Humano
+
+Simula uma conversa realista entre um usuário humano (simulado por IA) e o bot. Isso é útil para:
 
 - Testar o fluxo completo de conversação
 - Validar progressão do funil e gerenciamento de estado
@@ -184,6 +191,37 @@ python manage.py simulate_conversation --mock-telegram --turns 3
 ```
 
 Para documentação completa, veja [docs/SIMULATE_CONVERSATION.md](docs/SIMULATE_CONVERSATION.md).
+
+### `simulate` - Simulação entre Dois Agentes de IA
+
+Simula uma conversa entre dois agentes de IA (buscador e ouvinte) e fornece análise crítica. Útil para:
+
+- Testar a qualidade do diálogo do bot
+- Avaliar a empatia e resposta do ouvinte
+- Analisar verbosidade e interpretação das respostas
+- Gerar exemplos de conversas para treinamento
+
+```bash
+# Simulação básica com 8 mensagens
+python manage.py simulate
+
+# Simulação com número personalizado de mensagens (6-10)
+python manage.py simulate --num-messages 10
+
+# Modo silencioso (apenas a conversa e análise)
+python manage.py simulate --quiet
+```
+
+O comando gera uma conversa alternada entre:
+- 🧑‍💬 **Buscador** (ROLE_A): pessoa em busca espiritual, vulnerável e cautelosa
+- 🌿 **Ouvinte** (ROLE_B): assistente empático e não-julgador
+
+Ao final, exibe uma análise crítica em 5 seções:
+1. O que funcionou bem
+2. Pontos de possível erro de interpretação
+3. Problemas de verbosidade e extensão das respostas
+4. O que poderia ter sido feito diferente
+5. Ajustes recomendados para próximas interações
 
 ## 💬 Comandos do Telegram Bot
 
