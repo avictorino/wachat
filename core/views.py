@@ -107,7 +107,7 @@ class TelegramWebhookView(View):
             if len(parts) > 1:
                 try:
                     num_messages = int(parts[1])
-                except (ValueError, IndexError):
+                except ValueError:
                     pass  # Will use default
             return self._handle_simulate_command(chat_id, num_messages)
 

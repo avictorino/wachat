@@ -243,7 +243,7 @@ Inicia o processo de exclusão de dados do usuário. Solicita confirmação ante
 - `/simulate 6` - Gera 6 mensagens (mínimo)
 - `/simulate 10` - Gera 10 mensagens (máximo)
 
-O comando gera 6-10 mensagens alternadas, persiste tudo no banco de dados, e retorna:
+O comando gera o número especificado de mensagens alternadas (6-10, padrão 8), persiste tudo no banco de dados, e retorna:
 1. Cada mensagem da conversa simulada com identificação de papel
 2. Uma análise crítica final da conversa, incluindo:
    - O que funcionou bem
