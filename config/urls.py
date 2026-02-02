@@ -20,19 +20,11 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from core.views import (
-    TelegramWebhookView,
-    data_deletion_view,
-    privacy_policy_view,
-    terms_of_service_view,
-)
+from core.views import TelegramWebhookView
 
 urlpatterns = [
     path("webhooks/telegram/", TelegramWebhookView.as_view()),
     path("admin/", admin.site.urls),
-    path("privacidade/", privacy_policy_view, name="privacy_policy"),
-    path("termos/", terms_of_service_view, name="terms_of_service"),
-    path("data-deletion/", data_deletion_view, name="data_deletion"),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
