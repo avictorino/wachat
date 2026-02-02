@@ -13,6 +13,7 @@ class Profile(models.Model):
         max_length=100,
         blank=True,
         null=True,
+        unique=True,  # Keep unique constraint when not null
         db_index=True,
         help_text="Telegram user ID (unique identifier from Telegram)",
     )

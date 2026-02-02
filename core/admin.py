@@ -4,7 +4,13 @@ from core.models import Message, Profile
 
 
 class MessageInline(admin.TabularInline):
-    """Inline admin for displaying messages within Profile admin."""
+    """
+    Inline admin for displaying messages within Profile admin.
+
+    Messages are read-only in the admin because they should only be created
+    through the application logic (webhook handlers, conversation flows, etc.)
+    to maintain data integrity and proper channel tracking.
+    """
 
     model = Message
     extra = 0
@@ -14,7 +20,7 @@ class MessageInline(admin.TabularInline):
     ordering = ["-created_at"]
 
     def has_add_permission(self, request, obj=None):
-        """Disable adding messages directly from inline."""
+        """Disable adding messages directly from admin - they should be created via app logic."""
         return False
 
 
