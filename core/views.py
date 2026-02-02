@@ -247,7 +247,8 @@ class TelegramWebhookView(View):
             telegram_service = TelegramService()
 
             # Detect intent if not already detected
-            # We only detect intent on the first message after welcome (or first message overall)
+            # We only detect intent on the first user message (when there are 2 messages total: welcome + first user message)
+            # or on the very first message if user didn't start with /start
             message_count = Message.objects.filter(profile=profile).count()
 
             if not profile.detected_intent and message_count <= 2:
