@@ -49,7 +49,7 @@ class GroqService:
         try:
             # Sanitize input before sending to LLM
             sanitized_name = sanitize_input(name)
-            
+
             system_prompt = """Você é um assistente que analisa nomes brasileiros.
 Sua tarefa é inferir o gênero mais provável baseado APENAS no nome fornecido.
 Responda SOMENTE com uma das três palavras: male, female, ou unknown.
@@ -105,7 +105,7 @@ Responda apenas com a palavra, sem explicações."""
         try:
             # Sanitize input before sending to LLM
             sanitized_name = sanitize_input(name)
-            
+
             system_prompt = """Você é uma presença espiritual acolhedora e reflexiva.
 
 Sua função é criar uma mensagem de boas-vindas para alguém que está chegando pela primeira vez.
@@ -139,9 +139,7 @@ A mensagem deve ter 3-4 frases, ser genuína e criar uma sensação de presença
             if inferred_gender and inferred_gender != "unknown":
                 gender_context = f"\nGênero inferido (use isso APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
 
-            user_prompt = (
-                f"Crie uma mensagem de boas-vindas para: {sanitized_name}{gender_context}"
-            )
+            user_prompt = f"Crie uma mensagem de boas-vindas para: {sanitized_name}{gender_context}"
 
             response = self.client.chat.completions.create(
                 model=self.model,

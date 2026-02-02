@@ -36,7 +36,7 @@ class InputSanitizerTest(TestCase):
             "Quero conversar sobre fé",
             "O que significa amor ao próximo?",
         ]
-        
+
         for text in clean_texts:
             result = self.sanitizer.sanitize(text)
             self.assertEqual(result, text, f"Clean text was modified: {text}")
@@ -49,7 +49,7 @@ class InputSanitizerTest(TestCase):
             ("Vi pornografia ontem", "Vi [tema sensível] ontem"),
             ("Fui vítima de abuso sexual", "Fui vítima de [tema sensível]"),
         ]
-        
+
         for input_text, expected_output in test_cases:
             result = self.sanitizer.sanitize(input_text)
             self.assertIn("[tema sensível]", result)
@@ -63,7 +63,7 @@ class InputSanitizerTest(TestCase):
             ("Tive pensamentos suicidas", "Tive pensamentos [tema sensível]"),
             ("Meu pai faleceu", "Meu pai [tema sensível]"),
         ]
-        
+
         for input_text, expected_output in test_cases:
             result = self.sanitizer.sanitize(input_text)
             self.assertIn("[tema sensível]", result)
@@ -77,7 +77,7 @@ class InputSanitizerTest(TestCase):
             ("Há muito racismo no mundo", "Há muito [tema sensível] no mundo"),
             ("Terrorismo é terrível", "[tema sensível] é terrível"),
         ]
-        
+
         for input_text, expected_output in test_cases:
             result = self.sanitizer.sanitize(input_text)
             self.assertIn("[tema sensível]", result)
@@ -87,7 +87,7 @@ class InputSanitizerTest(TestCase):
         """Test sanitization when multiple harmful terms are present."""
         input_text = "Quero falar sobre sexo, morte e aborto"
         result = self.sanitizer.sanitize(input_text)
-        
+
         # All harmful terms should be replaced
         self.assertIn("[tema sensível]", result)
         self.assertNotIn("sexo", result.lower())
@@ -102,7 +102,7 @@ class InputSanitizerTest(TestCase):
             "sexo",
             "SeXo",
         ]
-        
+
         for text in test_cases:
             result = self.sanitizer.sanitize(text)
             self.assertEqual(result, "[tema sensível]")
@@ -111,7 +111,7 @@ class InputSanitizerTest(TestCase):
         """Test that sanitization preserves surrounding context."""
         input_text = "Olá, estou com dúvidas sobre sexo, pode me ajudar?"
         result = self.sanitizer.sanitize(input_text)
-        
+
         # Should preserve the greeting and structure
         self.assertIn("Olá", result)
         self.assertIn("pode me ajudar", result)
@@ -134,29 +134,29 @@ class InputSanitizerTest(TestCase):
         result = self.sanitizer.sanitize(123)
         self.assertEqual(result, "123")
 
-    @patch('services.input_sanitizer.logger')
+    @patch("services.input_sanitizer.logger")
     def test_logging_when_harmful_content_detected(self, mock_logger):
         """Test that detections are logged when harmful content is found."""
         self.sanitizer.sanitize("Quero falar sobre sexo", log_detections=True)
-        
+
         # Logger should have been called
         self.assertTrue(mock_logger.info.called)
         call_args = mock_logger.info.call_args
         self.assertIn("Input sanitization performed", call_args[0][0])
 
-    @patch('services.input_sanitizer.logger')
+    @patch("services.input_sanitizer.logger")
     def test_no_logging_when_clean_input(self, mock_logger):
         """Test that nothing is logged for clean input."""
         self.sanitizer.sanitize("Olá, como você está?", log_detections=True)
-        
+
         # Logger should not have been called for info
         self.assertFalse(mock_logger.info.called)
 
-    @patch('services.input_sanitizer.logger')
+    @patch("services.input_sanitizer.logger")
     def test_logging_can_be_disabled(self, mock_logger):
         """Test that logging can be disabled."""
         self.sanitizer.sanitize("Quero falar sobre sexo", log_detections=False)
-        
+
         # Logger should not have been called
         self.assertFalse(mock_logger.info.called)
 
@@ -164,17 +164,18 @@ class InputSanitizerTest(TestCase):
         """Test detection of Portuguese language variations."""
         test_cases = [
             "transando",  # verb variation
-            "sexual",     # adjective
-            "sexuais",    # plural adjective
-            "morrer",     # verb infinitive
-            "morrendo",   # gerund
-            "morreu",     # past tense
+            "sexual",  # adjective
+            "sexuais",  # plural adjective
+            "morrer",  # verb infinitive
+            "morrendo",  # gerund
+            "morreu",  # past tense
         ]
-        
+
         for text in test_cases:
             result = self.sanitizer.sanitize(text)
-            self.assertEqual(result, "[tema sensível]", 
-                           f"Failed to detect variation: {text}")
+            self.assertEqual(
+                result, "[tema sensível]", f"Failed to detect variation: {text}"
+            )
 
     def test_word_boundary_matching(self):
         """Test that only complete words are matched, not substrings."""
@@ -183,7 +184,7 @@ class InputSanitizerTest(TestCase):
         result1 = self.sanitizer.sanitize(text1)
         # sexta should be preserved because word boundaries prevent matching
         self.assertEqual(result1, text1)
-        
+
         # But a sentence with actual "sexo" should be sanitized
         text2 = "Vamos falar sobre sexo na sexta"
         result2 = self.sanitizer.sanitize(text2)
@@ -194,7 +195,7 @@ class InputSanitizerTest(TestCase):
         """Test that consecutive placeholders are merged."""
         input_text = "sexo e morte e aborto"
         result = self.sanitizer.sanitize(input_text)
-        
+
         # Should not have multiple consecutive placeholders
         self.assertNotIn("[tema sensível] [tema sensível] [tema sensível]", result)
 
@@ -203,8 +204,11 @@ class InputSanitizerTest(TestCase):
         # This test verifies the error handling mechanism
         # In a real error scenario, the original text should be returned
         # This is a safety measure to avoid breaking the application
-        with patch.object(self.sanitizer, '_detect_harmful_content', 
-                         side_effect=Exception("Test error")):
+        with patch.object(
+            self.sanitizer,
+            "_detect_harmful_content",
+            side_effect=Exception("Test error"),
+        ):
             result = self.sanitizer.sanitize("Test input")
             # Should return original text if error occurs
             self.assertEqual(result, "Test input")
@@ -217,14 +221,14 @@ class GlobalSanitizerTest(TestCase):
         """Test that get_sanitizer returns the same instance."""
         sanitizer1 = get_sanitizer()
         sanitizer2 = get_sanitizer()
-        
+
         self.assertIs(sanitizer1, sanitizer2)
         self.assertIsInstance(sanitizer1, InputSanitizer)
 
     def test_sanitize_input_function(self):
         """Test the convenience sanitize_input function."""
         result = sanitize_input("Quero falar sobre sexo")
-        
+
         self.assertIn("[tema sensível]", result)
         self.assertNotIn("sexo", result.lower())
 
@@ -232,7 +236,7 @@ class GlobalSanitizerTest(TestCase):
         """Test sanitize_input with clean text."""
         clean_text = "Olá, como você está?"
         result = sanitize_input(clean_text)
-        
+
         self.assertEqual(result, clean_text)
 
 
@@ -242,11 +246,11 @@ class IntegrationTest(TestCase):
     def test_realistic_user_message(self):
         """Test sanitization of realistic user messages."""
         sanitizer = InputSanitizer()
-        
+
         # Simulate a user trying to discuss a sensitive topic
         input_text = "Olá, estou passando por um momento difícil e penso muito em morte. Também tenho dúvidas sobre sexualidade."
         result = sanitizer.sanitize(input_text)
-        
+
         # Should sanitize harmful parts but keep the rest
         self.assertIn("Olá", result)
         self.assertIn("momento difícil", result)
@@ -257,7 +261,7 @@ class IntegrationTest(TestCase):
     def test_emotional_spiritual_context_preserved(self):
         """Test that emotional and spiritual language is preserved."""
         sanitizer = InputSanitizer()
-        
+
         safe_texts = [
             "Sinto uma dor profunda no coração",
             "Preciso de orientação espiritual",
@@ -265,7 +269,7 @@ class IntegrationTest(TestCase):
             "Como encontro paz interior?",
             "Estou em busca de sentido",
         ]
-        
+
         for text in safe_texts:
             result = sanitizer.sanitize(text)
             # Should remain completely unchanged
@@ -274,11 +278,11 @@ class IntegrationTest(TestCase):
     def test_name_with_problematic_substring(self):
         """Test that names containing substrings don't get sanitized incorrectly."""
         sanitizer = InputSanitizer()
-        
+
         # Note: Our word boundary patterns should handle this correctly
         # Testing to ensure proper regex implementation
         text = "Meu nome é Moreno Silva"  # "More" is substring of "morte"
         result = sanitizer.sanitize(text)
-        
+
         # Name should be preserved (word boundaries prevent false positives)
         self.assertIn("Moreno", result)
