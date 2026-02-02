@@ -44,12 +44,15 @@ class SimulationService:
         self.model = "llama-3.3-70b-versatile"
         self.groq_service = GroqService()
 
-    def create_simulation_profile(self) -> Profile:
+    def create_simulation_profile(self, theme: str = None) -> Profile:
         """
         Create a new profile for simulation.
 
+        Args:
+            theme: The theme/intent for the conversation (e.g., "doenca", "ansiedade")
+        
         Returns:
-            A new Profile instance marked as simulation
+            A new Profile instance marked with the theme as detected_intent
         """
         # Generate a unique simulation identifier using UUID
         sim_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
@@ -58,18 +61,21 @@ class SimulationService:
         # Randomly choose a gender for the simulated profile
         gender = random.choice(["male", "female", "unknown"])
 
+        # Use theme as detected_intent, or default to "desabafar"
+        detected_intent = theme if theme else "desabafar"
+
         # Create profile without telegram_user_id (to avoid conflicts)
         profile = Profile.objects.create(
             name=sim_name,
             inferred_gender=gender,
-            detected_intent="simulation",  # Mark as simulation
+            detected_intent=detected_intent,  # Store theme as intent, NOT "simulation"
         )
 
-        logger.info(f"Created simulation profile: {profile.id} with gender: {gender}")
+        logger.info(f"Created simulation profile: {profile.id} with gender: {gender}, intent: {detected_intent}")
         return profile
 
     def generate_simulated_conversation(
-        self, profile: Profile, num_messages: int = 8
+        self, profile: Profile, num_messages: int = 8, theme: str = None
     ) -> List[dict]:
         """
         Generate a simulated conversation between two AI roles.
@@ -77,6 +83,7 @@ class SimulationService:
         Args:
             profile: Profile to attach messages to
             num_messages: Total number of messages to generate (default 8, min 6, max 10)
+            theme: Theme/intent for the conversation (e.g., "doenca", "ansiedade")
 
         Returns:
             List of message dicts with 'role' and 'content' keys
@@ -86,7 +93,7 @@ class SimulationService:
         if num_messages % 2 != 0:
             num_messages += 1  # Make it even for alternating roles
 
-        logger.info(f"Generating {num_messages} simulated messages for profile {profile.id}")
+        logger.info(f"Generating {num_messages} simulated messages for profile {profile.id} with theme: {theme}")
 
         conversation = []
         conversation_history = []
@@ -96,7 +103,7 @@ class SimulationService:
             if i % 2 == 0:
                 # ROLE_A: Seeker
                 role = "ROLE_A"
-                message = self._generate_seeker_message(conversation_history, i // 2 + 1)
+                message = self._generate_seeker_message(conversation_history, i // 2 + 1, theme)
             else:
                 # ROLE_B: Listener
                 role = "ROLE_B"
@@ -120,7 +127,7 @@ class SimulationService:
         return conversation
 
     def _generate_seeker_message(
-        self, conversation_history: List[dict], turn: int
+        self, conversation_history: List[dict], turn: int, theme: str = None
     ) -> str:
         """
         Generate a message from ROLE_A (seeker).
@@ -128,15 +135,32 @@ class SimulationService:
         Args:
             conversation_history: Previous messages in the conversation
             turn: Turn number for this role (1-indexed)
+            theme: Theme/intent for the conversation (e.g., "doenca", "ansiedade")
 
         Returns:
             Generated message text
         """
         try:
-            system_prompt = """Você é ROLE_A: "Buscador introspectivo e reservado"
+            # Build theme context
+            theme_context = ""
+            if theme:
+                theme_descriptions = {
+                    "doenca": "Você ou alguém próximo está enfrentando uma doença ou problema de saúde. Isso te preocupa e te deixa com incertezas.",
+                    "ansiedade": "Você está se sentindo ansioso, estressado ou com medo de algo. Há uma preocupação constante.",
+                    "ato_criminoso_pecado": "Você fez algo que considera errado ou pecaminoso. Há um peso de culpa ou arrependimento.",
+                    "problemas_financeiros": "Você está enfrentando dificuldades financeiras, desemprego ou dívidas. A situação financeira te preocupa.",
+                    "distante_religiao": "Você se sente distante da religião, espiritualidade ou fé. Há um questionamento ou afastamento espiritual.",
+                    "desabafar": "Você precisa conversar com alguém, desabafar. Há algo te incomodando mas você não tem com quem falar.",
+                    "redes_sociais": "Você viu esse número nas redes sociais e ficou curioso para conversar.",
+                    "outro": "Você está buscando conversar sobre algo que te incomoda.",
+                }
+                theme_context = f"\n\nCONTEXTO TEMÁTICO:\n{theme_descriptions.get(theme, theme_descriptions['outro'])}\n\nIMPORTANTE: Este tema é a sua motivação INTERNA e SUBJACENTE. NÃO revele ou nomeie este tema explicitamente nas primeiras mensagens. Deixe-o implícito através de:\n- Incertezas vagas\n- Hesitações\n- Sentimentos não nomeados\n- Sugestões sutis\n\nApenas nas últimas mensagens, se o ouvinte criar um espaço seguro, você pode começar a tocar no tema de forma mais direta, mas ainda cautelosa."
+            
+            system_prompt = f"""Você é ROLE_A: "Buscador introspectivo e reservado"
 
 Você é uma pessoa brasileira comum que está começando a conversar com alguém novo.
 Você NÃO está totalmente aberto no início. Você está cauteloso.
+{theme_context}
 
 RESTRIÇÕES COMPORTAMENTAIS:
 - NÃO faça monólogos emocionais longos
@@ -252,8 +276,15 @@ OBJETIVO DO RELACIONAMENTO:
 - Sinalizar disponibilidade
 - Convidar, nunca extrair
 
-DIRETRIZES:
-- Mensagens curtas a médias (2-4 frases)
+DIRETRIZES DE BREVIDADE (CRÍTICO):
+- Mensagens CURTAS (1-3 frases no máximo)
+- Prefira UMA pergunta simples ao invés de múltiplas reflexões
+- Use MENOS palavras quando possível
+- Espelhe as palavras do buscador antes de adicionar algo
+- Se o buscador usou 1-2 frases, você deve usar 1-2 frases também
+- EVITE parágrafos longos ou múltiplas ideias em uma resposta
+
+DIRETRIZES DE CONTEÚDO:
 - Português brasileiro natural e conversacional
 - Valide sentimentos de forma simples e gentil
 - NÃO faça interpretações profundas muito cedo
@@ -265,6 +296,16 @@ DIRETRIZES:
 EVITE REPETIÇÃO:
 - Varie seu vocabulário e abordagem
 - Não repita as mesmas estruturas de frase
+
+EXEMPLOS DE RESPOSTAS BOAS (CURTAS E SIMPLES):
+- "Entendo. Quer falar mais sobre isso?"
+- "Como é esse sentimento pra você?"
+- "Tô aqui ouvindo."
+- "E o que você sente quando isso acontece?"
+
+EXEMPLOS DE RESPOSTAS RUINS (MUITO LONGAS/INTERPRETATIVAS):
+- "Parece que você está passando por um momento de introspecção profunda onde questões existenciais emergem..."
+- "Entendo que esse peso pode representar várias camadas de significado emocional..."
 
 Responda APENAS com a mensagem, sem explicações ou rótulos."""
 
@@ -279,14 +320,14 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
                         {"role": role_label, "content": msg["content"]}
                     )
 
-            user_prompt = f"Responda à mensagem anterior com presença calma e curiosidade gentil. Este é o turno {turn}. Seja presente e acolhedor, mas NÃO force profundidade. Foque em companhia, não em terapia. Evite repetir frases anteriores."
+            user_prompt = f"Responda à mensagem anterior com presença calma e curiosidade gentil. Este é o turno {turn}. Seja presente e acolhedor, mas NÃO force profundidade. MANTENHA SUA RESPOSTA CURTA (1-3 frases no máximo). Foque em companhia, não em terapia. Evite repetir frases anteriores. Priorize brevidade e simplicidade."
             context_messages.append({"role": "user", "content": user_prompt})
 
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=context_messages,
                 temperature=0.85,  # Slightly lower than seeker for more consistent tone
-                max_tokens=300,
+                max_tokens=150,  # Reduced from 300 to enforce shorter responses
             )
 
             return response.choices[0].message.content.strip()
