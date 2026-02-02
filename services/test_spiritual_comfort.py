@@ -213,3 +213,59 @@ class GroqServiceSpiritualComfortTest(TestCase):
         self.assertIn("EXEMPLO DE SOFRIMENTO + PEDIDO DE CONFORTO", system_message["content"])
         self.assertIn("Há uma força que não vem só de nós", system_message["content"])
         self.assertIn("cuidado que nos cerca", system_message["content"])
+
+    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
+    @patch("services.groq_service.Groq")
+    @patch("services.groq_service.sanitize_input")
+    def test_system_prompt_includes_suggestion_request_rules(
+        self, mock_sanitize, mock_groq_client
+    ):
+        """Test that system prompt includes special handling for suggestion/advice requests."""
+        from services.groq_service import GroqService
+
+        # Setup mocks
+        mock_sanitize.return_value = "me dê sugestões de como melhorar meu dia"
+
+        mock_response = Mock()
+        mock_response.choices = [Mock()]
+        mock_response.choices[0].message.content = (
+            "Isso mostra que você está buscando um caminho.|||"
+            "Talvez começar com pequenos gestos de auto-cuidado.|||"
+            "Posso te acompanhar nisso."
+        )
+
+        mock_groq_instance = Mock()
+        mock_groq_instance.chat.completions.create.return_value = mock_response
+        mock_groq_client.return_value = mock_groq_instance
+
+        # Create service and call fallback response with suggestion request
+        service = GroqService()
+        conversation_context = [
+            {"role": "assistant", "content": "Olá! O que te trouxe aqui?"}
+        ]
+
+        result = service.generate_fallback_response(
+            user_message="me dê sugestões de como melhorar meu dia",
+            conversation_context=conversation_context,
+            name="João",
+            inferred_gender="male",
+        )
+
+        # Verify the system prompt includes suggestion handling rules
+        call_args = mock_groq_instance.chat.completions.create.call_args
+        messages = call_args.kwargs["messages"]
+        system_message = next(m for m in messages if m["role"] == "system")
+
+        # Check that system prompt contains suggestion request rules
+        self.assertIn("PEDIDOS DE SUGESTÕES OU CONSELHOS", system_message["content"])
+        self.assertIn("PEDIR EXPLICITAMENTE sugestões", system_message["content"])
+        self.assertIn("4-6 sugestões", system_message["content"])
+        self.assertIn("NÃO termine de forma abrupta ou seca", system_message["content"])
+        self.assertIn("Equilíbrio entre prático e espiritual", system_message["content"])
+
+        # Check that system prompt includes the suggestion example
+        self.assertIn("EXEMPLO DE PEDIDO DE SUGESTÕES", system_message["content"])
+        self.assertIn("bom dia, me dê algumas sugestões", system_message["content"])
+        
+        # Verify result has multiple messages (split by |||)
+        self.assertGreaterEqual(len(result), 2, "Should return multiple messages for suggestions")
