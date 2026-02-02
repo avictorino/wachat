@@ -213,8 +213,8 @@ python manage.py simulate --quiet
 ```
 
 O comando gera uma conversa alternada entre:
-- 🧑‍💬 **Buscador** (ROLE_A): pessoa em busca espiritual, vulnerável e cautelosa
-- 🌿 **Ouvinte** (ROLE_B): assistente empático e não-julgador
+- 🧑‍💬 **Pessoa** (ROLE_A): pessoa em busca espiritual, vulnerável e cautelosa
+- 🌿 **BOT** (ROLE_B): assistente empático e não-julgador
 
 Ao final, exibe uma análise crítica em 5 seções:
 1. O que funcionou bem
@@ -235,8 +235,8 @@ Inicia o processo de exclusão de dados do usuário. Solicita confirmação ante
 
 ### `/simulate [número]`
 **Novo!** Executa uma simulação completa de conversa entre dois papéis de IA:
-- 🧑‍💬 **Buscador**: Uma pessoa em busca espiritual, vulnerável e questionadora
-- 🌿 **Ouvinte**: Um assistente espiritual empático e não-julgador
+- 🧑‍💬 **Pessoa**: Uma pessoa em busca espiritual, vulnerável e questionadora
+- 🌿 **BOT**: Um assistente espiritual empático e não-julgador
 
 **Uso:**
 - `/simulate` - Gera 8 mensagens (padrão)

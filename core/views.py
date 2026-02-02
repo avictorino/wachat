@@ -351,9 +351,9 @@ class TelegramWebhookView(View):
             # Step 3: Send each message back to Telegram with role prefixes
             for msg in conversation:
                 if msg["role"] == "ROLE_A":
-                    prefix = "🧑‍💬 Buscador:"
+                    prefix = "🧑‍💬 Pessoa:"
                 else:  # ROLE_B
-                    prefix = "🌿 Ouvinte:"
+                    prefix = "🌿 BOT:"
 
                 formatted_msg = f"{prefix}\n{msg['content']}"
                 telegram_service.send_message(chat_id, formatted_msg)
