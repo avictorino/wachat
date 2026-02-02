@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 from core.models import Message, Profile
 from services.groq_service import GroqService
 from services.reset_user_data import ResetUserDataUseCase
+from services.simulation_service import SimulationService
 from services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,10 @@ class TelegramWebhookView(View):
         # Handle /reset command
         if message_text and message_text.strip().startswith("/reset"):
             return self._handle_reset_command(sender_id, chat_id)
+
+        # Handle /simulate command
+        if message_text and message_text.strip().startswith("/simulate"):
+            return self._handle_simulate_command(chat_id)
 
         # Handle regular text messages
         if message_text:
@@ -264,6 +269,92 @@ class TelegramWebhookView(View):
 
         except Exception as e:
             logger.error(f"Error handling /reset command: {str(e)}", exc_info=True)
+            return JsonResponse({"status": "error"}, status=500)
+
+    def _handle_simulate_command(self, chat_id: str):
+        """
+        Handle the /simulate command to run a conversation simulation.
+
+        This method:
+        1. Creates a new simulation profile
+        2. Generates a simulated conversation between ROLE_A (seeker) and ROLE_B (listener)
+        3. Persists all messages to the database
+        4. Sends the conversation transcript back to Telegram with role identification
+        5. Analyzes the conversation emotionally using LLM
+        6. Sends the emotional analysis as a final summary message
+
+        Args:
+            chat_id: Telegram chat ID
+
+        Returns:
+            JsonResponse indicating success
+        """
+        try:
+            logger.info(f"Starting /simulate command for chat {chat_id}")
+
+            # Initialize services
+            telegram_service = TelegramService()
+            groq_api_key = os.environ.get("GROQ_API_KEY")
+
+            if not groq_api_key:
+                error_msg = "Simulation service is not available at the moment."
+                telegram_service.send_message(chat_id, error_msg)
+                logger.error("GROQ_API_KEY not configured for simulation")
+                return JsonResponse({"status": "ok"}, status=200)
+
+            simulation_service = SimulationService(groq_api_key)
+
+            # Send initial message
+            init_msg = "🔄 Iniciando simulação de conversa...\n\nGerando diálogo entre um buscador espiritual e um ouvinte empático."
+            telegram_service.send_message(chat_id, init_msg)
+
+            # Step 1: Create new profile for simulation
+            profile = simulation_service.create_simulation_profile()
+            logger.info(f"Created simulation profile {profile.id}")
+
+            # Step 2: Generate simulated conversation (6-10 messages, alternating)
+            num_messages = 8  # Default to 8 messages (4 per role)
+            conversation = simulation_service.generate_simulated_conversation(
+                profile, num_messages
+            )
+            logger.info(f"Generated {len(conversation)} simulated messages")
+
+            # Step 3: Send each message back to Telegram with role prefixes
+            for msg in conversation:
+                if msg["role"] == "ROLE_A":
+                    prefix = "🧑‍💬 Buscador:"
+                else:  # ROLE_B
+                    prefix = "🌿 Ouvinte:"
+
+                formatted_msg = f"{prefix}\n{msg['content']}"
+                telegram_service.send_message(chat_id, formatted_msg)
+
+                # Small pause between messages for readability
+                import time
+                time.sleep(0.8)
+
+            logger.info(f"Sent {len(conversation)} simulated messages to chat {chat_id}")
+
+            # Step 4: Analyze conversation emotionally
+            analysis = simulation_service.analyze_conversation_emotions(conversation)
+            logger.info("Generated emotional analysis")
+
+            # Step 5: Send emotional analysis as final message
+            final_msg = f"📊 *Resumo da Conversa*\n\n{analysis}"
+            telegram_service.send_message(chat_id, final_msg, parse_mode="Markdown")
+            logger.info(f"Sent emotional analysis to chat {chat_id}")
+
+            return JsonResponse({"status": "ok"}, status=200)
+
+        except Exception as e:
+            logger.error(f"Error handling /simulate command: {str(e)}", exc_info=True)
+            # Try to send error message to user
+            try:
+                telegram_service = TelegramService()
+                error_msg = "❌ Erro ao executar a simulação. Por favor, tente novamente mais tarde."
+                telegram_service.send_message(chat_id, error_msg)
+            except:
+                pass
             return JsonResponse({"status": "error"}, status=500)
 
     def _handle_reset_confirmation(
