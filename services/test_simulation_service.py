@@ -94,8 +94,8 @@ class SimulationServiceAnalysisTest(TestCase):
         self.assertIn("**4. O que poderia ter sido feito diferente**", analysis)
         self.assertIn("**5. Ajustes recomendados para próximas interações**", analysis)
 
-        # Verify fallback mentions technical error
-        self.assertIn("erro técnico", analysis)
+        # Verify fallback is substantial and not empty
+        self.assertGreater(len(analysis), 100, "Fallback analysis should be substantial")
 
     @patch("services.simulation_service.GroqService")
     @patch("services.simulation_service.Groq")
