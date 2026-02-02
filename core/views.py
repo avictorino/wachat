@@ -291,7 +291,7 @@ class TelegramWebhookView(View):
 
         Args:
             chat_id: Telegram chat ID
-            theme: Optional theme/intent for the conversation (e.g., "doenca", "ansiedade")
+            theme: Optional theme/intent for the conversation (e.g., "doenca", "ansiedade", "enfermidade")
 
         Returns:
             JsonResponse indicating success
@@ -310,42 +310,25 @@ class TelegramWebhookView(View):
                 return JsonResponse({"status": "ok"}, status=200)
 
             simulation_service = SimulationService(groq_api_key)
+            groq_service = GroqService()
 
-            # Validate theme parameter if provided
-            valid_themes = [
-                "problemas_financeiros",
-                "distante_religiao",
-                "ato_criminoso_pecado",
-                "doenca",
-                "ansiedade",
-                "desabafar",
-                "redes_sociais",
-                "outro",
-                # Allow short aliases
-                "pecado",  # alias for ato_criminoso_pecado
-                "financeiro",  # alias for problemas_financeiros
-                "solidao",  # alias for desabafar
-                "religiao",  # alias for distante_religiao
-            ]
-            
-            # Normalize theme aliases
-            theme_mapping = {
-                "pecado": "ato_criminoso_pecado",
-                "financeiro": "problemas_financeiros",
-                "solidao": "desabafar",
-                "religiao": "distante_religiao",
-            }
-            
+            # Approximate theme using LLM if provided
             if theme:
+                original_theme = theme
                 theme = theme.lower()
-                if theme not in valid_themes:
-                    error_msg = f"❌ Tema inválido: '{theme}'\n\nTemas válidos:\n- doenca\n- ansiedade\n- pecado\n- desabafar\n- solidao\n- financeiro\n- religiao\n- redes_sociais\n- outro\n\nExemplo: /simulate doenca"
+                
+                # Use LLM to approximate the theme to one of the valid categories
+                approximated_theme = groq_service.approximate_theme(theme)
+                
+                if approximated_theme == "outro":
+                    # Theme couldn't be clearly mapped
+                    error_msg = f"❌ Não consegui identificar o tema '{original_theme}'.\n\nExemplos de temas válidos:\n- doenca / enfermidade\n- ansiedade / medo\n- pecado / culpa\n- desabafar / solidão\n- financeiro / dinheiro\n- religiao / fé\n- redes_sociais\n\nTente usar uma palavra relacionada a esses temas."
                     telegram_service.send_message(chat_id, error_msg)
-                    logger.warning(f"Invalid theme parameter: {theme}")
+                    logger.warning(f"Could not approximate theme: {original_theme}")
                     return JsonResponse({"status": "ok"}, status=200)
                 
-                # Apply alias mapping
-                theme = theme_mapping.get(theme, theme)
+                theme = approximated_theme
+                logger.info(f"Theme approximated: '{original_theme}' -> '{theme}'")
             else:
                 # Default theme if none provided
                 theme = "desabafar"
