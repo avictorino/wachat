@@ -302,21 +302,26 @@ class TelegramWebhookView(View):
 
             else:
                 # Use intent-based response for clear intent
-                response_message = groq_service.generate_intent_response(
+                response_messages = groq_service.generate_intent_response(
                     user_message=message_text,
                     intent=detected_intent,
                     name=profile.name,
                     inferred_gender=profile.inferred_gender,
                 )
 
-                # Persist assistant response
-                Message.objects.create(
-                    profile=profile, role="assistant", content=response_message
+                # Persist each assistant response separately
+                for response_msg in response_messages:
+                    Message.objects.create(
+                        profile=profile, role="assistant", content=response_msg
+                    )
+                logger.info(
+                    f"Persisted {len(response_messages)} intent-based response(s) for profile {profile.id}"
                 )
-                logger.info(f"Persisted assistant response for profile {profile.id}")
 
-                # Send response to Telegram
-                success = telegram_service.send_message(chat_id, response_message)
+                # Send all responses sequentially with pauses
+                success = telegram_service.send_messages(
+                    chat_id, response_messages, pause_seconds=1.5
+                )
 
             if success:
                 logger.info(f"Response sent to chat {chat_id}")
