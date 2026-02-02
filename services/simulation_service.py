@@ -6,7 +6,7 @@ and manages emotional analysis of the conversation.
 """
 
 import logging
-import random
+import uuid
 from typing import List, Tuple
 
 from groq import Groq
@@ -44,8 +44,8 @@ class SimulationService:
         Returns:
             A new Profile instance marked as simulation
         """
-        # Generate a unique simulation identifier
-        sim_id = str(random.randint(100000000, 999999999))
+        # Generate a unique simulation identifier using UUID
+        sim_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
         sim_name = f"Simulation_{sim_id}"
 
         # Create profile without telegram_user_id (to avoid conflicts)

@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import time
 from datetime import timedelta
 
 from django.http import JsonResponse
@@ -330,7 +331,6 @@ class TelegramWebhookView(View):
                 telegram_service.send_message(chat_id, formatted_msg)
 
                 # Small pause between messages for readability
-                import time
                 time.sleep(0.8)
 
             logger.info(f"Sent {len(conversation)} simulated messages to chat {chat_id}")
@@ -353,8 +353,9 @@ class TelegramWebhookView(View):
                 telegram_service = TelegramService()
                 error_msg = "❌ Erro ao executar a simulação. Por favor, tente novamente mais tarde."
                 telegram_service.send_message(chat_id, error_msg)
-            except:
-                pass
+            except Exception:
+                # If we can't send the error message, log and continue
+                logger.error("Failed to send error message to user")
             return JsonResponse({"status": "error"}, status=500)
 
     def _handle_reset_confirmation(
