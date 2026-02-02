@@ -139,7 +139,7 @@ class Command(BaseCommand):
         # Get the created profile
         profile = Profile.objects.get(telegram_user_id=simulated_user_id)
         self.stdout.write(
-            self.style.SUCCESS("✓ Profile created via webhook: {profile.name} (ID: {profile.id})")
+            self.style.SUCCESS(f"✓ Profile created via webhook: {profile.name} (ID: {profile.id})")
         )
 
         # Initialize human simulator

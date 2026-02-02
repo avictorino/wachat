@@ -158,7 +158,7 @@ Estado emocional atual: {emotional_state}
         fallback_messages = [
             "Tô confuso sobre algumas coisas...",
             "Será que isso faz sentido?",
-            "As vezes me sinto perdido sabe",
+            "Às vezes me sinto perdido sabe",
             "Obrigado por me ouvir",
             "Isso me ajuda a pensar melhor",
         ]
