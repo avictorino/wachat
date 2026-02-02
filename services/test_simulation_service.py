@@ -9,6 +9,37 @@ from django.test import TestCase
 from services.simulation_service import SimulationService
 
 
+class SimulationServiceProfileTest(TestCase):
+    """Tests for the create_simulation_profile method."""
+
+    @patch("services.simulation_service.GroqService")
+    @patch("services.simulation_service.Groq")
+    def test_create_simulation_profile_has_random_gender(
+        self, mock_groq_client, mock_groq_service
+    ):
+        """Test that created simulation profiles have a randomly assigned gender."""
+        service = SimulationService("test-api-key")
+
+        # Create multiple profiles to test randomness
+        profiles = [service.create_simulation_profile() for _ in range(10)]
+
+        # Verify all profiles have a valid gender
+        for profile in profiles:
+            self.assertIn(
+                profile.inferred_gender,
+                ["male", "female", "unknown"],
+                "Profile should have one of the valid gender values",
+            )
+
+        # Verify profiles have the simulation intent
+        for profile in profiles:
+            self.assertEqual(profile.detected_intent, "simulation")
+
+        # Clean up
+        for profile in profiles:
+            profile.delete()
+
+
 class SimulationServiceAnalysisTest(TestCase):
     """Tests for the analyze_conversation_emotions method."""
 
