@@ -308,14 +308,14 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
         critical analysis of conversational quality, not emotional analysis.
 
         This method analyzes the conversation for interpretation errors, missed opportunities,
-        pacing issues, and over-assumptions. It provides a reflective, analytical review
-        of conversational quality rather than an emotional recap.
+        pacing issues, verbosity issues, and over-assumptions. It provides a reflective, 
+        analytical review of conversational quality rather than an emotional recap.
 
         Args:
             conversation: List of message dicts with 'role' and 'content'
 
         Returns:
-            Critical analysis as structured text in Portuguese
+            Critical analysis as structured text in Portuguese with 5 mandatory sections
         """
         try:
             # Build transcript for analysis
@@ -324,79 +324,138 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
                 role_label = ROLE_LABEL_SEEKER if msg["role"] == "ROLE_A" else ROLE_LABEL_LISTENER
                 transcript_text += f"{role_label}: {msg['content']}\n\n"
 
-            system_prompt = """Você é um analista crítico especializado em qualidade conversacional entre humanos e sistemas de IA.
+            system_prompt = """Você é um analista crítico e revisor de conversas especializado em qualidade de diálogo humano-IA.
 
-Sua tarefa é realizar uma ANÁLISE CRÍTICA da conversa fornecida, avaliando qualidade técnica e relacional.
+Sua tarefa é NÃO resumir a conversa emocionalmente, mas produzir uma ANÁLISE CRÍTICA e CONSTRUTIVA da qualidade da interação, incluindo uma avaliação da extensão e verbosidade das respostas do ouvinte.
 
-CONTEXTO IMPORTANTE:
-- O Buscador (humano) fala MUITO POUCO por design
-- Mensagens curtas, vagas, ambíguas são ESPERADAS e NORMAIS
-- Silêncio, hesitação e brevidade são sinais, não falhas
-- Over-interpretação pelo Ouvinte é um erro potencial
+--------------------------------------------------
+PRINCÍPIOS FUNDAMENTAIS
+--------------------------------------------------
 
-LENTES DE ANÁLISE (avalie cada uma):
+- O humano falar pouco é ESPERADO e correto
+- Ambiguidade, hesitação e brevidade são sinais significativos
+- Over-interpretação pelo ouvinte é um modo de falha PRIMÁRIO
+- Verbosidade excessiva pelo ouvinte é TAMBÉM um modo de falha primário
+- A análise deve ajudar a melhorar conversas futuras
 
-1) Precisão de Interpretação
-- O Ouvinte inferiu emoções ou significados não explicitamente declarados?
-- Foram feitas suposições muito cedo?
-- O Ouvinte projetou profundidade onde havia apenas ambiguidade?
+--------------------------------------------------
+DIMENSÕES DE ANÁLISE (OBRIGATÓRIAS)
+--------------------------------------------------
 
-2) Ritmo e Timing
-- A profundidade emocional foi introduzida prematuramente?
-- O Ouvinte avançou mais rápido que o Buscador?
-- Houve momentos onde esperar ou espelhar teria sido melhor?
+Avalie a conversa usando as seguintes lentes:
 
-3) Qualidade das Perguntas
-- As perguntas foram abertas e seguras?
-- Alguma pergunta foi sutilmente direcionadora?
-- Alguma pergunta demandou mais vulnerabilidade do que o Buscador ofereceu?
+1) O que funcionou bem
+- Identifique momentos onde o ouvinte:
+  - Demonstrou empatia sem suposições
+  - Usou perguntas abertas e não invasivas
+  - Manteve tom calmo, acolhedor e seguro
+  - Respondeu com extensão apropriada à brevidade do humano
+- Seja específico e concreto
 
-4) Respeito à Contenção Humana
-- O Ouvinte respeitou a brevidade do Buscador?
-- Ou compensou explicando demais ou filosofando?
+2) Possíveis erros de interpretação
+- Identifique momentos onde o ouvinte:
+  - Interpretou significado além do que o humano declarou explicitamente
+  - Projetou profundidade, intenção ou estados emocionais prematuramente
+  - Usou frases que implicaram compreensão ainda não confirmada
+- Explique claramente POR QUE estes podem ser erros de interpretação
 
-5) Construção de Relacionamento
-- A interação fortaleceu a confiança?
-- Ou arriscou distância emocional ao soar interpretativo ou "expert"?
+3) Problemas de verbosidade e extensão das respostas
+- Identifique momentos onde o ouvinte:
+  - Falou significativamente mais do que necessário
+  - Introduziu múltiplas ideias em uma única resposta
+  - Usou metáforas, abstrações ou explicações que excederam o que o humano ofereceu
+- Explique como respostas mais curtas e simples poderiam ter melhorado a segurança e realismo
 
-ESTRUTURA OBRIGATÓRIA DA RESPOSTA:
+4) O que poderia ter sido feito diferente
+- Sugira abordagens alternativas, como:
+  - Respostas mais curtas (1-3 frases quando possível)
+  - Espelhar as palavras exatas do humano antes de expandir
+  - Fazer uma pergunta clara ao invés de múltiplas reflexões
+  - Permitir que a ambiguidade permaneça não resolvida
+- Evite conselhos genéricos; seja prático e fundamentado na transcrição
+
+5) Ajustes recomendados para próximas interações
+- Forneça orientação comportamental para o ouvinte, enfatizando:
+  - Ritmo mais lento
+  - Respeito pela brevidade e silêncio
+  - Redução intencional da extensão das respostas
+  - Menos linguagem filosófica ou interpretativa
+  - Maior uso de reflexão concisa e paráfrase
+- Foque em construção de relacionamento, não resolução emocional
+
+--------------------------------------------------
+ESTRUTURA DE SAÍDA (ESTRITA)
+--------------------------------------------------
+
+Retorne a análise usando EXATAMENTE esta estrutura:
 
 **1. O que funcionou bem**
-- Observações breves e concretas (2-3 pontos)
+[Suas observações concretas aqui]
 
 **2. Pontos de possível erro de interpretação**
-- Nomeie explicitamente momentos onde o Ouvinte pode ter assumido demais
-- Seja específico: cite mensagens ou padrões
+[Suas observações concretas aqui]
 
-**3. O que poderia ter sido feito diferente**
-- Sugestões práticas (menos interpretações, mais espelhamento, respostas mais curtas)
-- 2-3 sugestões concretas
+**3. Problemas de verbosidade e extensão das respostas**
+[Suas observações concretas aqui]
 
-**4. Ajustes recomendados para próximas interações**
-- Orientações comportamentais para o Ouvinte
-- Ênfase em paciência, silêncio e segurança relacional
+**4. O que poderia ter sido feito diferente**
+[Suas sugestões práticas aqui]
 
-TOM:
-- Neutro e reflexivo
-- NÃO moralizante
-- NÃO emocional
-- Levemente crítico, mas construtivo
-- Como uma revisão profissional, não linguagem terapêutica
+**5. Ajustes recomendados para próximas interações**
+[Suas orientações comportamentais aqui]
+
+--------------------------------------------------
+RESTRIÇÕES DE TOM E ESTILO
+--------------------------------------------------
+
+- Neutro, analítico e profissional
+- Levemente crítico, mas sempre construtivo
+- Sem linguagem terapêutica
+- Sem fechamento emocional
+- Prefira parágrafos concisos e bullet points
+- Não elogie excessivamente
+- Não moralize
+
+--------------------------------------------------
+RESTRIÇÕES IMPORTANTES
+--------------------------------------------------
+
+- Base sua análise APENAS no que está explicitamente presente na transcrição
+- NÃO infira intenções ocultas do humano
+- Trate silêncio, brevidade e vagueza como estados conversacionais válidos
+- NÃO tente "consertar" o humano emocionalmente
+- NÃO justifique verbosidade como empatia
+
+--------------------------------------------------
+CRITÉRIOS DE SUCESSO
+--------------------------------------------------
+
+Uma saída bem-sucedida deve parecer:
+- Uma auditoria de qualidade conversacional
+- Uma revisão estilo supervisão
+- Uma ferramenta de aprendizado para melhorar diálogo humano-IA
+- Um guia para tornar o ouvinte mais conciso, contido e humano
+- Algo que poderia informar diretamente o ajuste fino de prompts futuro
 
 Responda APENAS com a análise estruturada. Use português brasileiro natural."""
 
-            user_prompt = f"""Analise criticamente a seguinte conversa, avaliando qualidade conversacional e pontos de melhoria:
+            user_prompt = f"""Analise criticamente a seguinte conversa, avaliando qualidade conversacional, verbosidade e pontos de melhoria:
 
 TRANSCRIÇÃO:
 {transcript_text}
 
-Forneça uma análise crítica seguindo EXATAMENTE a estrutura de 4 seções:
+Forneça uma análise crítica seguindo EXATAMENTE a estrutura de 5 seções:
 1. O que funcionou bem
 2. Pontos de possível erro de interpretação
-3. O que poderia ter sido feito diferente
-4. Ajustes recomendados para próximas interações
+3. Problemas de verbosidade e extensão das respostas
+4. O que poderia ter sido feito diferente
+5. Ajustes recomendados para próximas interações
 
-Foque em ERROS DE INTERPRETAÇÃO, RITMO, e RESPEITO À CONTENÇÃO do Buscador."""
+Foque especialmente em:
+- ERROS DE INTERPRETAÇÃO (assumir significados não declarados)
+- PROBLEMAS DE VERBOSIDADE (respostas muito longas ou complexas)
+- RITMO (avançar mais rápido que o humano)
+- RESPEITO À CONTENÇÃO do Buscador (brevidade como sinal válido)"""
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -405,7 +464,7 @@ Foque em ERROS DE INTERPRETAÇÃO, RITMO, e RESPEITO À CONTENÇÃO do Buscador.
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,  # Moderate temperature for balanced analysis
-                max_tokens=800,  # Increased for structured analysis
+                max_tokens=1200,  # Increased for comprehensive 5-section analysis
             )
 
             analysis = response.choices[0].message.content.strip()
@@ -414,18 +473,21 @@ Foque em ERROS DE INTERPRETAÇÃO, RITMO, e RESPEITO À CONTENÇÃO do Buscador.
 
         except Exception as e:
             logger.error(f"Error analyzing conversation: {str(e)}", exc_info=True)
-            # Fallback analysis with critical structure
+            # Fallback analysis with critical structure (5 sections)
             return (
                 "**1. O que funcionou bem**\n"
                 "- O Ouvinte manteve presença e disponibilidade\n"
                 "- As respostas foram acolhedoras\n\n"
                 "**2. Pontos de possível erro de interpretação**\n"
                 "- Análise não disponível no momento devido a erro técnico\n\n"
-                "**3. O que poderia ter sido feito diferente**\n"
+                "**3. Problemas de verbosidade e extensão das respostas**\n"
+                "- Análise não disponível no momento devido a erro técnico\n\n"
+                "**4. O que poderia ter sido feito diferente**\n"
                 "- Manter respostas mais breves e deixar mais espaço para o Buscador\n"
                 "- Usar mais espelhamento simples em vez de interpretação\n\n"
-                "**4. Ajustes recomendados para próximas interações**\n"
+                "**5. Ajustes recomendados para próximas interações**\n"
                 "- Priorizar brevidade e segurança relacional\n"
                 "- Evitar interpretações profundas precoces\n"
-                "- Respeitar ambiguidade e silêncio como sinais válidos"
+                "- Respeitar ambiguidade e silêncio como sinais válidos\n"
+                "- Reduzir extensão das respostas (1-3 frases quando possível)"
             )
