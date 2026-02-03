@@ -3,14 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from services.prompts.base import BASE_PROMPT_PTBR
 from services.prompts.themes import get_theme_prompt
 
 
 @dataclass(frozen=True)
 class PromptComposer:
     """
-    Composes the final system prompt as: Base + Optional Theme + Mode.
+    Composes the system prompt as: Optional Theme + Mode.
+
+    The base behavioral prompt is now defined in the Modelfile at the project root,
+    which is the single source of truth for conversational behavior.
+
+    This composer only handles dynamic, context-specific prompts:
+    - Themes (registered in `services.prompts.themes`)
+    - Mode-specific instructions (intent_response, fallback_response)
 
     Themes are registered in `services.prompts.themes` so adding new ones is
     a small, explicit change.
@@ -22,7 +28,7 @@ class PromptComposer:
 
         mode_prompt = PromptComposer._mode_prompt(mode)
 
-        parts = [BASE_PROMPT_PTBR.strip()]
+        parts = []
         if theme_prompt:
             parts.append(theme_prompt.strip())
         parts.append(mode_prompt.strip())
