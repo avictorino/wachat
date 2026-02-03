@@ -266,6 +266,116 @@ O comando gera o número especificado de mensagens alternadas (6-10, padrão 8),
 | `DEBUG` | Modo de debug | `True` | Não |
 | `ALLOWED_HOSTS` | Hosts permitidos (separados por vírgula) | - | Sim (produção) |
 | `DATABASE_URL` | URL de conexão com o banco de dados | SQLite local | Não |
+| `LLM_PROVIDER` | Provedor de LLM (`groq` ou `ollama`) | `groq` | Não |
+| `GROQ_API_KEY` | Chave da API Groq | - | Sim (se LLM_PROVIDER=groq) |
+| `OLLAMA_BASE_URL` | URL base do servidor Ollama local | `http://localhost:11434` | Não |
+| `OLLAMA_MODEL` | Modelo Ollama a ser usado | `llama3.1` | Não |
+
+## 🤖 Configuração do Provedor de LLM
+
+O WaChat suporta dois provedores de LLM (Large Language Model):
+
+### 1. Groq (Padrão - Cloud API)
+
+O Groq é o provedor padrão e utiliza a API cloud da Groq.
+
+**Configuração:**
+```env
+LLM_PROVIDER=groq
+GROQ_API_KEY=sua-chave-api-groq
+```
+
+**Prós:**
+- Setup simples (apenas API key)
+- Alta performance
+- Sem necessidade de hardware local
+
+**Contras:**
+- Requer chave de API
+- Custos por uso (dependendo do plano)
+- Requer conexão com internet
+
+### 2. Ollama (Local)
+
+O Ollama permite executar modelos LLM localmente, sem dependência de APIs externas.
+
+**Configuração:**
+
+1. **Instale o Ollama:**
+   ```bash
+   # Linux/macOS
+   curl -fsSL https://ollama.com/install.sh | sh
+   
+   # Ou visite: https://ollama.com/download
+   ```
+
+2. **Baixe um modelo:**
+   ```bash
+   # Recomendado: llama3.1 (modelo padrão)
+   ollama pull llama3.1
+   
+   # Ou outros modelos:
+   # ollama pull llama3
+   # ollama pull mistral
+   # ollama pull codellama
+   ```
+
+3. **Inicie o servidor Ollama:**
+   ```bash
+   ollama serve
+   # O servidor será iniciado em http://localhost:11434
+   ```
+
+4. **Configure as variáveis de ambiente:**
+   ```env
+   LLM_PROVIDER=ollama
+   OLLAMA_BASE_URL=http://localhost:11434  # Padrão, pode ser omitido
+   OLLAMA_MODEL=llama3.1                   # Padrão, pode ser omitido
+   ```
+
+5. **Inicie o WaChat:**
+   ```bash
+   python manage.py runserver
+   ```
+
+**Prós:**
+- Totalmente local (sem custos de API)
+- Privacidade completa dos dados
+- Sem limitações de tokens
+- Funciona offline
+
+**Contras:**
+- Requer hardware adequado (GPU recomendada)
+- Setup inicial mais complexo
+- Pode ser mais lento que APIs cloud
+
+**Modelos Recomendados:**
+- `llama3.1` (padrão) - Bom equilíbrio entre qualidade e performance
+- `llama3` - Alternativa mais leve
+- `mistral` - Outra opção de qualidade
+- `gemma` - Modelo do Google, também eficiente
+
+**Exemplo de uso com modelo customizado:**
+```env
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=mistral  # Usando Mistral em vez do padrão
+```
+
+### Alternando entre provedores
+
+Você pode facilmente alternar entre provedores mudando a variável `LLM_PROVIDER`:
+
+```bash
+# Usar Groq
+export LLM_PROVIDER=groq
+export GROQ_API_KEY=sua-chave
+
+# Ou usar Ollama
+export LLM_PROVIDER=ollama
+```
+
+A aplicação detectará automaticamente o provedor configurado e utilizará o serviço apropriado sem necessidade de mudanças no código.
 
 ## 🔒 Segurança
 

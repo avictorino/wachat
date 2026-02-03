@@ -12,7 +12,7 @@ from services.simulation_service import SimulationService
 class SimulationServiceProfileTest(TestCase):
     """Tests for the create_simulation_profile method."""
 
-    @patch("services.simulation_service.GroqService")
+    @patch("services.simulation_service.get_llm_service")
     @patch("services.simulation_service.Groq")
     def test_create_simulation_profile_has_random_gender(
         self, mock_groq_client, mock_groq_service
@@ -52,7 +52,7 @@ class SimulationServiceProfileTest(TestCase):
 class SimulationServiceAnalysisTest(TestCase):
     """Tests for the analyze_conversation_emotions method."""
 
-    @patch("services.simulation_service.GroqService")
+    @patch("services.simulation_service.get_llm_service")
     @patch("services.simulation_service.Groq")
     def test_analyze_conversation_structure_with_5_sections(
         self, mock_groq_client, mock_groq_service
@@ -106,7 +106,7 @@ class SimulationServiceAnalysisTest(TestCase):
         self.assertIn("**4. O que poderia ter sido feito diferente**", analysis)
         self.assertIn("**5. Ajustes recomendados para próximas interações**", analysis)
 
-    @patch("services.simulation_service.GroqService")
+    @patch("services.simulation_service.get_llm_service")
     @patch("services.simulation_service.Groq")
     def test_analyze_conversation_fallback_has_5_sections(
         self, mock_groq_client, mock_groq_service
@@ -137,7 +137,7 @@ class SimulationServiceAnalysisTest(TestCase):
         # Verify fallback is substantial and not empty
         self.assertGreater(len(analysis), 100, "Fallback analysis should be substantial")
 
-    @patch("services.simulation_service.GroqService")
+    @patch("services.simulation_service.get_llm_service")
     @patch("services.simulation_service.Groq")
     def test_analyze_conversation_includes_verbosity_focus(
         self, mock_groq_client, mock_groq_service

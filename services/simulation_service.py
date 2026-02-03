@@ -13,7 +13,7 @@ from typing import List, Tuple
 from groq import Groq
 
 from core.models import Message, Profile
-from services.groq_service import GroqService
+from services.llm_factory import get_llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class SimulationService:
         """
         self.client = Groq(api_key=groq_api_key)
         self.model = "llama-3.3-70b-versatile"
-        self.groq_service = GroqService()
+        self.llm_service = get_llm_service()
 
     def create_simulation_profile(self, theme: str = None) -> Profile:
         """
