@@ -106,3 +106,23 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."
+
+
+class KnowledgeDocument(models.Model):
+    """
+    Knowledge document for RAG (Retrieval-Augmented Generation).
+
+    Stores PDF files and triggers embedding/indexing after upload.
+    """
+
+    title = models.CharField(max_length=255, help_text="Title of the document")
+    file = models.FileField(
+        upload_to="books/", help_text="PDF file to be indexed for RAG"
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-uploaded_at"]
+
+    def __str__(self):
+        return self.title
