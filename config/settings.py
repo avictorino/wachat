@@ -190,6 +190,13 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Test configuration
+# Configure Django to discover tests in the /spec directory
+TEST_RUNNER = "django.test.runner.DiscoverRunner"
+TEST_DISCOVER_TOP_LEVEL = BASE_DIR
+TEST_DISCOVER_ROOT = BASE_DIR / "spec"
+TEST_DISCOVER_PATTERN = "test*.py"
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
