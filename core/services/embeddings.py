@@ -8,11 +8,16 @@ This module handles the complete pipeline:
 4. Store embeddings in ChromaDB vector database
 """
 
+import logging
+import os
 import uuid
 
 import chromadb
+from django.conf import settings
 from pypdf import PdfReader
 from sentence_transformers import SentenceTransformer
+
+logger = logging.getLogger(__name__)
 
 # =========================
 # Configuration
@@ -20,6 +25,11 @@ from sentence_transformers import SentenceTransformer
 
 EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
 COLLECTION_NAME = "knowledge_documents"
+
+# Get ChromaDB persistence path from Django settings or use default
+CHROMA_DB_PATH = getattr(
+    settings, "CHROMA_DB_PATH", os.path.join(settings.BASE_DIR, "chroma_db")
+)
 
 # Lazy-loaded globals to avoid loading models at import time
 _embedder = None
@@ -30,6 +40,7 @@ def _get_embedder():
     """Get or create the embedding model (lazy initialization)."""
     global _embedder
     if _embedder is None:
+        logger.info(f"Loading embedding model: {EMBEDDING_MODEL_NAME}")
         _embedder = SentenceTransformer(EMBEDDING_MODEL_NAME)
     return _embedder
 
@@ -38,7 +49,8 @@ def _get_collection():
     """Get or create the ChromaDB collection (lazy initialization)."""
     global _collection
     if _collection is None:
-        chroma_client = chromadb.Client()
+        logger.info(f"Initializing ChromaDB at: {CHROMA_DB_PATH}")
+        chroma_client = chromadb.PersistentClient(path=CHROMA_DB_PATH)
         _collection = chroma_client.get_or_create_collection(name=COLLECTION_NAME)
     return _collection
 
@@ -63,21 +75,27 @@ def embed_pdf_document(file_path: str):
         ValueError: If PDF contains no extractable text
     """
 
+    logger.info(f"Starting PDF embedding process for: {file_path}")
+
     # 1. Extract text
     text = extract_text_from_pdf(file_path)
     if not text.strip():
         raise ValueError("PDF does not contain extractable text")
 
+    logger.info(f"Extracted {len(text)} characters from PDF")
+
     # 2. Chunking
     chunks = chunk_text(text)
+    logger.info(f"Created {len(chunks)} chunks from PDF text")
 
     # 3. Generate embeddings
     embeddings = generate_embeddings(chunks)
+    logger.info(f"Generated embeddings for {len(chunks)} chunks")
 
     # 4. Store in vector database
     store_embeddings(chunks=chunks, embeddings=embeddings, source=file_path)
 
-    print(f"✅ PDF indexed successfully: {file_path}")
+    logger.info(f"✅ PDF indexed successfully: {file_path}")
 
 
 # =========================

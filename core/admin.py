@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.contrib import messages
 
 from core.models import KnowledgeDocument, Message, Profile
 from core.services.embeddings import embed_pdf_document
@@ -65,4 +66,19 @@ class KnowledgeDocumentAdmin(admin.ModelAdmin):
         # TODO: Consider moving this to an async task (Celery, Django-Q, etc.)
         # to avoid blocking the admin UI for large PDFs
         if obj.file:
-            embed_pdf_document(obj.file.path)
+            try:
+                embed_pdf_document(obj.file.path)
+                messages.success(
+                    request, f"PDF '{obj.title}' uploaded and indexed successfully."
+                )
+            except Exception as e:
+                messages.error(
+                    request,
+                    f"PDF '{obj.title}' was uploaded but indexing failed: {str(e)}. "
+                    f"The document was saved but may need to be re-indexed.",
+                )
+                # Log the error for debugging
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.exception(f"Failed to index PDF {obj.file.path}")
