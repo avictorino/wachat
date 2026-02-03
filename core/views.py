@@ -20,6 +20,10 @@ from services.theme_selector import select_theme_from_intent_and_message
 
 logger = logging.getLogger(__name__)
 
+# Constants for simulation timing
+MESSAGE_DELAY_SECONDS = 0.6  # Delay between conversation messages
+OVERVIEW_DELAY_SECONDS = 1.0  # Delay between overview messages
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class TelegramWebhookView(View):
@@ -103,12 +107,20 @@ class TelegramWebhookView(View):
 
         # Handle /simulate command
         if message_text and message_text.strip().startswith("/simulate"):
-            # Parse optional theme parameter (e.g., /simulate doenca)
+            # Parse theme and optional num_messages parameter
+            # Format: /simulate drogas [num_messages]
             parts = message_text.strip().split()
             theme = None
+            num_messages = None
             if len(parts) > 1:
                 theme = parts[1].lower()
-            return self._handle_simulate_command(chat_id, theme)
+            if len(parts) > 2:
+                try:
+                    num_messages = int(parts[2])
+                except ValueError:
+                    # Invalid number format - will use default
+                    logger.warning(f"Invalid num_messages format: {parts[2]}, using default")
+            return self._handle_simulate_command(chat_id, theme, num_messages)
 
         # Handle regular text messages
         if message_text:
@@ -294,26 +306,38 @@ class TelegramWebhookView(View):
             logger.error(f"Error handling /reset command: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
-    def _handle_simulate_command(self, chat_id: str, theme: str = None):
+    def _handle_simulate_command(self, chat_id: str, theme: str = None, num_messages: int = None):
         """
         Handle the /simulate command to run a conversation simulation.
 
-        This method:
-        1. Creates a new simulation profile with the specified theme as detected_intent
-        2. Generates a simulated conversation between ROLE_A (seeker) and ROLE_B (listener)
-        3. Persists all messages to the database
-        4. Sends the conversation transcript back to Telegram with role identification
-        5. Analyzes the conversation emotionally using LLM
-        6. Sends the emotional analysis as a final summary message
+        For 'drogas' theme:
+        - Uses dual LLM approach (Groq for Person, Ollama for Counselor)
+        - Supports optional num_messages parameter (default: 20, ±10 variance)
+        - Generates critical overviews from both LLMs
+        
+        For other themes:
+        - Uses the existing single-LLM simulation approach
+        - Creates a new simulation profile with the specified theme as detected_intent
+        - Generates a simulated conversation between ROLE_A (seeker) and ROLE_B (listener)
+        - Persists all messages to the database
+        - Sends the conversation transcript back to Telegram with role identification
+        - Analyzes the conversation emotionally using LLM
+        - Sends the emotional analysis as a final summary message
 
         Args:
             chat_id: Telegram chat ID
-            theme: Optional theme/intent for the conversation (e.g., "doenca", "ansiedade", "enfermidade")
+            theme: Optional theme/intent for the conversation (e.g., "doenca", "drogas")
+            num_messages: Optional number of messages (only for 'drogas' theme, default: 20)
 
         Returns:
             JsonResponse indicating success
         """
         try:
+            # Special handling for 'drogas' theme with dual LLM
+            if theme == "drogas":
+                return self._handle_drug_addiction_simulation(chat_id, num_messages)
+            
+            # Original simulation logic for other themes
             logger.info(
                 f"Starting /simulate command for chat {chat_id} with theme: {theme}"
             )
@@ -341,7 +365,7 @@ class TelegramWebhookView(View):
 
                 if approximated_theme == "outro":
                     # Theme couldn't be clearly mapped
-                    error_msg = f"❌ Não consegui identificar o tema '{original_theme}'.\n\nExemplos de temas válidos:\n- doenca / enfermidade\n- ansiedade / medo\n- pecado / culpa\n- desabafar / solidão\n- financeiro / dinheiro\n- religiao / fé\n- redes_sociais\n\nTente usar uma palavra relacionada a esses temas."
+                    error_msg = f"❌ Não consegui identificar o tema '{original_theme}'.\n\nExemplos de temas válidos:\n- doenca / enfermidade\n- ansiedade / medo\n- pecado / culpa\n- desabafar / solidão\n- financeiro / dinheiro\n- religiao / fé\n- redes_sociais\n- drogas (usa simulação especial)\n\nTente usar uma palavra relacionada a esses temas."
                     telegram_service.send_message(chat_id, error_msg)
                     logger.warning(f"Could not approximate theme: {original_theme}")
                     return JsonResponse({"status": "ok"}, status=200)
@@ -361,9 +385,9 @@ class TelegramWebhookView(View):
             logger.info(f"Created simulation profile {profile.id} with intent: {theme}")
 
             # Step 2: Generate simulated conversation with theme context
-            num_messages = 8  # Fixed number of messages for simplicity
+            num_messages_default = 8  # Fixed number of messages for simplicity
             conversation = simulation_service.generate_simulated_conversation(
-                profile, num_messages, theme
+                profile, num_messages_default, theme
             )
             logger.info(f"Generated {len(conversation)} simulated messages")
 
@@ -404,6 +428,102 @@ class TelegramWebhookView(View):
                 telegram_service.send_message(chat_id, error_msg)
             except Exception:
                 # If we can't send the error message, log and continue
+                logger.error("Failed to send error message to user")
+            return JsonResponse({"status": "error"}, status=500)
+    
+    def _handle_drug_addiction_simulation(self, chat_id: str, num_messages: int = None):
+        """
+        Handle drug addiction simulation using dual LLMs.
+        
+        Uses:
+        - Groq for Person role (struggling with addiction)
+        - Ollama for Counselor role (following DRUG_ADDICTION_THEME_PROMPT_PTBR)
+        
+        Args:
+            chat_id: Telegram chat ID
+            num_messages: Target number of messages (default: 20, ±10 variance)
+        
+        Returns:
+            JsonResponse indicating success
+        """
+        try:
+            from services.drug_addiction_simulation_service import DrugAddictionSimulationService
+            
+            logger.info(f"Starting drug addiction simulation for chat {chat_id}")
+            
+            # Initialize services
+            telegram_service = TelegramService()
+            
+            # Set default num_messages
+            if num_messages is None:
+                num_messages = 20
+            
+            # Validate num_messages range and notify user if out of range
+            if num_messages < 10 or num_messages > 40:
+                original_num_messages = num_messages
+                num_messages = 20
+                telegram_service.send_message(
+                    chat_id,
+                    f"⚠️ Número de mensagens ({original_num_messages}) fora do intervalo permitido (10-40). Usando padrão: 20"
+                )
+                logger.warning(f"num_messages {original_num_messages} out of range, using default: {num_messages}")
+            
+            # Send initial message
+            init_msg = f"🔄 Iniciando simulação sobre dependência química...\n\n💊 Usando Groq (Pessoa) + Ollama (Counselor)\n📊 Alvo: ~{num_messages} mensagens (±10 variância natural)"
+            telegram_service.send_message(chat_id, init_msg)
+            
+            # Initialize simulation service
+            sim_service = DrugAddictionSimulationService()
+            
+            # Generate conversation
+            logger.info(f"Generating conversation with target {num_messages} messages")
+            conversation = sim_service.generate_conversation(num_messages)
+            logger.info(f"Generated {len(conversation)} messages")
+            
+            # Send each message
+            for i, msg in enumerate(conversation):
+                role_emoji = "🧑‍💬" if msg["role"] == "Person" else "🌿"
+                prefix = f"{role_emoji} {msg['role']}:"
+                formatted_msg = f"{prefix}\n{msg['content']}"
+                
+                telegram_service.send_message(chat_id, formatted_msg)
+                
+                # Small pause for readability
+                time.sleep(MESSAGE_DELAY_SECONDS)
+            
+            logger.info(f"Sent {len(conversation)} messages to chat {chat_id}")
+            
+            # Generate critical overviews from both LLMs
+            logger.info("Generating critical overviews...")
+            
+            # Overview from Groq
+            overview_groq = sim_service.generate_critical_overview_groq(conversation)
+            groq_msg = f"📊 *Análise Crítica (Groq)*\n\n{overview_groq}"
+            telegram_service.send_message(chat_id, groq_msg, parse_mode="Markdown")
+            logger.info("Sent Groq overview")
+            
+            # Small pause between overviews
+            time.sleep(OVERVIEW_DELAY_SECONDS)
+            
+            # Overview from Ollama
+            overview_ollama = sim_service.generate_critical_overview_ollama(conversation)
+            ollama_msg = f"📊 *Análise Crítica (Ollama)*\n\n{overview_ollama}"
+            telegram_service.send_message(chat_id, ollama_msg, parse_mode="Markdown")
+            logger.info("Sent Ollama overview")
+            
+            # Final summary
+            summary_msg = f"✅ Simulação concluída!\n\n📈 Total: {len(conversation)} mensagens\n🔍 2 análises críticas enviadas"
+            telegram_service.send_message(chat_id, summary_msg)
+            
+            return JsonResponse({"status": "ok"}, status=200)
+            
+        except Exception as e:
+            logger.error(f"Error in drug addiction simulation: {str(e)}", exc_info=True)
+            try:
+                telegram_service = TelegramService()
+                error_msg = "❌ Erro ao executar simulação de dependência química. Verifique se o Ollama está rodando e tente novamente."
+                telegram_service.send_message(chat_id, error_msg)
+            except Exception:
                 logger.error("Failed to send error message to user")
             return JsonResponse({"status": "error"}, status=500)
 
