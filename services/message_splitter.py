@@ -45,8 +45,8 @@ def split_welcome_message(message: str) -> Tuple[str, str]:
 
     if last_question_pos == -1:
         # No question mark found, split at last sentence boundary or paragraph
-        # Try to split at last period followed by space
-        sentences = re.split(r'(\.\s+)', message)
+        # Try to split at last period (with or without trailing space)
+        sentences = re.split(r'(\.\s*)', message)
         if len(sentences) > 2:
             # Join all but the last sentence as greeting
             # The split includes the delimiters, so we need to handle them carefully

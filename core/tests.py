@@ -282,15 +282,18 @@ class TelegramWebhookViewTest(TestCase):
         messages = Message.objects.filter(profile=profile).order_by("id")
         self.assertEqual(messages.count(), 2)
 
-        # Verify content is preserved (concatenated messages should equal original)
+        # Verify content is preserved (all words from original should appear in split)
         greeting = messages[0].content
         question = messages[1].content
-        reconstructed = f"{greeting} {question}"
         
-        # All words from original should be in reconstructed
-        original_words = set(original_message.lower().split())
-        reconstructed_words = set(reconstructed.lower().split())
-        self.assertEqual(original_words, reconstructed_words)
+        # Extract words (normalize spacing)
+        original_words = set(original_message.replace("?", "").replace(".", "").replace(",", "").lower().split())
+        greeting_words = set(greeting.replace("?", "").replace(".", "").replace(",", "").lower().split())
+        question_words = set(question.replace("?", "").replace(".", "").replace(",", "").lower().split())
+        split_words = greeting_words | question_words
+        
+        # All words from original should be in split messages
+        self.assertEqual(original_words, split_words)
 
         # Verify the question is in the second message
         self.assertIn("?", question)

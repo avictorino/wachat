@@ -34,9 +34,9 @@ class MessageSplitterTest(TestCase):
         message = "João, bem-vindo. Como você está se sentindo hoje?"
         greeting, question = split_welcome_message(message)
 
-        # Verify all words are preserved (accounting for spacing)
-        original_words = set(message.replace("?", "").replace(".", "").split())
-        split_words = set((greeting + " " + question).replace("?", "").replace(".", "").split())
+        # Verify all words are preserved (normalize punctuation)
+        original_words = set(message.replace("?", "").replace(".", "").replace(",", "").split())
+        split_words = set((greeting + " " + question).replace("?", "").replace(".", "").replace(",", "").split())
 
         self.assertEqual(original_words, split_words)
 

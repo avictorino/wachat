@@ -204,11 +204,8 @@ class TelegramWebhookView(View):
             if question_part:
                 messages_to_send.append(question_part)
 
-            # If split failed (e.g., only greeting returned), send as single message
-            if not messages_to_send:
-                messages_to_send = [welcome_message]
-            elif len(messages_to_send) == 1 and not question_part:
-                # Only greeting exists, send as single message
+            # If split didn't produce 2 messages, send original message as fallback
+            if len(messages_to_send) < 2:
                 messages_to_send = [welcome_message]
 
             # Persist each message part
