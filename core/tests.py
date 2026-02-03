@@ -865,8 +865,6 @@ class FallbackConversationalFlowTest(TestCase):
         self, mock_groq, mock_telegram
     ):
         """Test that generate_intent_response receives conversation context."""
-        from core.views import TelegramWebhookView
-
         # Set a detected intent on the profile
         self.profile.detected_intent = "ansiedade"
         self.profile.save()
