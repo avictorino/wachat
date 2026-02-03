@@ -855,6 +855,79 @@ class FallbackConversationalFlowTest(TestCase):
         self.assertEqual(len(context), 2)
         self.assertNotIn("system", [msg["role"] for msg in context])
 
+    @patch("core.views.TelegramService")
+    @patch("core.views.get_llm_service")
+    @patch.dict(
+        "os.environ",
+        {"TELEGRAM_BOT_TOKEN": "test-token", "TELEGRAM_WEBHOOK_SECRET": "test-secret"},
+    )
+    def test_intent_response_receives_conversation_context(
+        self, mock_groq, mock_telegram
+    ):
+        """Test that generate_intent_response receives conversation context."""
+        # Set a detected intent on the profile
+        self.profile.detected_intent = "ansiedade"
+        self.profile.save()
+
+        # Create conversation history
+        messages_data = [
+            ("assistant", "Olá João! Bem-vindo."),
+            ("user", "Oi, obrigado"),
+            ("assistant", "Como posso te ajudar hoje?"),
+            ("user", "Estou me sentindo ansioso"),
+        ]
+
+        for role, content in messages_data:
+            Message.objects.create(profile=self.profile, role=role, content=content)
+
+        # Mock Groq service
+        mock_groq_instance = Mock()
+        mock_groq_instance.generate_intent_response.return_value = [
+            "Vejo que você está ansioso. Vamos conversar sobre isso?"
+        ]
+        mock_groq.return_value = mock_groq_instance
+
+        # Mock Telegram service
+        mock_telegram_instance = Mock()
+        mock_telegram_instance.send_messages.return_value = True
+        mock_telegram.return_value = mock_telegram_instance
+
+        # Send a message that triggers intent detection
+        payload = {
+            "update_id": 5,
+            "message": {
+                "message_id": 5,
+                "from": {"id": 12345, "first_name": "João"},
+                "chat": {"id": 12345, "type": "private"},
+                "text": "Preciso de ajuda com isso",
+            },
+        }
+
+        response = self.client.post(
+            "/webhooks/telegram/",
+            data=payload,
+            content_type="application/json",
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify generate_intent_response was called with conversation_context
+        mock_groq_instance.generate_intent_response.assert_called_once()
+        call_args = mock_groq_instance.generate_intent_response.call_args
+
+        # Check that conversation_context was passed
+        self.assertIn("conversation_context", call_args[1])
+        context = call_args[1]["conversation_context"]
+
+        # Context should include previous messages
+        self.assertIsInstance(context, list)
+        self.assertGreater(len(context), 0)
+
+        # Verify context contains expected messages in chronological order
+        self.assertEqual(context[0]["role"], "assistant")
+        self.assertEqual(context[0]["content"], "Olá João! Bem-vindo.")
+
 
 class GroqServiceFallbackTest(TestCase):
     """Tests for GroqService fallback response generation."""

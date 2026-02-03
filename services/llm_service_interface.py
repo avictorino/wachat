@@ -75,6 +75,7 @@ class LLMServiceInterface(ABC):
         name: str,
         inferred_gender: Optional[str] = None,
         theme_id: Optional[str] = None,
+        conversation_context: Optional[List[dict]] = None,
     ) -> List[str]:
         """
         Generate an empathetic, spiritually-aware response based on detected intent.
@@ -85,6 +86,7 @@ class LLMServiceInterface(ABC):
             name: The user's name
             inferred_gender: Inferred gender (male/female/unknown or None)
             theme_id: Optional theme identifier
+            conversation_context: Optional list of recent messages (dicts with 'role' and 'content')
 
         Returns:
             List of message strings to send sequentially
