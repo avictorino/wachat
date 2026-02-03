@@ -618,8 +618,8 @@ class TelegramWebhookView(View):
                     f"Using fallback conversational flow for profile {profile.id}"
                 )
 
-                # Get conversation context (last 8 messages for continuity)
-                context = self._get_conversation_context(profile, limit=8)
+                # Get conversation context (last 10 messages for continuity)
+                context = self._get_conversation_context(profile, limit=10)
 
                 # Generate fallback response (may return multiple messages)
                 response_messages = llm_service.generate_fallback_response(
@@ -679,16 +679,21 @@ class TelegramWebhookView(View):
             logger.error(f"Error handling regular message: {str(e)}", exc_info=True)
             return JsonResponse({"status": "error"}, status=500)
 
-    def _get_conversation_context(self, profile, limit: int = 8) -> list:
+    def _get_conversation_context(self, profile, limit: int = 10) -> list:
         """
         Get recent conversation context for the LLM.
 
         Retrieves the last N messages (both user and assistant) to provide
         context for generating contextually-aware responses.
+        
+        Following the problem statement requirements:
+        - Maximum 10 messages (5 user + 5 assistant)
+        - Ordered from oldest → newest
+        - This is the AI's only memory
 
         Args:
             profile: The user Profile object
-            limit: Maximum number of recent messages to retrieve
+            limit: Maximum number of recent messages to retrieve (default: 10)
 
         Returns:
             List of dicts with 'role' and 'content' keys
