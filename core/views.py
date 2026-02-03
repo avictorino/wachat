@@ -12,6 +12,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from core.models import Message, Profile
 from services.llm_factory import get_llm_service
+from services.message_splitter import split_welcome_message
 from services.reset_user_data import ResetUserDataUseCase
 from services.simulation_service import SimulationService
 from services.telegram_service import TelegramService
@@ -193,22 +194,40 @@ class TelegramWebhookView(View):
                 name=name, inferred_gender=profile.inferred_gender
             )
 
-            # Persist the welcome message
-            Message.objects.create(
-                profile=profile,
-                role="assistant",
-                content=welcome_message,
-                channel="telegram",
-            )
-            logger.info(f"Persisted welcome message for profile {profile.id}")
+            # Split the welcome message into greeting and question parts
+            greeting_part, question_part = split_welcome_message(welcome_message)
 
-            # Send the message to Telegram
-            success = telegram_service.send_message(chat_id, welcome_message)
+            # Create list of messages to send
+            messages_to_send = []
+            if greeting_part:
+                messages_to_send.append(greeting_part)
+            if question_part:
+                messages_to_send.append(question_part)
+
+            # If split failed (e.g., only greeting returned), send as single message
+            if not messages_to_send:
+                messages_to_send = [welcome_message]
+            elif len(messages_to_send) == 1 and not question_part:
+                # Only greeting exists, send as single message
+                messages_to_send = [welcome_message]
+
+            # Persist each message part
+            for message_content in messages_to_send:
+                Message.objects.create(
+                    profile=profile,
+                    role="assistant",
+                    content=message_content,
+                    channel="telegram",
+                )
+            logger.info(f"Persisted {len(messages_to_send)} welcome message(s) for profile {profile.id}")
+
+            # Send the message(s) to Telegram
+            success = telegram_service.send_messages(chat_id, messages_to_send)
 
             if success:
-                logger.info(f"Welcome message sent to chat {chat_id}")
+                logger.info(f"Welcome message(s) sent to chat {chat_id}")
             else:
-                logger.error(f"Failed to send welcome message to chat {chat_id}")
+                logger.error(f"Failed to send welcome message(s) to chat {chat_id}")
 
             return JsonResponse({"status": "ok"}, status=200)
 

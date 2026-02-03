@@ -107,18 +107,18 @@ class TelegramWebhookViewTest(TestCase):
         },
     )
     def test_start_command_creates_profile(self, mock_groq, mock_telegram):
-        """Test that /start command creates a profile and sends welcome message."""
+        """Test that /start command creates a profile and sends welcome messages."""
         # Mock Groq service
         mock_groq_instance = Mock()
         mock_groq_instance.infer_gender.return_value = "male"
         mock_groq_instance.generate_welcome_message.return_value = (
-            "Olá João! Bem-vindo."
+            "Olá João! Bem-vindo ao nosso espaço. O que te trouxe aqui?"
         )
         mock_groq.return_value = mock_groq_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
-        mock_telegram_instance.send_message.return_value = True
+        mock_telegram_instance.send_messages.return_value = True
         mock_telegram.return_value = mock_telegram_instance
 
         # Send /start command
@@ -146,17 +146,29 @@ class TelegramWebhookViewTest(TestCase):
         self.assertEqual(profile.name, "João Silva")
         self.assertEqual(profile.inferred_gender, "male")
 
-        # Verify message was persisted
-        messages = Message.objects.filter(profile=profile)
-        self.assertEqual(messages.count(), 1)
-        self.assertEqual(messages.first().role, "assistant")
-        self.assertEqual(messages.first().content, "Olá João! Bem-vindo.")
-
-        self.assertEqual(messages.first().channel, "telegram")  # Verify channel is set
+        # Verify messages were persisted (should be 2 messages now)
+        messages = Message.objects.filter(profile=profile).order_by("id")
+        self.assertEqual(messages.count(), 2)
+        
+        # First message should be the greeting
+        self.assertEqual(messages[0].role, "assistant")
+        self.assertEqual(messages[0].content, "Olá João! Bem-vindo ao nosso espaço.")
+        self.assertEqual(messages[0].channel, "telegram")
+        
+        # Second message should be the question
+        self.assertEqual(messages[1].role, "assistant")
+        self.assertEqual(messages[1].content, "O que te trouxe aqui?")
+        self.assertEqual(messages[1].channel, "telegram")
 
         # Verify services were called
         mock_groq_instance.infer_gender.assert_called_once_with("João Silva")
         mock_groq_instance.generate_welcome_message.assert_called_once()
+        
+        # Verify send_messages was called with both parts
+        mock_telegram_instance.send_messages.assert_called_once()
+        call_args = mock_telegram_instance.send_messages.call_args
+        self.assertEqual(call_args[0][0], "12345")  # chat_id
+        self.assertEqual(len(call_args[0][1]), 2)  # two messages
 
     @patch("core.views.TelegramService")
     @patch("core.views.get_llm_service")
@@ -174,13 +186,13 @@ class TelegramWebhookViewTest(TestCase):
         mock_groq_instance = Mock()
         mock_groq_instance.infer_gender.return_value = "unknown"
         mock_groq_instance.generate_welcome_message.return_value = (
-            "Olá! Bem-vindo."
+            "Olá! Bem-vindo ao nosso espaço. Como você está?"
         )
         mock_groq.return_value = mock_groq_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
-        mock_telegram_instance.send_message.return_value = True
+        mock_telegram_instance.send_messages.return_value = True
         mock_telegram.return_value = mock_telegram_instance
 
         # Send /start command with a name containing harmful content
@@ -211,7 +223,7 @@ class TelegramWebhookViewTest(TestCase):
         # The sanitization is transparent - we just verify the service was called
         mock_groq_instance.infer_gender.assert_called_once_with("Sexo Silva")
         mock_groq_instance.generate_welcome_message.assert_called_once()
-        mock_telegram_instance.send_message.assert_called_once()
+        mock_telegram_instance.send_messages.assert_called_once()
 
     @patch("core.views.TelegramService")
     @patch("core.views.get_llm_service")
