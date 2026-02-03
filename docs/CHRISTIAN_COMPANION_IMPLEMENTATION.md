@@ -16,7 +16,11 @@ The goal was to transform the conversational agent into a Christian-inspired vir
 
 ## Implementation Details
 
-### 1. Base Prompt Updates (`services/prompts/base.py`)
+### 1. Base Behavioral Prompt (Modelfile)
+
+The base behavioral prompt is now defined in the `Modelfile` at the project root.
+This Modelfile serves as the single source of truth for the assistant's conversational behavior,
+including tone, ethics, conversational rules, and spiritual posture.
 
 #### Core Identity
 - Established the agent as a "companheiro virtual" (virtual companion) with Christian inspiration

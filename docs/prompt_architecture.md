@@ -1,15 +1,17 @@
-# Prompt architecture (Base + Themes)
+# Prompt architecture (Modelfile + Themes)
 
 This project composes LLM system prompts from two layers:
 
-1) **Base prompt** (generalist, shared)
-2) **Thematic prompt** (problem-specific, optional)
+1) **Base behavioral prompt** (defined in Modelfile at project root)
+2) **Thematic prompt** (problem-specific, optional, defined in application code)
 
-The goal is to keep the base behavior consistent (warmth, brevity, respectful Christian spirituality) while allowing additional, focused guidance when a user problem is identified (e.g., addiction).
+The Modelfile serves as the single source of truth for base conversational behavior 
+(warmth, brevity, respectful Christian spirituality). The application code only sends
+dynamic, context-specific prompts (themes and modes) to the LLM.
 
 ## Where prompts live
 
-- Base prompt: `services/prompts/base.py`
+- Base behavioral prompt: `Modelfile` at project root
 - Themes registry: `services/prompts/themes/__init__.py`
 - Theme implementation(s): `services/prompts/themes/*.py`
 - Composition logic: `services/prompts/composer.py`
