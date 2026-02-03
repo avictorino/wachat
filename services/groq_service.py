@@ -364,6 +364,7 @@ IMPORTANTE:
         name: str,
         inferred_gender: Optional[str] = None,
         theme_id: Optional[str] = None,
+        conversation_context: Optional[List[dict]] = None,
     ) -> List[str]:
         """
         Generate an empathetic, spiritually-aware response based on detected intent.
@@ -383,6 +384,8 @@ IMPORTANTE:
             intent: The detected intent category
             name: The user's name
             inferred_gender: Inferred gender (male/female/unknown or None)
+            theme_id: Optional theme identifier
+            conversation_context: Optional list of recent messages (dicts with 'role' and 'content')
 
         Returns:
             List of message strings to send sequentially
@@ -418,12 +421,20 @@ IMPORTANTE:
                 "\n\nResponda agora."
             )
 
+            # Build messages list with conversation context if provided
+            messages = [{"role": "system", "content": system_prompt}]
+
+            # Add conversation context if provided
+            if conversation_context:
+                for msg in conversation_context:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
+
+            # Add the current user message
+            messages.append({"role": "user", "content": user_prompt})
+
             response = self.client.chat.completions.create(
                 model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
+                messages=messages,
                 temperature=0.85,  # Higher temperature for more natural, varied responses
                 max_tokens=250,  # Reduced from 400 to enforce brevity
             )

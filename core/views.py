@@ -646,12 +646,16 @@ class TelegramWebhookView(View):
 
             else:
                 # Use intent-based response for clear intent
+                # Get conversation context (last 10 messages for continuity)
+                context = self._get_conversation_context(profile, limit=10)
+
                 response_messages = llm_service.generate_intent_response(
                     user_message=message_text,
                     intent=detected_intent,
                     name=profile.name,
                     inferred_gender=profile.inferred_gender,
                     theme_id=profile.prompt_theme,
+                    conversation_context=context,
                 )
 
                 # Persist each assistant response separately
