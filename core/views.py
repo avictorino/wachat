@@ -11,7 +11,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from core.models import Message, Profile
-from services.groq_service import GroqService
+from services.llm_factory import get_llm_service
 from services.reset_user_data import ResetUserDataUseCase
 from services.simulation_service import SimulationService
 from services.telegram_service import TelegramService
@@ -174,12 +174,12 @@ class TelegramWebhookView(View):
                 logger.info(f"Created new profile for {telegram_user_id}")
 
             # Initialize services
-            groq_service = GroqService()
+            llm_service = get_llm_service()
             telegram_service = TelegramService()
 
             # Infer gender if not already done
             if not profile.inferred_gender:
-                inferred_gender = groq_service.infer_gender(name)
+                inferred_gender = llm_service.infer_gender(name)
                 profile.inferred_gender = inferred_gender
                 needs_save = True
                 logger.info(f"Inferred gender for {name}: {inferred_gender}")
@@ -189,7 +189,7 @@ class TelegramWebhookView(View):
                 profile.save()
 
             # Generate welcome message
-            welcome_message = groq_service.generate_welcome_message(
+            welcome_message = llm_service.generate_welcome_message(
                 name=name, inferred_gender=profile.inferred_gender
             )
 
@@ -313,7 +313,7 @@ class TelegramWebhookView(View):
                 return JsonResponse({"status": "ok"}, status=200)
 
             simulation_service = SimulationService(groq_api_key)
-            groq_service = GroqService()
+            llm_service = get_llm_service()
 
             # Approximate theme using LLM if provided
             if theme:
@@ -321,7 +321,7 @@ class TelegramWebhookView(View):
                 theme = theme.lower()
 
                 # Use LLM to approximate the theme to one of the valid categories
-                approximated_theme = groq_service.approximate_theme(theme)
+                approximated_theme = llm_service.approximate_theme(theme)
 
                 if approximated_theme == "outro":
                     # Theme couldn't be clearly mapped
@@ -544,8 +544,8 @@ class TelegramWebhookView(View):
             Message.objects.create(profile=profile, role="user", content=message_text)
             logger.info(f"Persisted user message for profile {profile.id}")
 
-            # Initialize Groq service for intent detection and response generation
-            groq_service = GroqService()
+            # Initialize LLM service for intent detection and response generation
+            llm_service = get_llm_service()
 
             # Detect intent (and optionally activate a thematic prompt)
             # - We still prioritize intent detection early in the conversation.
@@ -566,7 +566,7 @@ class TelegramWebhookView(View):
             )
 
             if should_detect_intent:
-                new_intent = groq_service.detect_intent(message_text)
+                new_intent = llm_service.detect_intent(message_text)
                 detected_intent = new_intent
 
                 # Persist the most useful/clear intent for routing.
@@ -606,7 +606,7 @@ class TelegramWebhookView(View):
                 context = self._get_conversation_context(profile, limit=8)
 
                 # Generate fallback response (may return multiple messages)
-                response_messages = groq_service.generate_fallback_response(
+                response_messages = llm_service.generate_fallback_response(
                     user_message=message_text,
                     conversation_context=context,
                     name=profile.name,
@@ -630,7 +630,7 @@ class TelegramWebhookView(View):
 
             else:
                 # Use intent-based response for clear intent
-                response_messages = groq_service.generate_intent_response(
+                response_messages = llm_service.generate_intent_response(
                     user_message=message_text,
                     intent=detected_intent,
                     name=profile.name,

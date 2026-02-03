@@ -1,7 +1,7 @@
 """
-Groq LLM service for AI-powered features.
+Ollama LLM service for AI-powered features.
 
-This module handles interactions with the Groq API for:
+This module handles interactions with a local Ollama server for:
 - Gender inference from names
 - Welcome message generation
 - Context-aware fallback responses
@@ -9,9 +9,9 @@ This module handles interactions with the Groq API for:
 
 import logging
 import os
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
-from groq import Groq
+import requests
 
 from services.input_sanitizer import sanitize_input
 from services.llm_service_interface import LLMServiceInterface
@@ -20,24 +20,88 @@ from services.prompts import PromptComposer
 logger = logging.getLogger(__name__)
 
 
-class GroqService(LLMServiceInterface):
-    """Service class for interacting with Groq LLM API."""
+class OllamaService(LLMServiceInterface):
+    """Service class for interacting with local Ollama LLM API."""
 
     def __init__(self):
-        """Initialize Groq client with API key from environment."""
-        api_key = os.environ.get("GROQ_API_KEY")
-        if not api_key:
-            logger.error("GROQ_API_KEY environment variable is required")
-            raise ValueError("GROQ_API_KEY environment variable is required")
+        """Initialize Ollama client with configuration from environment."""
+        self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.model = os.environ.get("OLLAMA_MODEL", "llama3.1")
+        self.api_url = f"{self.base_url}/api/chat"
 
-        self.client = Groq(api_key=api_key)
-        self.model = (
-            "llama-3.3-70b-versatile"  # Using a capable model for nuanced tasks
+        logger.info(
+            f"Initialized OllamaService with base_url={self.base_url}, model={self.model}"
         )
+
+    def _make_chat_request(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ) -> str:
+        """
+        Make a chat completion request to Ollama API.
+
+        Args:
+            messages: List of message dicts with 'role' and 'content'
+            temperature: Sampling temperature (0.0 to 1.0)
+            max_tokens: Maximum tokens to generate (optional, no enforcement)
+            **kwargs: Additional Ollama options (top_p, repeat_penalty, etc.)
+
+        Returns:
+            The assistant's response text
+
+        Raises:
+            requests.exceptions.RequestException: On connection or API errors
+        """
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                **kwargs,
+            },
+        }
+
+        # Add max_tokens if provided (Ollama calls it num_predict)
+        if max_tokens:
+            payload["options"]["num_predict"] = max_tokens
+
+        try:
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                timeout=60,  # 60 second timeout for local requests
+            )
+            response.raise_for_status()
+
+            response_data = response.json()
+            content = response_data.get("message", {}).get("content", "").strip()
+
+            if not content:
+                logger.warning("Ollama returned empty content")
+                raise ValueError("Empty response from Ollama")
+
+            return content
+
+        except requests.exceptions.ConnectionError as e:
+            logger.error(f"Failed to connect to Ollama at {self.base_url}: {str(e)}")
+            raise
+        except requests.exceptions.Timeout as e:
+            logger.error(f"Ollama request timed out: {str(e)}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Ollama API error: {str(e)}")
+            raise
+        except (KeyError, ValueError) as e:
+            logger.error(f"Failed to parse Ollama response: {str(e)}")
+            raise
 
     def infer_gender(self, name: str) -> str:
         """
-        Infer gender from a user's name using Groq LLM.
+        Infer gender from a user's name using Ollama LLM.
 
         This is a soft, probabilistic inference based solely on the name.
         The result is for internal use only and should never be explicitly
@@ -64,17 +128,16 @@ Responda apenas com a palavra, sem explicações."""
 
             user_prompt = f"Nome: {sanitized_name}"
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,  # Low temperature for more deterministic results
-                max_tokens=10,
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            response_text = self._make_chat_request(
+                messages, temperature=0.3, max_tokens=10
             )
 
-            inferred = response.choices[0].message.content.strip().lower()
+            inferred = response_text.strip().lower()
 
             # Validate response
             if inferred not in ["male", "female", "unknown"]:
@@ -92,7 +155,7 @@ Responda apenas com a palavra, sem explicações."""
         self, name: str, inferred_gender: Optional[str] = None
     ) -> str:
         """
-        Generate a personalized welcome message using Groq LLM.
+        Generate a personalized welcome message using Ollama LLM.
 
         The message is warm, human, and inviting without being cliché.
         It adapts subtly based on the user's name and inferred gender,
@@ -142,19 +205,18 @@ Crie sensação de presença humana genuína."""
             if inferred_gender and inferred_gender != "unknown":
                 gender_context = f"\nGênero inferido (use isso APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
 
-            user_prompt = f"Crie uma mensagem de boas-vindas para: {sanitized_name}{gender_context}"
-
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.8,  # Higher temperature for more creative, varied responses
-                max_tokens=300,
+            user_prompt = (
+                f"Crie uma mensagem de boas-vindas para: {sanitized_name}{gender_context}"
             )
 
-            welcome_message = response.choices[0].message.content.strip()
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            welcome_message = self._make_chat_request(
+                messages, temperature=0.8, max_tokens=300
+            )
 
             logger.info(f"Generated welcome message for '{name}'")
             return welcome_message
@@ -168,16 +230,7 @@ Crie sensação de presença humana genuína."""
         """
         Detect and normalize user intent from their message.
 
-        Maps the user's message to one of the predefined intent categories:
-        1. Problemas financeiros
-        2. Distante da religião/espiritualidade
-        3. Ato criminoso ou pecado
-        4. Doença (própria ou familiar)
-        5. Ansiedade
-        6. Desabafar
-        7. Viu nas redes sociais
-        8. Addiction-related conditions (drogas, alcool, sexo, cigarro)
-        9. Outro (for unmatched cases)
+        Maps the user's message to one of the predefined intent categories.
 
         Args:
             user_message: The user's text message
@@ -191,67 +244,66 @@ Crie sensação de presença humana genuína."""
 Sua tarefa é identificar qual das seguintes categorias melhor representa a preocupação ou motivo principal da pessoa:
 
 1. "problemas_financeiros" - Pessoa está com dificuldades financeiras, desemprego, dívidas
-2. "distant religião" - Pessoa sente distância da religião, espiritualidade, ou fé
+2. "distante_religiao" - Pessoa sente distância da religião, espiritualidade, ou fé
 3. "ato_criminoso_pecado" - Pessoa cometeu algo que considera errado, pecado, ou crime
-4. "doença" - Pessoa ou familiar está doente, enfrentando problemas de saúde
+4. "doenca" - Pessoa ou familiar está doente, enfrentando problemas de saúde
 5. "ansiedade" - Pessoa está ansiosa, estressada, com medo, ou preocupada
 6. "desabafar" - Pessoa só precisa conversar, desabafar, ser ouvida
-7. "redes sociais" - Pessoa viu o número nas redes sociais e está curiosa
+7. "redes_sociais" - Pessoa viu o número nas redes sociais e está curiosa
 8. "drogas" - Pessoa está lutando com uso de drogas, substâncias, dependência química
 9. "alcool" - Pessoa está lutando com uso de álcool, bebida, dependência alcoólica
 10. "sexo" - Pessoa está lutando com compulsão sexual, comportamento sexual compulsivo
 11. "cigarro" - Pessoa está lutando com cigarro, tabagismo, nicotina
 12. "outro" - Nenhuma das categorias acima se aplica claramente
-13.	“luto” – Pessoa perdeu alguém importante (morte de familiar, amigo, cônjuge)
-14.	“separação divorcio” – Término de relacionamento, divórcio ou crise conjugal
-15.	“solidão” – Pessoa se sente sozinha, sem apoio emocional ou social
-16.	“culpa vergonha” – Sentimento intenso de culpa, vergonha ou arrependimento
-17.	“sentido da vida” – Busca por propósito, significado ou direção para a vida
-18.	“medo do futuro” – Insegurança com o futuro, decisões importantes ou mudanças
-19.	“crise existencial” – Questionamentos profundos sobre existência, morte, fé ou Deus
-20.	“familia” – Conflitos familiares (pais, filhos, irmãos)
-21.	“filhos” – Dificuldades na criação dos filhos, culpa parental, medo de errar
-22.	“casamento” – Problemas conjugais, rotina, traição, esfriamento emocional
-23.	“trabalho” – Burnout, pressão profissional, conflitos no trabalho, falta de sentido na carreira
-24.	“depressão” – Tristeza persistente, desânimo, sensação de vazio
-25.	“perda material” – Perda de bens, falência, prejuízo financeiro relevante
-26.	“trauma” – Experiências traumáticas passadas (violência, abuso, acidentes)
-27.	“busca de perdao” – Desejo de perdão divino ou de perdoar alguém
-28.	“agradecimento” – Pessoa quer agradecer por algo que deu certo
-29.	“milagre intervencao” – Busca por ajuda sobrenatural, milagre ou intervenção divina
-30.	“rotina devocional” – Pessoa já é religiosa e busca oração, leitura ou reflexão diária
-31.	“curiosidade espiritual” – Interesse intelectual ou cultural sobre fé e espiritualidade
-32.	“conversao” – Interesse em se aproximar ou retornar à religião
-33.	“pressão social_familiar” – Influência de família, amigos ou comunidade religiosa
-34.	“valores morais” – Busca por orientação ética, certo e errado
-35.	“esperança” – Necessidade de esperança em um momento difícil
-36.	“medo da morte” – Medo de morrer ou de perder alguém
-37.	“agravamento_crise” – Vários problemas acumulados ao mesmo tempo
-38.	“orientacao decisao” – Busca por direção antes de uma decisão importante
-39.	“paz interior” – Desejo de calma, equilíbrio emocional e espiritual
-40.	“outro” – Motivo não identificado ou combinação complexa de fatores
+13. "luto" – Pessoa perdeu alguém importante (morte de familiar, amigo, cônjuge)
+14. "separacao_divorcio" – Término de relacionamento, divórcio ou crise conjugal
+15. "solidao" – Pessoa se sente sozinha, sem apoio emocional ou social
+16. "culpa_vergonha" – Sentimento intenso de culpa, vergonha ou arrependimento
+17. "sentido_da_vida" – Busca por propósito, significado ou direção para a vida
+18. "medo_do_futuro" – Insegurança com o futuro, decisões importantes ou mudanças
+19. "crise_existencial" – Questionamentos profundos sobre existência, morte, fé ou Deus
+20. "familia" – Conflitos familiares (pais, filhos, irmãos)
+21. "filhos" – Dificuldades na criação dos filhos, culpa parental, medo de errar
+22. "casamento" – Problemas conjugais, rotina, traição, esfriamento emocional
+23. "trabalho" – Burnout, pressão profissional, conflitos no trabalho, falta de sentido na carreira
+24. "depressao" – Tristeza persistente, desânimo, sensação de vazio
+25. "perda_material" – Perda de bens, falência, prejuízo financeiro relevante
+26. "trauma" – Experiências traumáticas passadas (violência, abuso, acidentes)
+27. "busca_de_perdao" – Desejo de perdão divino ou de perdoar alguém
+28. "agradecimento" – Pessoa quer agradecer por algo que deu certo
+29. "milagre_intervencao" – Busca por ajuda sobrenatural, milagre ou intervenção divina
+30. "rotina_devocional" – Pessoa já é religiosa e busca oração, leitura ou reflexão diária
+31. "curiosidade_espiritual" – Interesse intelectual ou cultural sobre fé e espiritualidade
+32. "conversao" – Interesse em se aproximar ou retornar à religião
+33. "pressao_social_familiar" – Influência de família, amigos ou comunidade religiosa
+34. "valores_morais" – Busca por orientação ética, certo e errado
+35. "esperanca" – Necessidade de esperança em um momento difícil
+36. "medo_da_morte" – Medo de morrer ou de perder alguém
+37. "agravamento_crise" – Vários problemas acumulados ao mesmo tempo
+38. "orientacao_decisao" – Busca por direção antes de uma decisão importante
+39. "paz_interior" – Desejo de calma, equilíbrio emocional e espiritual
+40. "outro" – Motivo não identificado ou combinação complexa de fatores
 
 IMPORTANTE:
 - Seja flexível - permita variações e formas diferentes de expressar cada intenção
 - Considere o contexto emocional da mensagem
 - Se houver múltiplas intenções, escolha a mais proeminente
 - ATENÇÃO: Trate drogas, alcool, sexo, cigarro como condições reais e sérias, não como escolhas ou fraquezas
-- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas financeiros", "drogas")
+- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas_financeiros", "drogas")
 - Não adicione explicações ou pontuação"""
 
             user_prompt = f"Mensagem do usuário: {user_message}"
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.3,  # Low temperature for more deterministic classification
-                max_tokens=20,
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            response_text = self._make_chat_request(
+                messages, temperature=0.3, max_tokens=20
             )
 
-            intent = response.choices[0].message.content.strip().lower()
+            intent = response_text.strip().lower()
 
             logger.info(f"Intent detected: {intent}")
             return intent
@@ -266,11 +318,6 @@ IMPORTANTE:
 
         This method takes a user's theme input (which may be in natural language,
         synonyms, or variations) and maps it to the closest predefined theme category.
-
-        For example:
-        - "enfermidade" -> "doenca"
-        - "problemas de dinheiro" -> "problemas_financeiros"
-        - "pecado" -> "ato_criminoso_pecado"
 
         Args:
             user_input: The user's theme input (e.g., "enfermidade", "pecado")
@@ -315,17 +362,16 @@ IMPORTANTE:
 
             user_prompt = f"Palavra ou frase: {sanitized_input}"
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.2,  # Low temperature for more deterministic classification
-                max_tokens=20,
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            response_text = self._make_chat_request(
+                messages, temperature=0.2, max_tokens=20
             )
 
-            theme = response.choices[0].message.content.strip().lower()
+            theme = response_text.strip().lower()
 
             # Validate and normalize the response
             valid_themes = [
@@ -336,10 +382,10 @@ IMPORTANTE:
                 "ansiedade",
                 "desabafar",
                 "redes_sociais",
-                "drogas",  # Addiction: drug use/dependency
-                "alcool",  # Addiction: alcohol use/dependency
-                "sexo",  # Addiction: sexual compulsion
-                "cigarro",  # Addiction: smoking/nicotine
+                "drogas",
+                "alcool",
+                "sexo",
+                "cigarro",
                 "outro",
             ]
 
@@ -368,21 +414,12 @@ IMPORTANTE:
         """
         Generate an empathetic, spiritually-aware response based on detected intent.
 
-        The response:
-        - Acknowledges the user's situation
-        - Validates feelings without reinforcing despair (implicitly)
-        - Includes subtle spiritual undertones (optional)
-        - May or may not end with a question (optional)
-        - Is warm, calm, and non-judgmental
-        - Avoids preaching, sermons, or explicit religious content
-        - Uses micro-responses (1-3 sentences)
-        - Can be split into multiple messages for natural flow
-
         Args:
             user_message: The user's original message
             intent: The detected intent category
             name: The user's name
             inferred_gender: Inferred gender (male/female/unknown or None)
+            theme_id: Optional theme identifier
 
         Returns:
             List of message strings to send sequentially
@@ -393,7 +430,6 @@ IMPORTANTE:
 
             if not theme_id:
                 # Default theme selection based on the detected intent.
-                # The caller (e.g., views) may override/persist themes explicitly.
                 from services.theme_selector import select_theme_from_intent_and_message
 
                 selection = select_theme_from_intent_and_message(
@@ -418,20 +454,17 @@ IMPORTANTE:
                 "\n\nResponda agora."
             )
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.85,  # Higher temperature for more natural, varied responses
-                max_tokens=250,  # Reduced from 400 to enforce brevity
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+
+            response_text = self._make_chat_request(
+                messages, temperature=0.85, max_tokens=250
             )
 
-            generated_response = response.choices[0].message.content.strip()
-
             # Split response into multiple messages if separator is used
-            messages = self._split_response_messages(generated_response)
+            messages = self._split_response_messages(response_text)
 
             logger.info(
                 f"Generated intent-based response with {len(messages)} message(s) for intent: {intent} (theme_id={theme_id})"
@@ -441,7 +474,9 @@ IMPORTANTE:
         except Exception as e:
             logger.error(f"Error generating intent response: {str(e)}", exc_info=True)
             # Fallback to a simple empathetic message with a follow-up question
-            return ["Obrigado por compartilhar isso comigo. O que mais te incomoda agora?"]
+            return [
+                "Obrigado por compartilhar isso comigo. O que mais te incomoda agora?"
+            ]
 
     def generate_fallback_response(
         self,
@@ -454,30 +489,12 @@ IMPORTANTE:
         """
         Generate a context-aware fallback response when intent is unclear.
 
-        This method is used when the user's message doesn't clearly match
-        any predefined intent category. It maintains conversational continuity
-        by using recent conversation history and a script-driven approach.
-
-        The response follows a flexible 4-part structure when the user's motivation is clear:
-        1. Brief acknowledgment (no clichés, one short sentence)
-        2. Gentle initiatives (2-3 max, invitations not commands)
-        3. Light reflection (shared observation, not advice)
-        4. Open invitation (optional, not a direct question)
-
-        The response:
-        - Acknowledges the user's message respectfully
-        - Reflects the intention behind the message
-        - Avoids labeling the user's state
-        - Avoids religious authority language
-        - Uses soft, pastoral, human tone
-        - May or may not include a question (not forced)
-        - Returns 1-3 short messages to feel natural
-
         Args:
             user_message: The user's current message
             conversation_context: List of recent messages (dicts with 'role' and 'content')
             name: The user's name
             inferred_gender: Inferred gender (male/female/unknown or None)
+            theme_id: Optional theme identifier
 
         Returns:
             List of message strings to send sequentially
@@ -489,13 +506,12 @@ IMPORTANTE:
             # Build conversation context for the LLM
             context_messages = []
             for msg in conversation_context:
-                context_messages.append(
-                    {"role": msg["role"], "content": msg["content"]}
-                )
+                context_messages.append({"role": msg["role"], "content": msg["content"]})
 
             gender_context = ""
             if inferred_gender and inferred_gender != "unknown":
                 gender_context = f"\nGênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
+
             system_prompt = PromptComposer.compose_system_prompt(
                 theme_id=theme_id, mode="fallback_response"
             )
@@ -509,18 +525,15 @@ IMPORTANTE:
             # Add the current user message to context
             context_messages.append({"role": "user", "content": sanitized_message})
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": "system", "content": system_prompt}]
-                + context_messages,
-                temperature=0.85,  # Higher than 0.8 for intent responses, for more natural conversation
-                max_tokens=350,  # Reduced from 500 to enforce brevity
+            # Prepend system message
+            all_messages = [{"role": "system", "content": system_prompt}] + context_messages
+
+            response_text = self._make_chat_request(
+                all_messages, temperature=0.85, max_tokens=350
             )
 
-            generated_response = response.choices[0].message.content.strip()
-
             # Split response into multiple messages if separator is used
-            messages = self._split_response_messages(generated_response)
+            messages = self._split_response_messages(response_text)
 
             logger.info(
                 f"Generated fallback response with {len(messages)} message(s) for ambiguous intent"
@@ -530,7 +543,9 @@ IMPORTANTE:
         except Exception as e:
             logger.error(f"Error generating fallback response: {str(e)}", exc_info=True)
             # Fallback to a simple empathetic message with a follow-up question
-            return ["Obrigado por compartilhar isso comigo. Como você está se sentindo agora?"]
+            return [
+                "Obrigado por compartilhar isso comigo. Como você está se sentindo agora?"
+            ]
 
     def _split_response_messages(self, response: str) -> List[str]:
         """
