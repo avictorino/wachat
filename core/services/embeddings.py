@@ -160,9 +160,7 @@ def generate_embeddings(chunks: list[str]) -> list[list[float]]:
 # =========================
 
 
-def store_embeddings(
-    *, chunks: list[str], embeddings: list[list[float]], source: str
-):
+def store_embeddings(*, chunks: list[str], embeddings: list[list[float]], source: str):
     """
     Store embeddings in ChromaDB.
 
@@ -176,4 +174,6 @@ def store_embeddings(
     ids = [str(uuid.uuid4()) for _ in chunks]
     metadatas = [{"source": source, "chunk_index": idx} for idx in range(len(chunks))]
 
-    collection.add(documents=chunks, embeddings=embeddings, ids=ids, metadatas=metadatas)
+    collection.add(
+        documents=chunks, embeddings=embeddings, ids=ids, metadatas=metadatas
+    )

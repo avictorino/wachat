@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from core.models import Message, Profile, KnowledgeDocument
+from core.models import KnowledgeDocument, Message, Profile
 from core.services.embeddings import embed_pdf_document
 
 
