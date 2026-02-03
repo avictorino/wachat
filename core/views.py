@@ -685,7 +685,7 @@ class TelegramWebhookView(View):
 
         Retrieves the last N messages (both user and assistant) to provide
         context for generating contextually-aware responses.
-        
+
         Following the problem statement requirements:
         - Maximum 10 messages (5 user + 5 assistant)
         - Ordered from oldest → newest
