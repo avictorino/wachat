@@ -320,20 +320,38 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
    # ollama pull codellama
    ```
 
-3. **Inicie o servidor Ollama:**
+3. **Crie um modelo customizado a partir do Modelfile (Opcional):**
+   
+   O WaChat inclui um `Modelfile` na raiz do projeto que define o comportamento
+   conversacional base do assistente. Para criar um modelo customizado do Ollama
+   que usa essas instruções:
+   
+   ```bash
+   # Na raiz do projeto wachat
+   ollama create wachat -f Modelfile
+   
+   # Configure o modelo no .env
+   OLLAMA_MODEL=wachat
+   ```
+   
+   **Nota:** Esta etapa é opcional. O Modelfile serve como documentação do comportamento
+   esperado do assistente, mas o WaChat envia as instruções comportamentais através
+   das mensagens do sistema no código da aplicação.
+
+4. **Inicie o servidor Ollama:**
    ```bash
    ollama serve
    # O servidor será iniciado em http://localhost:11434
    ```
 
-4. **Configure as variáveis de ambiente:**
+5. **Configure as variáveis de ambiente:**
    ```env
    LLM_PROVIDER=ollama
    OLLAMA_BASE_URL=http://localhost:11434  # Padrão, pode ser omitido
-   OLLAMA_MODEL=llama3.1                   # Padrão, pode ser omitido
+   OLLAMA_MODEL=llama3.1                   # Padrão, pode ser omitido (ou use 'wachat' se criou o modelo customizado)
    ```
 
-5. **Inicie o WaChat:**
+6. **Inicie o WaChat:**
    ```bash
    python manage.py runserver
    ```
