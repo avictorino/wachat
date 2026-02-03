@@ -1,11 +1,10 @@
 """
-Tests for the prompt composition system (Theme + Mode).
+Tests for the prompt composition system (Base from Modelfile + Theme + Mode).
 
 These tests verify that:
+- The base behavioral prompt from the Modelfile is included in composed prompts
 - Themes are layered when appropriate (e.g., addiction theme for addiction-related intents)
 - Mode-specific instructions are included
-- The base behavioral prompt is NOT included in the composed prompt
-  (it's defined in the Modelfile at the project root)
 """
 
 from unittest.mock import Mock, patch
@@ -17,7 +16,7 @@ class PromptCompositionTest(TestCase):
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
     @patch("services.groq_service.Groq")
     @patch("services.groq_service.sanitize_input")
-    def test_fallback_prompt_includes_mode_only(
+    def test_fallback_prompt_includes_base_and_mode(
         self, mock_sanitize, mock_groq_client
     ):
         from services.groq_service import GroqService
@@ -45,14 +44,14 @@ class PromptCompositionTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
         content = system_message["content"]
 
+        # Check that base prompt from Modelfile is included
+        self.assertIn("IDENTIDADE CENTRAL", content)
+        self.assertIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
+        self.assertIn("REGRAS DE ORIENTAÇÃO ESPIRITUAL", content)
+        
         # Check for mode-specific instructions
         self.assertIn("TAREFA", content)
         self.assertIn("Continue a conversa", content)
-
-        # Verify the base behavioral prompt is NOT included here
-        # (it's defined in the Modelfile, not in application code)
-        self.assertNotIn("IDENTIDADE CENTRAL", content)
-        self.assertNotIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
     @patch("services.groq_service.Groq")
@@ -84,6 +83,10 @@ class PromptCompositionTest(TestCase):
         messages = call_args.kwargs["messages"]
         system_message = next(m for m in messages if m["role"] == "system")
         content = system_message["content"]
+
+        # Check that base prompt from Modelfile is included
+        self.assertIn("IDENTIDADE CENTRAL", content)
+        self.assertIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
 
         # Check that addiction theme is present
         self.assertIn("TEMA: DROGAS / ÁLCOOL / CIGARRO / VÍCIOS", content)

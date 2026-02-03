@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -9,12 +11,12 @@ from services.prompts.themes import get_theme_prompt
 @dataclass(frozen=True)
 class PromptComposer:
     """
-    Composes the system prompt as: Optional Theme + Mode.
+    Composes the system prompt as: Base + Optional Theme + Mode.
 
-    The base behavioral prompt is now defined in the Modelfile at the project root,
-    which is the single source of truth for conversational behavior.
+    The base behavioral prompt is defined in the Modelfile at the project root,
+    which serves as the single source of truth for conversational behavior.
 
-    This composer only handles dynamic, context-specific prompts:
+    This composer reads the base prompt from the Modelfile and combines it with:
     - Themes (registered in `services.prompts.themes`)
     - Mode-specific instructions (intent_response, fallback_response)
 
@@ -22,13 +24,52 @@ class PromptComposer:
     a small, explicit change.
     """
 
+    _base_prompt_cache: Optional[str] = None
+
+    @staticmethod
+    def _load_base_prompt() -> str:
+        """
+        Load the base behavioral prompt from the Modelfile.
+        
+        Returns the SYSTEM content from the Modelfile, caching it for performance.
+        """
+        if PromptComposer._base_prompt_cache is not None:
+            return PromptComposer._base_prompt_cache
+        
+        # Find the Modelfile in the project root
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        modelfile_path = os.path.join(project_root, 'Modelfile')
+        
+        if not os.path.exists(modelfile_path):
+            raise FileNotFoundError(
+                f"Modelfile not found at {modelfile_path}. "
+                "The Modelfile defines the base conversational behavior."
+            )
+        
+        with open(modelfile_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Extract the SYSTEM content from the Modelfile
+        # Pattern: SYSTEM """..."""
+        match = re.search(r'SYSTEM\s+"""(.*)"""', content, re.DOTALL)
+        if not match:
+            raise ValueError(
+                f"Modelfile at {modelfile_path} does not contain a SYSTEM block. "
+                "Expected format: SYSTEM \"\"\"...\"\"\""
+            )
+        
+        base_prompt = match.group(1).strip()
+        PromptComposer._base_prompt_cache = base_prompt
+        return base_prompt
+
     @staticmethod
     def compose_system_prompt(*, theme_id: Optional[str], mode: str) -> str:
+        base_prompt = PromptComposer._load_base_prompt()
         theme_prompt = get_theme_prompt(theme_id) if theme_id else ""
 
         mode_prompt = PromptComposer._mode_prompt(mode)
 
-        parts = []
+        parts = [base_prompt.strip()]
         if theme_prompt:
             parts.append(theme_prompt.strip())
         parts.append(mode_prompt.strip())

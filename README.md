@@ -323,8 +323,8 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
 3. **Crie um modelo customizado a partir do Modelfile (Opcional):**
    
    O WaChat inclui um `Modelfile` na raiz do projeto que define o comportamento
-   conversacional base do assistente. Para criar um modelo customizado do Ollama
-   que usa essas instruções:
+   conversacional base do assistente. Para usar o Ollama com este comportamento
+   customizado, crie um modelo do Ollama a partir do Modelfile:
    
    ```bash
    # Na raiz do projeto wachat
@@ -334,9 +334,10 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
    OLLAMA_MODEL=wachat
    ```
    
-   **Nota:** Esta etapa é opcional. O Modelfile serve como documentação do comportamento
-   esperado do assistente, mas o WaChat envia as instruções comportamentais através
-   das mensagens do sistema no código da aplicação.
+   **Nota:** Esta etapa é **recomendada** para melhor experiência com Ollama.
+   O Modelfile define o comportamento conversacional completo do assistente, incluindo
+   tom, regras de conversação e postura espiritual. O código da aplicação envia apenas
+   instruções dinâmicas e contextuais (temas e modos de resposta).
 
 4. **Inicie o servidor Ollama:**
    ```bash
