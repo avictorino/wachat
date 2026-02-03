@@ -157,65 +157,12 @@ class GroqService(LLMServiceInterface):
             The detected intent category as a string
         """
         try:
-            system_prompt = """Você é um assistente que detecta a intenção principal de uma mensagem.
-
-Sua tarefa é identificar qual das seguintes categorias melhor representa a preocupação ou motivo principal da pessoa:
-
-1. "problemas_financeiros" - Pessoa está com dificuldades financeiras, desemprego, dívidas
-2. "distant religião" - Pessoa sente distância da religião, espiritualidade, ou fé
-3. "ato_criminoso_pecado" - Pessoa cometeu algo que considera errado, pecado, ou crime
-4. "doença" - Pessoa ou familiar está doente, enfrentando problemas de saúde
-5. "ansiedade" - Pessoa está ansiosa, estressada, com medo, ou preocupada
-6. "desabafar" - Pessoa só precisa conversar, desabafar, ser ouvida
-7. "redes sociais" - Pessoa viu o número nas redes sociais e está curiosa
-8. "drogas" - Pessoa está lutando com uso de drogas, substâncias, dependência química
-9. "alcool" - Pessoa está lutando com uso de álcool, bebida, dependência alcoólica
-10. "sexo" - Pessoa está lutando com compulsão sexual, comportamento sexual compulsivo
-11. "cigarro" - Pessoa está lutando com cigarro, tabagismo, nicotina
-12. "outro" - Nenhuma das categorias acima se aplica claramente
-13.	“luto” – Pessoa perdeu alguém importante (morte de familiar, amigo, cônjuge)
-14.	“separação divorcio” – Término de relacionamento, divórcio ou crise conjugal
-15.	“solidão” – Pessoa se sente sozinha, sem apoio emocional ou social
-16.	“culpa vergonha” – Sentimento intenso de culpa, vergonha ou arrependimento
-17.	“sentido da vida” – Busca por propósito, significado ou direção para a vida
-18.	“medo do futuro” – Insegurança com o futuro, decisões importantes ou mudanças
-19.	“crise existencial” – Questionamentos profundos sobre existência, morte, fé ou Deus
-20.	“familia” – Conflitos familiares (pais, filhos, irmãos)
-21.	“filhos” – Dificuldades na criação dos filhos, culpa parental, medo de errar
-22.	“casamento” – Problemas conjugais, rotina, traição, esfriamento emocional
-23.	“trabalho” – Burnout, pressão profissional, conflitos no trabalho, falta de sentido na carreira
-24.	“depressão” – Tristeza persistente, desânimo, sensação de vazio
-25.	“perda material” – Perda de bens, falência, prejuízo financeiro relevante
-26.	“trauma” – Experiências traumáticas passadas (violência, abuso, acidentes)
-27.	“busca de perdao” – Desejo de perdão divino ou de perdoar alguém
-28.	“agradecimento” – Pessoa quer agradecer por algo que deu certo
-29.	“milagre intervencao” – Busca por ajuda sobrenatural, milagre ou intervenção divina
-30.	“rotina devocional” – Pessoa já é religiosa e busca oração, leitura ou reflexão diária
-31.	“curiosidade espiritual” – Interesse intelectual ou cultural sobre fé e espiritualidade
-32.	“conversao” – Interesse em se aproximar ou retornar à religião
-33.	“pressão social_familiar” – Influência de família, amigos ou comunidade religiosa
-34.	“valores morais” – Busca por orientação ética, certo e errado
-35.	“esperança” – Necessidade de esperança em um momento difícil
-36.	“medo da morte” – Medo de morrer ou de perder alguém
-37.	“agravamento_crise” – Vários problemas acumulados ao mesmo tempo
-38.	“orientacao decisao” – Busca por direção antes de uma decisão importante
-39.	“paz interior” – Desejo de calma, equilíbrio emocional e espiritual
-40.	“outro” – Motivo não identificado ou combinação complexa de fatores
-
-IMPORTANTE:
-- Seja flexível - permita variações e formas diferentes de expressar cada intenção
-- Considere o contexto emocional da mensagem
-- Se houver múltiplas intenções, escolha a mais proeminente
-- ATENÇÃO: Trate drogas, alcool, sexo, cigarro como condições reais e sérias, não como escolhas ou fraquezas
-- Responda APENAS com o identificador da categoria (ex: "ansiedade", "problemas financeiros", "drogas")
-- Não adicione explicações ou pontuação"""
-
-            user_prompt = f"Mensagem do usuário: {user_message}"
+            user_prompt = build_intent_detection_user_prompt(user_message)
 
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": INTENT_DETECTION_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.3,  # Low temperature for more deterministic classification
@@ -253,43 +200,12 @@ IMPORTANTE:
             # Sanitize input before sending to LLM
             sanitized_input = sanitize_input(user_input)
 
-            system_prompt = """Você é um assistente que mapeia palavras-chave para categorias de temas predefinidas.
-
-Sua tarefa é identificar qual das seguintes categorias melhor representa a palavra ou frase fornecida:
-
-1. "problemas_financeiros" - Relacionado a dificuldades financeiras, dinheiro, desemprego, dívidas
-2. "distante_religiao" - Relacionado a distância da religião, espiritualidade, fé, afastamento espiritual
-3. "ato_criminoso_pecado" - Relacionado a atos errados, pecados, crimes, culpa, arrependimento
-4. "doenca" - Relacionado a doenças, saúde, enfermidades, mal-estar, problemas de saúde
-5. "ansiedade" - Relacionado a ansiedade, estresse, medo, nervosismo, preocupação
-6. "desabafar" - Relacionado a necessidade de conversar, desabafar, ser ouvido, solidão
-7. "redes_sociais" - Relacionado a redes sociais, curiosidade vinda das redes
-8. "drogas" - Relacionado a uso de drogas, substâncias, dependência química, entorpecentes
-9. "alcool" - Relacionado a uso de álcool, bebida, dependência alcoólica, alcoolismo
-10. "sexo" - Relacionado a compulsão sexual, vício sexual, comportamento sexual compulsivo
-11. "cigarro" - Relacionado a cigarro, fumo, tabagismo, nicotina, vício em tabaco
-12. "outro" - Nenhuma das categorias acima se aplica claramente
-
-IMPORTANTE:
-- Seja flexível e considere sinônimos e variações
-- Palavras como "enfermidade", "mal", "doente" devem mapear para "doenca"
-- Palavras como "pecado", "erro", "culpa" devem mapear para "ato_criminoso_pecado"
-- Palavras como "dinheiro", "financeiro", "desemprego" devem mapear para "problemas_financeiros"
-- Palavras como "religião", "fé", "distante" devem mapear para "distante_religiao"
-- Palavras como "solidão", "conversar", "sozinho" devem mapear para "desabafar"
-- Palavras como "cocaína", "maconha", "crack", "vício", "dependência química" devem mapear para "drogas"
-- Palavras como "bebida", "beber", "álcool", "alcoolismo", "bêbado" devem mapear para "alcool"
-- Palavras como "pornografia", "compulsão sexual", "vício sexual" devem mapear para "sexo"
-- Palavras como "fumo", "tabaco", "fumar", "tabagismo" devem mapear para "cigarro"
-- Responda APENAS com o identificador da categoria (ex: "doenca", "problemas_financeiros", "drogas")
-- Não adicione explicações ou pontuação"""
-
-            user_prompt = f"Palavra ou frase: {sanitized_input}"
+            user_prompt = build_theme_approximation_user_prompt(sanitized_input)
 
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": THEME_APPROXIMATION_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.2,  # Low temperature for more deterministic classification
@@ -299,22 +215,7 @@ IMPORTANTE:
             theme = response.choices[0].message.content.strip().lower()
 
             # Validate and normalize the response
-            valid_themes = [
-                "problemas_financeiros",
-                "distante_religiao",
-                "ato_criminoso_pecado",
-                "doenca",
-                "ansiedade",
-                "desabafar",
-                "redes_sociais",
-                "drogas",  # Addiction: drug use/dependency
-                "alcool",  # Addiction: alcohol use/dependency
-                "sexo",  # Addiction: sexual compulsion
-                "cigarro",  # Addiction: smoking/nicotine
-                "outro",
-            ]
-
-            if theme not in valid_themes:
+            if theme not in VALID_THEMES:
                 logger.warning(
                     f"Unexpected theme approximated: {theme}, defaulting to 'outro'"
                 )
@@ -392,7 +293,7 @@ IMPORTANTE:
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": system_prompt},
+                    {"role": "system", "content": INTENT_DETECTION_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.85,  # Higher temperature for more natural, varied responses
