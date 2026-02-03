@@ -166,6 +166,37 @@ python manage.py simulate_conversation --turns 5 --domain spiritual
 python manage.py simulate --num-messages 8
 ```
 
+## 🧪 Testes
+
+Todos os testes estão organizados no diretório `/spec`, refletindo a estrutura do código-fonte:
+
+```
+spec/
+├── core/          # Testes da aplicação core
+└── services/      # Testes dos serviços
+```
+
+### Executar testes
+
+```bash
+# Rodar todos os testes
+python manage.py test
+
+# Rodar testes com verbosidade
+python manage.py test --verbosity=2
+
+# Rodar testes de um módulo específico
+python manage.py test spec.core
+python manage.py test spec.services
+```
+
+### Organização dos testes
+
+- **Todos os arquivos de teste devem estar no diretório `/spec`**
+- Os testes seguem a mesma estrutura de diretórios do código-fonte
+- Um hook do pre-commit impede a criação de arquivos de teste fora de `/spec`
+- Arquivos de teste devem seguir o padrão `test*.py` (ex: `test_models.py`)
+
 ## 🤖 Simulação de Conversas
 
 O projeto inclui dois comandos de gerenciamento para simular conversas:
