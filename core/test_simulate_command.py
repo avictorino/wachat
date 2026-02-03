@@ -458,3 +458,133 @@ class SimulateCommandTest(TestCase):
             fake_profile, 8, "doenca"
         )
 
+    @patch("services.drug_addiction_simulation_service.DrugAddictionSimulationService")
+    @patch("core.views.TelegramService")
+    @patch.dict(
+        "os.environ",
+        {
+            "TELEGRAM_WEBHOOK_SECRET": "test-secret",
+            "GROQ_API_KEY": "test-groq-key",
+        },
+    )
+    def test_simulate_drogas_command_uses_dual_llm(
+        self, mock_telegram_service, mock_drug_sim_service
+    ):
+        """Test that /simulate drogas command uses dual LLM simulation."""
+        # Setup mocks
+        mock_telegram_instance = MagicMock()
+        mock_telegram_service.return_value = mock_telegram_instance
+        mock_telegram_instance.send_message.return_value = True
+
+        mock_sim_instance = MagicMock()
+        mock_drug_sim_service.return_value = mock_sim_instance
+
+        # Create fake conversation
+        fake_conversation = [
+            {"role": "Person", "content": "Tô numa situação complicada..."},
+            {"role": "Counselor", "content": "Tô aqui pra ouvir. Fique à vontade."},
+            {"role": "Person", "content": "Não tô legal, sabe?"},
+            {"role": "Counselor", "content": "Obrigado por compartilhar. Não é fácil."},
+        ]
+        mock_sim_instance.generate_conversation.return_value = fake_conversation
+
+        # Create fake overviews
+        fake_groq_overview = "Groq: Loops detectados na conversa..."
+        fake_ollama_overview = "Ollama: Oportunidades perdidas..."
+        mock_sim_instance.generate_critical_overview_groq.return_value = fake_groq_overview
+        mock_sim_instance.generate_critical_overview_ollama.return_value = fake_ollama_overview
+
+        # Send /simulate drogas command (default 20 messages)
+        payload = {
+            "update_id": 1,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 12345, "first_name": "Test"},
+                "chat": {"id": 12345, "type": "private"},
+                "text": "/simulate drogas",
+            },
+        }
+
+        response = self.client.post(
+            "/webhooks/telegram/",
+            data=payload,
+            content_type="application/json",
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-secret",
+        )
+
+        # Verify response
+        self.assertEqual(response.status_code, 200)
+
+        # Verify DrugAddictionSimulationService was initialized
+        mock_drug_sim_service.assert_called_once()
+
+        # Verify generate_conversation was called with default 20
+        mock_sim_instance.generate_conversation.assert_called_once_with(20)
+
+        # Verify both overviews were generated
+        mock_sim_instance.generate_critical_overview_groq.assert_called_once_with(
+            fake_conversation
+        )
+        mock_sim_instance.generate_critical_overview_ollama.assert_called_once_with(
+            fake_conversation
+        )
+
+        # Verify messages were sent to Telegram
+        # Should send: init + 4 conversation messages + 2 overviews + 1 summary = 8 total
+        self.assertEqual(mock_telegram_instance.send_message.call_count, 8)
+
+    @patch("services.drug_addiction_simulation_service.DrugAddictionSimulationService")
+    @patch("core.views.TelegramService")
+    @patch.dict(
+        "os.environ",
+        {
+            "TELEGRAM_WEBHOOK_SECRET": "test-secret",
+            "GROQ_API_KEY": "test-groq-key",
+        },
+    )
+    def test_simulate_drogas_command_with_custom_num_messages(
+        self, mock_telegram_service, mock_drug_sim_service
+    ):
+        """Test that /simulate drogas command accepts custom num_messages parameter."""
+        # Setup mocks
+        mock_telegram_instance = MagicMock()
+        mock_telegram_service.return_value = mock_telegram_instance
+        mock_telegram_instance.send_message.return_value = True
+
+        mock_sim_instance = MagicMock()
+        mock_drug_sim_service.return_value = mock_sim_instance
+
+        # Create fake conversation
+        fake_conversation = [
+            {"role": "Person", "content": "Message 1"},
+            {"role": "Counselor", "content": "Message 2"},
+        ]
+        mock_sim_instance.generate_conversation.return_value = fake_conversation
+        mock_sim_instance.generate_critical_overview_groq.return_value = "Overview 1"
+        mock_sim_instance.generate_critical_overview_ollama.return_value = "Overview 2"
+
+        # Send /simulate drogas 30 command
+        payload = {
+            "update_id": 1,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 12345, "first_name": "Test"},
+                "chat": {"id": 12345, "type": "private"},
+                "text": "/simulate drogas 30",
+            },
+        }
+
+        response = self.client.post(
+            "/webhooks/telegram/",
+            data=payload,
+            content_type="application/json",
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-secret",
+        )
+
+        # Verify response
+        self.assertEqual(response.status_code, 200)
+
+        # Verify generate_conversation was called with 30
+        mock_sim_instance.generate_conversation.assert_called_once_with(30)
+
+
