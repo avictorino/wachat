@@ -235,6 +235,83 @@ class TelegramWebhookViewTest(TestCase):
             "GROQ_API_KEY": "test-key",
         },
     )
+    def test_start_command_splits_message_preserving_content(self, mock_groq, mock_telegram):
+        """Test that /start command splits message while preserving all content."""
+        # Mock Groq service with a realistic welcome message
+        mock_groq_instance = Mock()
+        mock_groq_instance.infer_gender.return_value = "female"
+        original_message = (
+            "Maria, bem-vinda ao nosso espaço espiritual. "
+            "Este é um lugar seguro, onde você pode ser quem você é, sem medo ou julgamento. "
+            "Estou aqui para caminhar ao seu lado nessa jornada. "
+            "O que te trouxe até este lugar hoje?"
+        )
+        mock_groq_instance.generate_welcome_message.return_value = original_message
+        mock_groq.return_value = mock_groq_instance
+
+        # Mock Telegram service
+        mock_telegram_instance = Mock()
+        mock_telegram_instance.send_messages.return_value = True
+        mock_telegram.return_value = mock_telegram_instance
+
+        # Send /start command
+        payload = {
+            "update_id": 1,
+            "message": {
+                "message_id": 1,
+                "from": {"id": 54321, "first_name": "Maria"},
+                "chat": {"id": 54321, "type": "private"},
+                "text": "/start",
+            },
+        }
+
+        response = self.client.post(
+            self.webhook_url,
+            data=payload,
+            content_type="application/json",
+            HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="test-secret",
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        # Verify profile was created
+        profile = Profile.objects.get(telegram_user_id="54321")
+        self.assertEqual(profile.name, "Maria")
+
+        # Verify two messages were persisted
+        messages = Message.objects.filter(profile=profile).order_by("id")
+        self.assertEqual(messages.count(), 2)
+
+        # Verify content is preserved (concatenated messages should equal original)
+        greeting = messages[0].content
+        question = messages[1].content
+        reconstructed = f"{greeting} {question}"
+        
+        # All words from original should be in reconstructed
+        original_words = set(original_message.lower().split())
+        reconstructed_words = set(reconstructed.lower().split())
+        self.assertEqual(original_words, reconstructed_words)
+
+        # Verify the question is in the second message
+        self.assertIn("?", question)
+        self.assertTrue(question.startswith("O que"))
+
+        # Verify send_messages was called with 2 messages
+        mock_telegram_instance.send_messages.assert_called_once()
+        call_args = mock_telegram_instance.send_messages.call_args
+        messages_sent = call_args[0][1]
+        self.assertEqual(len(messages_sent), 2)
+
+    @patch("core.views.TelegramService")
+    @patch("core.views.get_llm_service")
+    @patch.dict(
+        "os.environ",
+        {
+            "TELEGRAM_WEBHOOK_SECRET": "test-secret",
+            "TELEGRAM_BOT_TOKEN": "test-token",
+            "GROQ_API_KEY": "test-key",
+        },
+    )
     def test_regular_message_detects_intent(self, mock_groq, mock_telegram):
         """Test that regular messages detect intent and generate response."""
         # Create a profile first (simulating a user who already did /start)
