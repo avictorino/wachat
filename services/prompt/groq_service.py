@@ -293,7 +293,7 @@ class GroqService(LLMServiceInterface):
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": INTENT_DETECTION_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.85,  # Higher temperature for more natural, varied responses
