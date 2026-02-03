@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import functools
 import os
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from services.prompts.themes import get_theme_prompt
@@ -24,34 +26,30 @@ class PromptComposer:
     a small, explicit change.
     """
 
-    _base_prompt_cache: Optional[str] = None
-
     @staticmethod
+    @functools.lru_cache(maxsize=1)
     def _load_base_prompt() -> str:
         """
         Load the base behavioral prompt from the Modelfile.
         
-        Returns the SYSTEM content from the Modelfile, caching it for performance.
+        Returns the SYSTEM content from the Modelfile, using LRU cache for performance.
         """
-        if PromptComposer._base_prompt_cache is not None:
-            return PromptComposer._base_prompt_cache
-        
         # Find the Modelfile in the project root
-        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        modelfile_path = os.path.join(project_root, 'Modelfile')
+        # Navigate from this file: services/prompts/composer.py -> project root
+        project_root = Path(__file__).parent.parent.parent
+        modelfile_path = project_root / 'Modelfile'
         
-        if not os.path.exists(modelfile_path):
+        if not modelfile_path.exists():
             raise FileNotFoundError(
                 f"Modelfile not found at {modelfile_path}. "
                 "The Modelfile defines the base conversational behavior."
             )
         
-        with open(modelfile_path, 'r', encoding='utf-8') as f:
-            content = f.read()
+        content = modelfile_path.read_text(encoding='utf-8')
         
         # Extract the SYSTEM content from the Modelfile
-        # Pattern: SYSTEM """..."""
-        match = re.search(r'SYSTEM\s+"""(.*)"""', content, re.DOTALL)
+        # Pattern: SYSTEM """...""" (non-greedy to avoid matching multiple blocks)
+        match = re.search(r'SYSTEM\s+"""(.*?)"""', content, re.DOTALL)
         if not match:
             raise ValueError(
                 f"Modelfile at {modelfile_path} does not contain a SYSTEM block. "
@@ -59,7 +57,6 @@ class PromptComposer:
             )
         
         base_prompt = match.group(1).strip()
-        PromptComposer._base_prompt_cache = base_prompt
         return base_prompt
 
     @staticmethod
