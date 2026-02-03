@@ -44,11 +44,17 @@ class PromptCompositionTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
         content = system_message["content"]
 
-        self.assertIn("OBJETIVO", content)
-        self.assertIn("TOM E RITMO", content)
-        self.assertIn("ESCRITURAS (OPCIONAL)", content)
+        # Check for new prompt structure
+        self.assertIn("IDENTIDADE CENTRAL", content)
+        self.assertIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
+        self.assertIn("REGRAS DE ORIENTAÇÃO ESPIRITUAL", content)
         self.assertIn("TAREFA", content)
         self.assertIn("Continue a conversa", content)
+
+        # Verify new requirements are present
+        self.assertIn("Uma pergunta por mensagem", content)
+        self.assertIn("NUNCA faça mais de uma pergunta", content)
+        self.assertIn("Evite linguagem dura ou técnica", content)
 
         # The old monolithic prompt hard-banned scripture; the new base prompt should not.
         self.assertNotIn("NUNCA cite versículos", content)
@@ -84,6 +90,14 @@ class PromptCompositionTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
         content = system_message["content"]
 
-        self.assertIn("OBJETIVO", content)
+        # Check for new base prompt structure
+        self.assertIn("IDENTIDADE CENTRAL", content)
+        self.assertIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
+        
+        # Check that addiction theme is present
         self.assertIn("TEMA: DROGAS / ÁLCOOL / CIGARRO / VÍCIOS", content)
         self.assertIn("condição real e séria", content.lower())
+        
+        # Check for new soft language requirements in theme
+        self.assertIn("O que costuma acontecer", content)
+        self.assertIn("Em quais momentos", content)
