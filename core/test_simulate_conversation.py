@@ -14,9 +14,14 @@ from core.models import Message, Profile
 class SimulateConversationCommandTest(TestCase):
     """Tests for the simulate_conversation management command."""
 
+    @patch.dict("os.environ", {
+        "TELEGRAM_BOT_TOKEN": "test-token",
+        "TELEGRAM_WEBHOOK_SECRET": "test-secret",
+        "GROQ_API_KEY": "test-key"
+    })
     @patch("services.human_simulator.Groq")
     @patch("services.telegram_service.requests.post")
-    @patch("core.views.GroqService")
+    @patch("core.views.get_llm_service")
     @patch("core.views.TelegramService")
     def test_command_executes_with_mock_mode(
         self, mock_telegram_service, mock_groq_service, mock_requests, mock_groq_client

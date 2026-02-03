@@ -14,7 +14,7 @@ class SimulateCommandTest(TestCase):
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
-    @patch("core.views.GroqService")
+    @patch("core.views.get_llm_service")
     @patch.dict(
         "os.environ",
         {
@@ -171,7 +171,7 @@ class SimulateCommandTest(TestCase):
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
-    @patch("core.views.GroqService")
+    @patch("core.views.get_llm_service")
     @patch.dict(
         "os.environ",
         {
@@ -251,7 +251,7 @@ class SimulateCommandTest(TestCase):
             fake_profile, 8, "doenca"
         )
 
-    @patch("core.views.GroqService")
+    @patch("core.views.get_llm_service")
     @patch("core.views.TelegramService")
     @patch.dict(
         "os.environ",
@@ -304,7 +304,7 @@ class SimulateCommandTest(TestCase):
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
-    @patch("core.views.GroqService")
+    @patch("core.views.get_llm_service")
     @patch.dict(
         "os.environ",
         {
@@ -382,7 +382,7 @@ class SimulateCommandTest(TestCase):
 
     @patch("core.views.SimulationService")
     @patch("core.views.TelegramService")
-    @patch("core.views.GroqService")
+    @patch("core.views.get_llm_service")
     @patch.dict(
         "os.environ",
         {
