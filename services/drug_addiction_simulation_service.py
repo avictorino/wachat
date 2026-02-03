@@ -54,8 +54,10 @@ class DrugAddictionSimulationService:
         Returns:
             List of message dicts with 'role' ('Person' or 'Counselor') and 'content'
         """
-        # Apply natural variance (±10 messages)
-        variance = random.randint(-10, 10)
+        # Apply natural variance (±10 messages) but respect the minimum
+        # Scale variance to ensure we don't go below 10 messages
+        max_variance = min(10, (num_messages - 10) // 2)
+        variance = random.randint(-max_variance, 10)
         actual_num_messages = max(10, num_messages + variance)  # Minimum 10 messages
         
         logger.info(f"Generating conversation with {actual_num_messages} messages (target: {num_messages})")
@@ -170,10 +172,13 @@ Responda APENAS com a mensagem, sem explicações."""
             context_messages = [{"role": "system", "content": system_prompt}]
             
             # Add conversation history (last 6 messages for context)
+            # Map roles correctly: when Person speaks, previous Person messages are from "assistant" 
+            # (since we're asking the LLM to play the Person role, its previous outputs are "assistant")
+            # and Counselor messages are from "user" (external input to the Person)
             if conversation_history:
                 for msg in conversation_history[-6:]:
-                    # Map roles to user/assistant for API
-                    api_role = "user" if msg["role"] == "Person" else "assistant"
+                    # When generating Person messages: Person's previous = assistant, Counselor's = user
+                    api_role = "assistant" if msg["role"] == "Person" else "user"
                     context_messages.append({"role": api_role, "content": msg["content"]})
             
             # Add prompt based on turn
@@ -255,9 +260,11 @@ Responda APENAS com a mensagem, sem explicações."""
             context_messages = [{"role": "system", "content": system_prompt}]
             
             # Add conversation history (last 6 messages)
+            # Map roles correctly: when Counselor responds, Person messages are "user" input
+            # and Counselor's previous messages are "assistant" (its own previous outputs)
             if conversation_history:
                 for msg in conversation_history[-6:]:
-                    # Map roles for Ollama API
+                    # When generating Counselor messages: Person's = user, Counselor's previous = assistant
                     api_role = "user" if msg["role"] == "Person" else "assistant"
                     context_messages.append({"role": api_role, "content": msg["content"]})
             
@@ -325,10 +332,10 @@ Responda APENAS com a mensagem, sem explicações."""
             Critical overview text
         """
         try:
-            # Build transcript
-            transcript = ""
-            for msg in conversation:
-                transcript += f"{msg['role']}: {msg['content']}\n\n"
+            # Build transcript efficiently using list comprehension
+            transcript = "\n\n".join(
+                f"{msg['role']}: {msg['content']}" for msg in conversation
+            )
             
             system_prompt = """Você é um analista crítico especializado em detectar FALHAS em conversas de apoio sobre dependência química.
 
@@ -401,10 +408,10 @@ Foque em loops, oportunidades perdidas e momentos onde a conversa travou."""
             Critical overview text
         """
         try:
-            # Build transcript
-            transcript = ""
-            for msg in conversation:
-                transcript += f"{msg['role']}: {msg['content']}\n\n"
+            # Build transcript efficiently using list comprehension
+            transcript = "\n\n".join(
+                f"{msg['role']}: {msg['content']}" for msg in conversation
+            )
             
             system_prompt = """Você é um analista crítico especializado em detectar FALHAS em conversas de apoio sobre dependência química.
 

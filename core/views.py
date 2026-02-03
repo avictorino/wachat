@@ -20,6 +20,10 @@ from services.theme_selector import select_theme_from_intent_and_message
 
 logger = logging.getLogger(__name__)
 
+# Constants for simulation timing
+MESSAGE_DELAY_SECONDS = 0.6  # Delay between conversation messages
+OVERVIEW_DELAY_SECONDS = 1.0  # Delay between overview messages
+
 
 @method_decorator(csrf_exempt, name="dispatch")
 class TelegramWebhookView(View):
@@ -114,7 +118,8 @@ class TelegramWebhookView(View):
                 try:
                     num_messages = int(parts[2])
                 except ValueError:
-                    pass  # Invalid number, will use default
+                    # Invalid number format - will use default
+                    logger.warning(f"Invalid num_messages format: {parts[2]}, using default")
             return self._handle_simulate_command(chat_id, theme, num_messages)
 
         # Handle regular text messages
@@ -453,10 +458,15 @@ class TelegramWebhookView(View):
             if num_messages is None:
                 num_messages = 20
             
-            # Validate num_messages range
+            # Validate num_messages range and notify user if out of range
             if num_messages < 10 or num_messages > 40:
+                original_num_messages = num_messages
                 num_messages = 20
-                logger.warning(f"num_messages out of range, using default: {num_messages}")
+                telegram_service.send_message(
+                    chat_id,
+                    f"⚠️ Número de mensagens ({original_num_messages}) fora do intervalo permitido (10-40). Usando padrão: 20"
+                )
+                logger.warning(f"num_messages {original_num_messages} out of range, using default: {num_messages}")
             
             # Send initial message
             init_msg = f"🔄 Iniciando simulação sobre dependência química...\n\n💊 Usando Groq (Pessoa) + Ollama (Counselor)\n📊 Alvo: ~{num_messages} mensagens (±10 variância natural)"
@@ -479,7 +489,7 @@ class TelegramWebhookView(View):
                 telegram_service.send_message(chat_id, formatted_msg)
                 
                 # Small pause for readability
-                time.sleep(0.6)
+                time.sleep(MESSAGE_DELAY_SECONDS)
             
             logger.info(f"Sent {len(conversation)} messages to chat {chat_id}")
             
@@ -493,7 +503,7 @@ class TelegramWebhookView(View):
             logger.info("Sent Groq overview")
             
             # Small pause between overviews
-            time.sleep(1.0)
+            time.sleep(OVERVIEW_DELAY_SECONDS)
             
             # Overview from Ollama
             overview_ollama = sim_service.generate_critical_overview_ollama(conversation)
