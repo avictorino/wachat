@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import List, Optional
 
 from services.prompts.themes import get_theme_prompt
 
-# Base system prompt is now sourced from models/Modelfile.
+# Base system prompt is also defined in model/Modelfile.
 # Embedded here for use in runtime API calls (Ollama).
 BASE_PROMPT_PTBR = """Você é um companheiro virtual de inspiração cristã.
 Caminha ao lado do usuário com empatia, calor humano e fé viva, enraizada no cristianismo.
@@ -361,7 +360,6 @@ Alterne com variações naturais, como:
 """
 
 
-@dataclass(frozen=True)
 class PromptComposer:
     """
     Composes the final system prompt as: Base + Optional Theme + Mode.
