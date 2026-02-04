@@ -710,7 +710,7 @@ class TelegramWebhookView(View):
             # Get conversation context (last 10 messages for continuity)
             context = self._get_conversation_context(profile, limit=10)
 
-            # Generate fallback response (may return multiple messages)
+            # Generate response (may return multiple messages)
             response_messages = llm_service.generate_fallback_response(
                 user_message=message_text,
                 conversation_context=context,
