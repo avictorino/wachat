@@ -456,7 +456,7 @@ SEPARAÇÃO EM MÚLTIPLAS MENSAGENS (quando fizer sentido)
         """
         parts = []
 
-        # 1. Theme context (ONLY if prompt_theme exists)
+        # 1. Theme context (ONLY if theme_id exists)
         if theme_id:
             theme_prompt = get_theme_prompt(theme_id)
             if theme_prompt:
@@ -472,9 +472,8 @@ SEPARAÇÃO EM MÚLTIPLAS MENSAGENS (quando fizer sentido)
             parts.append(f"{role}: {content}")
 
         # 3. Current user message
-        if conversation_history and not theme_id:
-            # Add separator only when there's history but no theme
-            # (theme already adds proper spacing)
+        if conversation_history:
+            # Add separator between history and current message
             parts.append("")  # Empty line before current message
         parts.append(f"user: {current_user_message}")
 
