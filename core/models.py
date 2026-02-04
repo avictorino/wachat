@@ -1,4 +1,5 @@
 from django.db import models
+from pgvector.django import VectorField
 
 
 class Profile(models.Model):
@@ -100,3 +101,48 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."
+
+
+class RagChunk(models.Model):
+    """
+    RAG (Retrieval-Augmented Generation) chunk storage.
+
+    Stores text chunks extracted from PDFs with their embeddings
+    for semantic search during response generation.
+    """
+
+    TYPE_CHOICES = [
+        ("behavior", "Behavior"),
+        ("content", "Content"),
+    ]
+
+    id = models.CharField(max_length=255, primary_key=True)
+    source = models.CharField(
+        max_length=255,
+        db_index=True,
+        help_text="Source document identifier (e.g., filename without extension)",
+    )
+    page = models.IntegerField(help_text="Page number in the source document")
+    chunk_index = models.IntegerField(
+        help_text="Index of the chunk within the page"
+    )
+    text = models.TextField(help_text="The actual text content of the chunk")
+    embedding = VectorField(
+        dimensions=768,
+        help_text="Vector embedding of the text (768-dimensional for nomic-embed-text)",
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default="content",
+        help_text="Type of chunk: behavior (guidance/posture) or content (informational)",
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["source", "page"], name="rag_source_page_idx"),
+        ]
+        ordering = ["source", "page", "chunk_index"]
+
+    def __str__(self):
+        return f"{self.source}:p{self.page}:c{self.chunk_index} ({self.type})"
