@@ -16,7 +16,7 @@ Successfully implemented a Django management command that simulates realistic co
 
 #### `services/human_simulator.py` (169 lines)
 - AI-powered realistic human message generator
-- Uses Groq LLM to create emotionally-driven messages
+- Uses LLM to create emotionally-driven messages
 - Maintains conversation state and emotional progression
 - Adapts messages based on domain and conversation history
 
@@ -38,14 +38,14 @@ Successfully implemented a Django management command that simulates realistic co
 ### Data Flow
 ```
 simulate_conversation command → Generate user ID → Call /start webhook → 
-Loop N turns: [HumanSimulator → Webhook → GroqService → Database] → 
+Loop N turns: [HumanSimulator → Webhook → LLM Service → Database] → 
 Display summary
 ```
 
 ### Key Design Decisions
 1. **Profile Creation via Webhook** - Uses actual /start to mirror production
 2. **Full Pipeline Integration** - All messages through TelegramWebhookView
-3. **AI-Powered Simulation** - Groq LLM with emotional state tracking
+3. **AI-Powered Simulation** - LLM with emotional state tracking
 4. **Mock Mode** - Testing without external API dependencies
 
 ## Quality Assurance

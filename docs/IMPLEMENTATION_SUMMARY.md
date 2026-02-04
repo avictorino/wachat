@@ -15,7 +15,7 @@ When users send messages like "Gostaria de ouvir um pouco da palavra de um bom p
 ## Solution Delivered
 
 ### 1. Context-Aware Response Generation
-**File:** `services/groq_service.py`
+**File:** `services/ollama_service.py`
 
 Added `generate_fallback_response()` method that:
 - Takes conversation history (last 5 messages) as context
@@ -69,7 +69,7 @@ Modified `_handle_regular_message()` to:
 ## Code Changes Summary
 
 ### Files Modified:
-1. `services/groq_service.py` (+151 lines)
+1. `services/ollama_service.py` (+151 lines)
    - `generate_fallback_response()` method
    - `_split_response_messages()` helper
    - Updated imports
@@ -84,7 +84,6 @@ Modified `_handle_regular_message()` to:
 
 4. `core/tests.py` (+437 lines)
    - `FallbackConversationalFlowTest` class (4 tests)
-   - `GroqServiceFallbackTest` class (4 tests)
    - `TelegramServiceMultiMessageTest` class (3 tests)
 
 5. `docs/FALLBACK_FLOW.md` (new file)
@@ -159,7 +158,7 @@ context = self._get_conversation_context(profile, limit=5)  # Context window siz
 telegram_service.send_messages(chat_id, response_messages, pause_seconds=1.5)  # Pause duration
 ```
 
-In `services/groq_service.py`:
+In `services/ollama_service.py`:
 ```python
 temperature=0.85  # LLM creativity (0.0-2.0)
 max_tokens=500    # Response length limit
@@ -168,7 +167,7 @@ messages[:3]      # Maximum messages per response
 
 ### Environment Variables
 No new environment variables required. Uses existing:
-- `GROQ_API_KEY`
+- `LLM_PROVIDER`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 
@@ -196,7 +195,7 @@ No new environment variables required. Uses existing:
 ## Performance Considerations
 
 ### API Calls
-- One additional Groq API call per "outro" intent message
+- One additional LLM API call per "outro" intent message
 - Context adds ~500 tokens to prompt (5 messages)
 - Response generation: ~2-3 seconds
 

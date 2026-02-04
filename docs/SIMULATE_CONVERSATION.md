@@ -12,7 +12,7 @@ The `simulate_conversation` management command allows you to simulate realistic 
 
 ## Features
 
-- **Realistic Human Simulation**: Uses AI (Groq) to generate emotionally-driven, imperfect messages that reflect real spiritual and life struggles
+- **Realistic Human Simulation**: Uses AI to generate emotionally-driven, imperfect messages that reflect real spiritual and life struggles
 - **Full Pipeline Integration**: All messages flow through the actual webhook/view (no shortcuts or direct service calls)
 - **Database Persistence**: Everything is stored in the database exactly as in production
 - **Flexible Configuration**: Customize conversation domain, number of turns, delays, and user names
@@ -83,7 +83,7 @@ The `--domain` parameter influences the type of messages the simulated human gen
    - Displays formatted output
 
 2. **Human Simulator** (`services/human_simulator.py`)
-   - Uses Groq AI to generate realistic human messages
+   - Uses AI to generate realistic human messages
    - Maintains emotional state across conversation
    - Adapts messages based on conversation history
    - Handles fallbacks if AI is unavailable
@@ -102,7 +102,7 @@ HumanSimulator generates message
     ↓
 Django test client → TelegramWebhookView
     ↓
-GroqService processes message
+LLM Service processes message
     ↓
 TelegramService (mocked or real)
     ↓
@@ -114,7 +114,7 @@ Database (Profile, Message models)
 Required:
 - `TELEGRAM_WEBHOOK_SECRET` - Webhook authentication secret
 - `TELEGRAM_BOT_TOKEN` - Bot token (can be test value with `--mock-telegram`)
-- `GROQ_API_KEY` - Groq API key for AI message generation
+- `LLM_PROVIDER` - LLM provider (ollama)
 
 ## Examples
 
@@ -172,11 +172,11 @@ Make sure your `.env` file includes all required variables (see Environment Vari
 ### "No bot response received"
 This usually means the webhook processing failed. Check:
 - Database migrations are up to date
-- Required services (Groq, Telegram) are configured
+- Required services (LLM provider, Telegram) are configured
 - Use `--mock-telegram` to isolate issues
 
-### Connection errors with Groq
-If you see connection errors, the `HumanSimulator` will use fallback messages. Ensure your `GROQ_API_KEY` is valid or use `--mock-telegram` mode.
+### Connection errors with LLM
+If you see connection errors, the `HumanSimulator` will use fallback messages. Ensure your LLM provider is configured properly or use `--mock-telegram` mode.
 
 ## Future Enhancements
 

@@ -10,8 +10,6 @@ import random
 import uuid
 from typing import List, Tuple
 
-from groq import Groq
-
 from core.models import Message, Profile
 from services.llm_factory import get_llm_service
 
@@ -33,16 +31,40 @@ class SimulationService:
     The conversation simulates the beginning of a friendship, not a therapy session.
     """
 
-    def __init__(self, groq_api_key: str):
+    def __init__(self, api_key: str = None):
         """
         Initialize the simulation service.
 
         Args:
-            groq_api_key: Groq API key for AI generation
+            api_key: API key (kept for compatibility, uses configured LLM provider)
         """
-        self.client = Groq(api_key=groq_api_key)
-        self.model = "llama-3.3-70b-versatile"
         self.llm_service = get_llm_service()
+
+    def _call_llm(self, messages: List[dict], temperature: float = 0.85, max_tokens: int = 250) -> str:
+        """
+        Call LLM service with messages.
+
+        Args:
+            messages: List of message dicts with role and content
+            temperature: Temperature for generation
+            max_tokens: Maximum tokens to generate
+
+        Returns:
+            Generated text response
+        """
+        # Use OllamaService's client directly
+        if hasattr(self.llm_service, 'client'):
+            response = self.llm_service.client.chat(
+                model=self.llm_service.model,
+                messages=messages,
+                options={
+                    "temperature": temperature,
+                    "num_predict": max_tokens,
+                }
+            )
+            return response['message']['content'].strip()
+        else:
+            raise AttributeError("LLM service client not available")
 
     def create_simulation_profile(self, theme: str = None) -> Profile:
         """
@@ -217,14 +239,9 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
 
             context_messages.append({"role": "user", "content": user_prompt})
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=context_messages,
-                temperature=0.9,  # High temperature for more varied responses
-                max_tokens=250,
-            )
+            response_text = self._call_llm(context_messages, temperature=0.9, max_tokens=250)
 
-            return response.choices[0].message.content.strip()
+            return response_text
 
         except Exception as e:
             logger.error(f"Error generating seeker message: {str(e)}", exc_info=True)
@@ -407,14 +424,9 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             user_prompt = f"Responda à mensagem anterior. Este é o turno {turn}. PRIORIDADE ABSOLUTA: Resposta MUITO CURTA (1-2 frases máximo, prefira 1). REFLITA o sentimento ou essência com PALAVRAS DIFERENTES - NUNCA repita as frases exatas da Pessoa. Valide o que ela sentiu, não apenas copie o que ela disse. NÃO interprete profundamente. NÃO introduza abstrações ou metáforas. NÃO adicione significados que ela não expressou. NÃO tente resolver. Use linguagem direta e simples. Perguntas são OPCIONAIS e devem ser simples. Use a consciência temática para estar atento, mas NÃO nomeie o tema explicitamente."
             context_messages.append({"role": "user", "content": user_prompt})
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=context_messages,
-                temperature=0.85,  # Slightly lower than seeker for more consistent tone
-                max_tokens=100,  # Reduced from 150 to enforce very short responses
-            )
+            response_text = self._call_llm(context_messages, temperature=0.85, max_tokens=100)
 
-            return response.choices[0].message.content.strip()
+            return response_text
 
         except Exception as e:
             logger.error(f"Error generating listener message: {str(e)}", exc_info=True)
@@ -586,17 +598,16 @@ Foque especialmente em:
 - RITMO (avançar mais rápido que o humano)
 - RESPEITO À CONTENÇÃO da Pessoa (brevidade como sinal válido)"""
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            response_text = self._call_llm(
+                [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.7,  # Moderate temperature for balanced analysis
-                max_tokens=1200,  # Increased for comprehensive 5-section analysis
+                temperature=0.7,
+                max_tokens=1200
             )
 
-            analysis = response.choices[0].message.content.strip()
+            analysis = response_text
             logger.info("Generated critical analysis of simulated conversation")
             return analysis
 
