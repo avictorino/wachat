@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import List, Optional
 
 from services.prompts.themes import get_theme_prompt
@@ -361,7 +360,6 @@ Alterne com variações naturais, como:
 """
 
 
-@dataclass(frozen=True)
 class PromptComposer:
     """
     Composes the final system prompt as: Base + Optional Theme + Mode.
