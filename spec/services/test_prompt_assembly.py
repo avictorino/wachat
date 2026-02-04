@@ -31,14 +31,14 @@ class PromptAssemblyTest(TestCase):
 
         # Should not contain theme context or header
         self.assertNotIn("CONTEXTO ATUAL DA CONVERSA", result)
-        
+
         # Should contain conversation history in order
         self.assertIn("user: Estou com medo", result)
         self.assertIn("assistant: Como posso te ajudar?", result)
-        
+
         # Should contain current message
         self.assertIn("user: Não sei o que fazer", result)
-        
+
         # Verify order (history before current message)
         idx_history = result.index("user: Estou com medo")
         idx_current = result.index("user: Não sei o que fazer")
@@ -60,23 +60,23 @@ class PromptAssemblyTest(TestCase):
 
         # Should contain theme context
         self.assertIn("uso de drogas ou dependência química", result)
-        
+
         # Should contain the exact format header
         self.assertIn("CONTEXTO ATUAL DA CONVERSA", result)
-        
+
         # Should contain conversation history
         self.assertIn("user: Estou viciado", result)
         self.assertIn("assistant: Entendo sua dor", result)
-        
+
         # Should contain current message
         self.assertIn("user: Como sair disso?", result)
-        
+
         # Verify strict order: theme → header → history → current
         idx_theme = result.index("uso de drogas")
         idx_header = result.index("CONTEXTO ATUAL DA CONVERSA")
         idx_history = result.index("user: Estou viciado")
         idx_current = result.index("user: Como sair disso?")
-        
+
         self.assertLess(idx_theme, idx_header)
         self.assertLess(idx_header, idx_history)
         self.assertLess(idx_history, idx_current)
@@ -108,10 +108,10 @@ class PromptAssemblyTest(TestCase):
         # Should contain theme and header
         self.assertIn("uso de drogas ou dependência química", result)
         self.assertIn("CONTEXTO ATUAL DA CONVERSA", result)
-        
+
         # Should contain current message
         self.assertIn("user: Primeira mensagem", result)
-        
+
         # Verify order
         idx_header = result.index("CONTEXTO ATUAL DA CONVERSA")
         idx_current = result.index("user: Primeira mensagem")
@@ -161,18 +161,18 @@ class PromptAssemblyTest(TestCase):
 
         # Split by lines to verify structure
         lines = result.split("\n")
-        
+
         # Find the header line
         header_idx = None
         for i, line in enumerate(lines):
             if "CONTEXTO ATUAL DA CONVERSA" in line:
                 header_idx = i
                 break
-        
+
         self.assertIsNotNone(header_idx, "Header not found in prompt")
-        
+
         # Verify there's content before the header (theme)
         self.assertGreater(header_idx, 0, "Theme should come before header")
-        
+
         # Verify there's content after the header (history + current message)
         self.assertLess(header_idx, len(lines) - 1, "History should come after header")

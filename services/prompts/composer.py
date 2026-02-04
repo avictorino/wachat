@@ -434,7 +434,7 @@ SEPARAÇÃO EM MÚLTIPLAS MENSAGENS (quando fizer sentido)
         Assemble the final prompt in strict order with exact format.
 
         Order:
-        1. Theme context (ONLY if prompt_theme exists)
+        1. Theme context (ONLY if theme_id exists)
         2. Conversation history (last N messages, chronological, raw)
         3. Current user message
 
@@ -472,7 +472,9 @@ SEPARAÇÃO EM MÚLTIPLAS MENSAGENS (quando fizer sentido)
             parts.append(f"{role}: {content}")
 
         # 3. Current user message
-        if conversation_history:
+        if conversation_history and not theme_id:
+            # Add separator only when there's history but no theme
+            # (theme already adds proper spacing)
             parts.append("")  # Empty line before current message
         parts.append(f"user: {current_user_message}")
 
