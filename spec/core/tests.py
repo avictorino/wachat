@@ -329,8 +329,7 @@ class TelegramWebhookViewTest(TestCase):
 
         # Mock Groq service
         mock_groq_instance = Mock()
-        mock_groq_instance.detect_intent.return_value = "ansiedade"
-        mock_groq_instance.generate_intent_response.return_value = ["Entendo que você está se sentindo ansioso. Quer me contar um pouco mais sobre isso?"]
+        mock_groq_instance.generate_fallback_response.return_value = ["Entendo que você está se sentindo ansioso. Quer me contar um pouco mais sobre isso?"]
         mock_groq.return_value = mock_groq_instance
 
         # Mock Telegram service
@@ -393,8 +392,7 @@ class TelegramWebhookViewTest(TestCase):
         """Test that regular message from unknown user creates profile."""
         # Mock Groq service
         mock_groq_instance = Mock()
-        mock_groq_instance.detect_intent.return_value = "desabafar"
-        mock_groq_instance.generate_intent_response.return_value = [
+        mock_groq_instance.generate_fallback_response.return_value = [
             "Estou aqui para ouvir. O que você gostaria de compartilhar?"
         ]
         mock_groq.return_value = mock_groq_instance
