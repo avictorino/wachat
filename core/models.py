@@ -32,12 +32,6 @@ class Profile(models.Model):
         null=True,
         help_text="Gender inferred from name (male/female/unknown)",
     )
-    detected_intent = models.CharField(
-        max_length=255,
-        blank=True,
-        null=True,
-        help_text="Primary intent/concern detected from user's first response",
-    )
     prompt_theme = models.CharField(
         max_length=100,
         blank=True,

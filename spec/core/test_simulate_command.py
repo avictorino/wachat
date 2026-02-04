@@ -39,7 +39,7 @@ class SimulateCommandTest(TestCase):
 
         # Create a fake profile with default theme "desabafar"
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="desabafar"
+            name="Simulation_123456789", inferred_gender="unknown"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 
@@ -198,7 +198,7 @@ class SimulateCommandTest(TestCase):
 
         # Create a fake profile with "doenca" theme
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="doenca"
+            name="Simulation_123456789", inferred_gender="unknown"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 
@@ -331,7 +331,7 @@ class SimulateCommandTest(TestCase):
 
         # Create a fake profile
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="ato_criminoso_pecado"
+            name="Simulation_123456789", inferred_gender="unknown"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 
@@ -409,7 +409,7 @@ class SimulateCommandTest(TestCase):
 
         # Create a fake profile
         fake_profile = Profile.objects.create(
-            name="Simulation_123456789", inferred_gender="unknown", detected_intent="doenca"
+            name="Simulation_123456789", inferred_gender="unknown"
         )
         mock_simulation_instance.create_simulation_profile.return_value = fake_profile
 

@@ -358,10 +358,6 @@ class TelegramWebhookViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Verify profile was updated with detected intent
-        profile.refresh_from_db()
-        self.assertEqual(profile.detected_intent, "ansiedade")
-
         # Verify messages were persisted (user message + assistant response)
         messages = Message.objects.filter(profile=profile).order_by("created_at")
         self.assertEqual(messages.count(), 3)  # welcome + user + assistant
@@ -377,10 +373,8 @@ class TelegramWebhookViewTest(TestCase):
         self.assertIn("ansioso", assistant_message.content.lower())
 
         # Verify services were called
-        mock_groq_instance.detect_intent.assert_called_once_with(
-            "Me sinto muito ansioso ultimamente"
-        )
-        mock_groq_instance.generate_intent_response.assert_called_once()
+        # Intent detection has been removed, now uses fallback flow
+        mock_groq_instance.generate_fallback_response.assert_called_once()
         mock_telegram_instance.send_messages.assert_called_once()
 
     @patch("core.views.TelegramService")
@@ -433,7 +427,6 @@ class TelegramWebhookViewTest(TestCase):
         # Verify profile was created
         profile = Profile.objects.get(telegram_user_id="99999")
         self.assertEqual(profile.name, "Maria")
-        self.assertEqual(profile.detected_intent, "desabafar")
 
         # Verify messages were created
         messages = Message.objects.filter(profile=profile)
@@ -449,11 +442,11 @@ class TelegramWebhookViewTest(TestCase):
             "GROQ_API_KEY": "test-key",
         },
     )
-    def test_subsequent_messages_use_stored_intent(self, mock_groq, mock_telegram):
-        """Test that subsequent messages use previously detected intent."""
-        # Create a profile with existing intent
+    def test_subsequent_messages_continue_conversation(self, mock_groq, mock_telegram):
+        """Test that subsequent messages use conversation context."""
+        # Create a profile with conversation history
         profile = Profile.objects.create(
-            telegram_user_id="12345", name="João Silva", detected_intent="ansiedade"
+            telegram_user_id="12345", name="João Silva"
         )
 
         # Add some conversation history
@@ -465,14 +458,14 @@ class TelegramWebhookViewTest(TestCase):
 
         # Mock Groq service
         mock_groq_instance = Mock()
-        mock_groq_instance.generate_intent_response.return_value = [
+        mock_groq_instance.generate_fallback_response.return_value = [
             "Continue me contando sobre isso."
         ]
         mock_groq.return_value = mock_groq_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
-        mock_telegram_instance.send_message.return_value = True
+        mock_telegram_instance.send_messages.return_value = True
         mock_telegram.return_value = mock_telegram_instance
 
         # Send another message
@@ -495,12 +488,8 @@ class TelegramWebhookViewTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Verify intent detection was NOT called (should use stored intent)
-        mock_groq_instance.detect_intent.assert_not_called()
-
-        # Verify response generation used stored intent
-        call_args = mock_groq_instance.generate_intent_response.call_args
-        self.assertEqual(call_args[1]["intent"], "ansiedade")
+        # Verify response generation used fallback flow with context
+        mock_groq_instance.generate_fallback_response.assert_called_once()
 
 
 class GroqServiceTest(TestCase):
@@ -658,7 +647,6 @@ class FallbackConversationalFlowTest(TestCase):
             telegram_user_id="12345",
             name="João Silva",
             inferred_gender="male",
-            detected_intent="outro",
         )
 
     @patch("core.views.TelegramService")
@@ -756,12 +744,8 @@ class FallbackConversationalFlowTest(TestCase):
             "GROQ_API_KEY": "test-key",
         },
     )
-    def test_non_outro_intent_uses_standard_flow(self, mock_groq, mock_telegram):
-        """Test that non-'outro' intents use the standard intent-based flow."""
-        # Update profile to have a specific intent
-        self.profile.detected_intent = "ansiedade"
-        self.profile.save()
-
+    def test_conversational_flow_always_used(self, mock_groq, mock_telegram):
+        """Test that conversational flow is always used (intent detection removed)."""
         # Create conversation history
         Message.objects.create(
             profile=self.profile, role="assistant", content="Olá João!"
@@ -769,7 +753,7 @@ class FallbackConversationalFlowTest(TestCase):
 
         # Mock Groq service
         mock_groq_instance = Mock()
-        mock_groq_instance.generate_intent_response.return_value = [
+        mock_groq_instance.generate_fallback_response.return_value = [
             "Entendo que você está ansioso. Como posso ajudar?"
         ]
         mock_groq.return_value = mock_groq_instance
@@ -779,14 +763,14 @@ class FallbackConversationalFlowTest(TestCase):
         mock_telegram_instance.send_messages.return_value = True
         mock_telegram.return_value = mock_telegram_instance
 
-        # Send a message
+        # Send message
         payload = {
             "update_id": 2,
             "message": {
                 "message_id": 2,
                 "from": {"id": 12345, "first_name": "João"},
                 "chat": {"id": 12345, "type": "private"},
-                "text": "Estou muito preocupado",
+                "text": "Estou muito ansioso ultimamente",
             },
         }
 
@@ -799,9 +783,8 @@ class FallbackConversationalFlowTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Verify intent-based response was used (not fallback)
-        mock_groq_instance.generate_intent_response.assert_called_once()
-        mock_groq_instance.generate_fallback_response.assert_not_called()
+        # Verify fallback flow was used (not intent-based)
+        mock_groq_instance.generate_fallback_response.assert_called_once()
 
         # Verify messages were sent
         mock_telegram_instance.send_messages.assert_called_once()
@@ -861,14 +844,10 @@ class FallbackConversationalFlowTest(TestCase):
         "os.environ",
         {"TELEGRAM_BOT_TOKEN": "test-token", "TELEGRAM_WEBHOOK_SECRET": "test-secret"},
     )
-    def test_intent_response_receives_conversation_context(
+    def test_fallback_response_receives_conversation_context(
         self, mock_groq, mock_telegram
     ):
-        """Test that generate_intent_response receives conversation context."""
-        # Set a detected intent on the profile
-        self.profile.detected_intent = "ansiedade"
-        self.profile.save()
-
+        """Test that generate_fallback_response receives conversation context."""
         # Create conversation history
         messages_data = [
             ("assistant", "Olá João! Bem-vindo."),
@@ -882,7 +861,7 @@ class FallbackConversationalFlowTest(TestCase):
 
         # Mock Groq service
         mock_groq_instance = Mock()
-        mock_groq_instance.generate_intent_response.return_value = [
+        mock_groq_instance.generate_fallback_response.return_value = [
             "Vejo que você está ansioso. Vamos conversar sobre isso?"
         ]
         mock_groq.return_value = mock_groq_instance
@@ -892,7 +871,7 @@ class FallbackConversationalFlowTest(TestCase):
         mock_telegram_instance.send_messages.return_value = True
         mock_telegram.return_value = mock_telegram_instance
 
-        # Send a message that triggers intent detection
+        # Send a message
         payload = {
             "update_id": 5,
             "message": {
@@ -912,9 +891,9 @@ class FallbackConversationalFlowTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Verify generate_intent_response was called with conversation_context
-        mock_groq_instance.generate_intent_response.assert_called_once()
-        call_args = mock_groq_instance.generate_intent_response.call_args
+        # Verify generate_fallback_response was called with conversation_context
+        mock_groq_instance.generate_fallback_response.assert_called_once()
+        call_args = mock_groq_instance.generate_fallback_response.call_args
 
         # Check that conversation_context was passed
         self.assertIn("conversation_context", call_args[1])

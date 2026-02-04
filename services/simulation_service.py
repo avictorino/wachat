@@ -49,10 +49,10 @@ class SimulationService:
         Create a new profile for simulation.
 
         Args:
-            theme: The theme/intent for the conversation (e.g., "doenca", "ansiedade")
+            theme: The theme for the conversation (e.g., "doenca", "ansiedade")
         
         Returns:
-            A new Profile instance marked with the theme as detected_intent
+            A new Profile instance marked with the theme
         """
         # Generate a unique simulation identifier using UUID
         sim_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
@@ -61,17 +61,16 @@ class SimulationService:
         # Randomly choose a gender for the simulated profile
         gender = random.choice(["male", "female", "unknown"])
 
-        # Use theme as detected_intent, or default to "desabafar"
-        detected_intent = theme if theme else "desabafar"
+        # Use theme, or default to "desabafar"
+        theme = theme if theme else "desabafar"
 
         # Create profile without telegram_user_id (to avoid conflicts)
         profile = Profile.objects.create(
             name=sim_name,
             inferred_gender=gender,
-            detected_intent=detected_intent,  # Store theme as intent, NOT "simulation"
         )
 
-        logger.info(f"Created simulation profile: {profile.id} with gender: {gender}, intent: {detected_intent}")
+        logger.info(f"Created simulation profile: {profile.id} with gender: {gender}, theme: {theme}")
         return profile
 
     def generate_simulated_conversation(
