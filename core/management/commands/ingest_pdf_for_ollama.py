@@ -1,24 +1,18 @@
 import json
 import os
 import re
-from dataclasses import dataclass
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator, List, Tuple
 
-import dotenv
 import fitz  # PyMuPDF
-import psycopg
 import requests
 from django.core.management.base import BaseCommand, CommandError
-from pgvector.psycopg import register_vector
-from psycopg.rows import dict_row
 
 from config.settings import BASE_DIR
+from core.models import RagChunk
 
 # ==========================
 # ENV / CONFIG
 # ==========================
-
-dotenv.read_dotenv(os.path.join(BASE_DIR, ".env"))
 
 DEFAULT_PDF_PATH = f"{BASE_DIR}/model/pdfs"
 DEFAULT_OUT_DIR = f"{BASE_DIR}/model/rag"
@@ -114,18 +108,61 @@ def should_skip_chunk(text: str) -> bool:
 
 
 # ==========================
-# DATA MODEL
+# CHUNK CLASSIFICATION
 # ==========================
 
 
-@dataclass
-class ChunkRecord:
-    id: str
-    text: str
-    source: str
-    page: int
-    chunk_index: int
-    embedding: Optional[List[float]] = None
+def classify_chunk_type(text: str) -> str:
+    """
+    Classify chunk as 'behavior' or 'content'.
+
+    Behavior: content about posture, tone, guidance, care, relationship
+    Content: informational or doctrinal content
+
+    Args:
+        text: The chunk text to classify
+
+    Returns:
+        "behavior" or "content"
+    """
+    text_lower = text.lower()
+
+    # Keywords that indicate behavioral/guidance content
+    behavior_keywords = [
+        "postura",
+        "tom",
+        "cuidado",
+        "relacionamento",
+        "acolhimento",
+        "empatia",
+        "escuta",
+        "presença",
+        "acompanhamento",
+        "orientação",
+        "guia",
+        "direção",
+        "conselho",
+        "apoio",
+        "sustentação",
+        "companhia",
+        "proximidade",
+        "atenção",
+        "sensibilidade",
+        "discernimento",
+        "sabedoria pastoral",
+        "pastoral",
+        "ministério",
+    ]
+
+    # Check for behavior keywords
+    keyword_count = sum(1 for keyword in behavior_keywords if keyword in text_lower)
+
+    # If multiple behavior keywords found, classify as behavior
+    if keyword_count >= 2:
+        return "behavior"
+
+    # Default to content
+    return "content"
 
 
 # ==========================
@@ -133,94 +170,27 @@ class ChunkRecord:
 # ==========================
 
 
-def write_jsonl(records: List[ChunkRecord], out_path: str) -> None:
+def write_jsonl(chunks: List[RagChunk], out_path: str) -> None:
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
 
     with open(out_path, "w", encoding="utf-8") as f:
-        for r in records:
+        for chunk in chunks:
             f.write(
                 json.dumps(
                     {
-                        "id": r.id,
-                        "text": r.text,
+                        "id": chunk.id,
+                        "text": chunk.text,
                         "metadata": {
-                            "source": r.source,
-                            "page": r.page,
-                            "chunk_index": r.chunk_index,
+                            "source": chunk.source,
+                            "page": chunk.page,
+                            "chunk_index": chunk.chunk_index,
+                            "type": chunk.type,
                         },
                     },
                     ensure_ascii=False,
                 )
                 + "\n"
             )
-
-
-# ==========================
-# POSTGRES + PGVECTOR
-# ==========================
-
-
-def get_pg_conn():
-    db_url = os.environ.get("DATABASE_URL")
-    if not db_url:
-        raise CommandError("DATABASE_URL is not set")
-
-    conn = psycopg.connect(db_url, row_factory=dict_row)
-    register_vector(conn)
-    return conn
-
-
-def ensure_postgres_schema(conn):
-    with conn.cursor() as cur:
-        cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-
-        cur.execute(
-            f"""
-            CREATE TABLE IF NOT EXISTS rag_chunks (
-                id TEXT PRIMARY KEY,
-                source TEXT NOT NULL,
-                page INTEGER NOT NULL,
-                chunk_index INTEGER NOT NULL,
-                text TEXT NOT NULL,
-                embedding vector({EMBEDDING_DIMENSION})
-            )
-            """
-        )
-
-        cur.execute(
-            """
-            CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx
-            ON rag_chunks
-            USING hnsw (embedding vector_cosine_ops)
-            """
-        )
-
-    conn.commit()
-
-
-def upsert_chunks(conn, records: List[ChunkRecord]):
-    with conn.cursor() as cur:
-        cur.executemany(
-            """
-            INSERT INTO rag_chunks (id, source, page, chunk_index, text, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            ON CONFLICT (id) DO UPDATE SET
-                text = EXCLUDED.text,
-                embedding = EXCLUDED.embedding
-            """,
-            [
-                (
-                    r.id,
-                    r.source,
-                    r.page,
-                    r.chunk_index,
-                    r.text,
-                    r.embedding,
-                )
-                for r in records
-            ],
-        )
-    conn.commit()
 
 
 # ==========================
@@ -263,9 +233,6 @@ class Command(BaseCommand):
         if not os.path.isdir(DEFAULT_PDF_PATH):
             raise CommandError("DEFAULT_PDF_PATH must be a directory")
 
-        conn = get_pg_conn()
-        ensure_postgres_schema(conn)
-
         pdf_files = [
             f for f in os.listdir(DEFAULT_PDF_PATH) if f.lower().endswith(".pdf")
         ]
@@ -279,50 +246,63 @@ class Command(BaseCommand):
 
             self.stdout.write(self.style.NOTICE(f"Processing: {pdf_file}"))
 
-            records: List[ChunkRecord] = []
+            chunks_to_create = []
 
             for page, block in extract_semantic_blocks(pdf_path):
                 if page <= 10:
                     continue
 
-                for ci, chunk in enumerate(
+                for ci, chunk_text in enumerate(
                     sentence_chunk(block, options["chunk_size"])
                 ):
-                    if should_skip_chunk(chunk):
+                    if should_skip_chunk(chunk_text):
                         continue
 
-                    records.append(
-                        ChunkRecord(
-                            id=f"{source}:p{page}:c{ci}",
-                            text=chunk,
-                            source=source,
-                            page=page,
-                            chunk_index=ci,
-                        )
-                    )
+                    chunk_id = f"{source}:p{page}:c{ci}"
+                    chunk_type = classify_chunk_type(chunk_text)
 
-            if not records:
+                    # Create RagChunk instance (not yet saved)
+                    chunk = RagChunk(
+                        id=chunk_id,
+                        text=chunk_text,
+                        source=source,
+                        page=page,
+                        chunk_index=ci,
+                        type=chunk_type,
+                        embedding=[0.0] * EMBEDDING_DIMENSION,  # Placeholder
+                    )
+                    chunks_to_create.append(chunk)
+
+            if not chunks_to_create:
                 self.stdout.write(self.style.WARNING(f"No valid chunks in {pdf_file}"))
                 continue
 
-            jsonl_path = os.path.join(DEFAULT_OUT_DIR, f"{source}.jsonl")
-            write_jsonl(records, jsonl_path)
-
+            # Generate embeddings if requested
             if options["embed"]:
-                for i, r in enumerate(records, 1):
-                    r.embedding = ollama_embed(
-                        r.text,
+                for i, chunk in enumerate(chunks_to_create, 1):
+                    chunk.embedding = ollama_embed(
+                        chunk.text,
                         options["ollama_url"],
                         options["embed_model"],
                     )
                     if i % 50 == 0:
-                        self.stdout.write(f"  Embeddings: {i}/{len(records)}")
+                        self.stdout.write(
+                            f"  Embeddings: {i}/{len(chunks_to_create)}"
+                        )
 
-            upsert_chunks(conn, records)
+            # Use bulk_create for efficiency
+            # For upsert behavior, delete existing chunks from this source first
+            RagChunk.objects.filter(source=source).delete()
+            RagChunk.objects.bulk_create(chunks_to_create, batch_size=500)
+
+            # Write JSONL output
+            jsonl_path = os.path.join(DEFAULT_OUT_DIR, f"{source}.jsonl")
+            write_jsonl(chunks_to_create, jsonl_path)
 
             self.stdout.write(
-                self.style.SUCCESS(f"{pdf_file}: {len(records)} chunks ingested")
+                self.style.SUCCESS(
+                    f"{pdf_file}: {len(chunks_to_create)} chunks ingested"
+                )
             )
 
-        conn.close()
         self.stdout.write(self.style.SUCCESS("All PDFs processed successfully"))
