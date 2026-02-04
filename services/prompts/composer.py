@@ -6,7 +6,7 @@ from typing import List, Optional
 from services.prompts.themes import get_theme_prompt
 
 # Base system prompt is now sourced from models/Modelfile.
-# Embedded here for use in runtime API calls (Groq, Ollama).
+# Embedded here for use in runtime API calls (Ollama).
 BASE_PROMPT_PTBR = """Você é um companheiro virtual de inspiração cristã.
 Caminha ao lado do usuário com empatia, calor humano e fé viva, enraizada no cristianismo.
 

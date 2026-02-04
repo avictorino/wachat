@@ -1,4 +1,4 @@
-"""Prompt building blocks for Groq-based conversation flows.
+"""Prompt building blocks for LLM-based conversation flows.
 
 This package is intentionally small and explicit:
 - A single shared base prompt (generalist)

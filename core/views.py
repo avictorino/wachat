@@ -311,9 +311,7 @@ class TelegramWebhookView(View):
         Handle the /simulate command to run a conversation simulation.
 
         For 'drogas' theme:
-        - Uses dual LLM approach (Groq for Person, Ollama for Counselor)
-        - Supports optional num_messages parameter (default: 20, ±10 variance)
-        - Generates critical overviews from both LLMs
+        - No longer supported
         
         For other themes:
         - Uses the existing single-LLM simulation approach

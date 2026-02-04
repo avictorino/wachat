@@ -2,7 +2,7 @@
 Abstract base class interface for LLM services.
 
 This interface defines the contract that all LLM service implementations
-(e.g., GroqService, OllamaService) must follow for consistency.
+(e.g., OllamaService) must follow for consistency.
 """
 
 from abc import ABC, abstractmethod

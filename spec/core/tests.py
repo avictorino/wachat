@@ -103,18 +103,18 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_start_command_creates_profile(self, mock_groq, mock_telegram):
+    def test_start_command_creates_profile(self, mock_llm_service, mock_telegram):
         """Test that /start command creates a profile and sends welcome messages."""
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.infer_gender.return_value = "male"
-        mock_groq_instance.generate_welcome_message.return_value = (
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.infer_gender.return_value = "male"
+        mock_llm_service_instance.generate_welcome_message.return_value = (
             "Olá João! Bem-vindo ao nosso espaço. O que te trouxe aqui?"
         )
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -161,8 +161,8 @@ class TelegramWebhookViewTest(TestCase):
         self.assertEqual(messages[1].channel, "telegram")
 
         # Verify services were called
-        mock_groq_instance.infer_gender.assert_called_once_with("João Silva")
-        mock_groq_instance.generate_welcome_message.assert_called_once()
+        mock_llm_service_instance.infer_gender.assert_called_once_with("João Silva")
+        mock_llm_service_instance.generate_welcome_message.assert_called_once()
         
         # Verify send_messages was called with both parts
         mock_telegram_instance.send_messages.assert_called_once()
@@ -177,18 +177,18 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_start_command_sanitizes_harmful_names(self, mock_groq, mock_telegram):
+    def test_start_command_sanitizes_harmful_names(self, mock_llm_service, mock_telegram):
         """Test that /start command sanitizes harmful content in names before LLM call."""
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.infer_gender.return_value = "unknown"
-        mock_groq_instance.generate_welcome_message.return_value = (
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.infer_gender.return_value = "unknown"
+        mock_llm_service_instance.generate_welcome_message.return_value = (
             "Olá! Bem-vindo ao nosso espaço. Como você está?"
         )
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -219,10 +219,10 @@ class TelegramWebhookViewTest(TestCase):
         profile = Profile.objects.get(telegram_user_id="99999")
         self.assertEqual(profile.name, "Sexo Silva")
 
-        # Verify that GroqService methods were called (sanitization happens inside)
+        # Verify that LLM Service methods were called (sanitization happens inside)
         # The sanitization is transparent - we just verify the service was called
-        mock_groq_instance.infer_gender.assert_called_once_with("Sexo Silva")
-        mock_groq_instance.generate_welcome_message.assert_called_once()
+        mock_llm_service_instance.infer_gender.assert_called_once_with("Sexo Silva")
+        mock_llm_service_instance.generate_welcome_message.assert_called_once()
         mock_telegram_instance.send_messages.assert_called_once()
 
     @patch("core.views.TelegramService")
@@ -232,22 +232,22 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_start_command_splits_message_preserving_content(self, mock_groq, mock_telegram):
+    def test_start_command_splits_message_preserving_content(self, mock_llm_service, mock_telegram):
         """Test that /start command splits message while preserving all content."""
-        # Mock Groq service with a realistic welcome message
-        mock_groq_instance = Mock()
-        mock_groq_instance.infer_gender.return_value = "female"
+        # Mock LLM service with a realistic welcome message
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.infer_gender.return_value = "female"
         original_message = (
             "Maria, bem-vinda ao nosso espaço espiritual. "
             "Este é um lugar seguro, onde você pode ser quem você é, sem medo ou julgamento. "
             "Estou aqui para caminhar ao seu lado nessa jornada. "
             "O que te trouxe até este lugar hoje?"
         )
-        mock_groq_instance.generate_welcome_message.return_value = original_message
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service_instance.generate_welcome_message.return_value = original_message
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -312,10 +312,10 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_regular_message_detects_intent(self, mock_groq, mock_telegram):
+    def test_regular_message_detects_intent(self, mock_llm_service, mock_telegram):
         """Test that regular messages detect intent and generate response."""
         # Create a profile first (simulating a user who already did /start)
         profile = Profile.objects.create(
@@ -327,10 +327,10 @@ class TelegramWebhookViewTest(TestCase):
             profile=profile, role="assistant", content="Olá João! Bem-vindo."
         )
 
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.generate_fallback_response.return_value = ["Entendo que você está se sentindo ansioso. Quer me contar um pouco mais sobre isso?"]
-        mock_groq.return_value = mock_groq_instance
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.generate_fallback_response.return_value = ["Entendo que você está se sentindo ansioso. Quer me contar um pouco mais sobre isso?"]
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -373,7 +373,7 @@ class TelegramWebhookViewTest(TestCase):
 
         # Verify services were called
         # Intent detection has been removed, now uses fallback flow
-        mock_groq_instance.generate_fallback_response.assert_called_once()
+        mock_llm_service_instance.generate_fallback_response.assert_called_once()
         mock_telegram_instance.send_messages.assert_called_once()
 
     @patch("core.views.TelegramService")
@@ -383,19 +383,19 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
     def test_regular_message_without_profile_creates_one(
-        self, mock_groq, mock_telegram
+        self, mock_llm_service, mock_telegram
     ):
         """Test that regular message from unknown user creates profile."""
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.generate_fallback_response.return_value = [
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.generate_fallback_response.return_value = [
             "Estou aqui para ouvir. O que você gostaria de compartilhar?"
         ]
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -437,10 +437,10 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_subsequent_messages_continue_conversation(self, mock_groq, mock_telegram):
+    def test_subsequent_messages_continue_conversation(self, mock_llm_service, mock_telegram):
         """Test that subsequent messages use conversation context."""
         # Create a profile with conversation history
         profile = Profile.objects.create(
@@ -454,12 +454,12 @@ class TelegramWebhookViewTest(TestCase):
             profile=profile, role="assistant", content="First response"
         )
 
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.generate_fallback_response.return_value = [
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.generate_fallback_response.return_value = [
             "Continue me contando sobre isso."
         ]
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -487,153 +487,7 @@ class TelegramWebhookViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify response generation used fallback flow with context
-        mock_groq_instance.generate_fallback_response.assert_called_once()
-
-
-class GroqServiceTest(TestCase):
-    """Tests for the Groq service methods."""
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_detect_intent_financial_problems(self, mock_groq_client):
-        """Test intent detection for financial problems."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client response
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "problemas_financeiros"
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        intent = service.detect_intent("Estou com muitas dívidas e sem emprego")
-
-        self.assertEqual(intent, "problemas_financeiros")
-        mock_client_instance.chat.completions.create.assert_called_once()
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_detect_intent_anxiety(self, mock_groq_client):
-        """Test intent detection for anxiety."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client response
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "ansiedade"
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        intent = service.detect_intent("Me sinto muito ansioso e preocupado")
-
-        self.assertEqual(intent, "ansiedade")
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    @skip("GroqService does not validate intent responses - tests unimplemented behavior")
-    def test_detect_intent_invalid_returns_outro(self, mock_groq_client):
-        """Test that invalid intent returns 'outro'."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client to return invalid intent
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "invalid_intent_xyz"
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        intent = service.detect_intent("Some random message")
-
-        self.assertEqual(intent, "outro")
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_detect_intent_error_returns_outro(self, mock_groq_client):
-        """Test that API errors return 'outro'."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client to raise an exception
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.side_effect = Exception(
-            "API Error"
-        )
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        intent = service.detect_intent("Some message")
-
-        self.assertEqual(intent, "outro")
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_generate_intent_response(self, mock_groq_client):
-        """Test generating response based on intent."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client response
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "Entendo o peso que você está carregando. Estou aqui contigo nessa caminhada. Quer me contar um pouco mais sobre o que está sentindo?"
-        )
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        response_list = service.generate_intent_response(
-            user_message="Me sinto muito ansioso",
-            intent="ansiedade",
-            name="João",
-            inferred_gender="male",
-        )
-
-        # Response should be a list of strings
-        self.assertIsInstance(response_list, list)
-        response = " ".join(response_list)  # Join for assertion
-        self.assertIn("Entendo", response)
-        self.assertIn("?", response)  # Should end with a question
-        mock_client_instance.chat.completions.create.assert_called_once()
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_generate_intent_response_error_returns_fallback(self, mock_groq_client):
-        """Test that API errors return fallback message."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client to raise an exception
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.side_effect = Exception(
-            "API Error"
-        )
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        response_list = service.generate_intent_response(
-            user_message="Me sinto muito ansioso", intent="ansiedade", name="João"
-        )
-
-        # Should return fallback message as a list
-        self.assertIsInstance(response_list, list)
-        response = " ".join(response_list)  # Join for assertion
-        self.assertIn("Obrigado", response)
-        self.assertIn("incomoda", response)
+        mock_llm_service_instance.generate_fallback_response.assert_called_once()
 
 
 class FallbackConversationalFlowTest(TestCase):
@@ -654,10 +508,10 @@ class FallbackConversationalFlowTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_fallback_flow_with_outro_intent(self, mock_groq, mock_telegram):
+    def test_fallback_flow_with_outro_intent(self, mock_llm_service, mock_telegram):
         """Test that 'outro' intent triggers fallback conversational flow."""
         # Create conversation history
         Message.objects.create(
@@ -669,13 +523,13 @@ class FallbackConversationalFlowTest(TestCase):
             content="Gostaria de ouvir um pouco da palavra de um bom pastor",
         )
 
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.generate_fallback_response.return_value = [
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.generate_fallback_response.return_value = [
             "Entendo o que você busca.",
             "Estou aqui para caminhar junto com você nessa jornada.",
         ]
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -703,8 +557,8 @@ class FallbackConversationalFlowTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify fallback response was called with conversation context
-        mock_groq_instance.generate_fallback_response.assert_called_once()
-        call_args = mock_groq_instance.generate_fallback_response.call_args
+        mock_llm_service_instance.generate_fallback_response.assert_called_once()
+        call_args = mock_llm_service_instance.generate_fallback_response.call_args
 
         # Check that context was passed
         self.assertIn("conversation_context", call_args[1])
@@ -739,22 +593,22 @@ class FallbackConversationalFlowTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "GROQ_API_KEY": "test-key",
+            "
         },
     )
-    def test_conversational_flow_always_used(self, mock_groq, mock_telegram):
+    def test_conversational_flow_always_used(self, mock_llm_service, mock_telegram):
         """Test that conversational flow is always used (intent detection removed)."""
         # Create conversation history
         Message.objects.create(
             profile=self.profile, role="assistant", content="Olá João!"
         )
 
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.generate_fallback_response.return_value = [
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.generate_fallback_response.return_value = [
             "Entendo que você está ansioso. Como posso ajudar?"
         ]
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -782,7 +636,7 @@ class FallbackConversationalFlowTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify fallback flow was used (not intent-based)
-        mock_groq_instance.generate_fallback_response.assert_called_once()
+        mock_llm_service_instance.generate_fallback_response.assert_called_once()
 
         # Verify messages were sent
         mock_telegram_instance.send_messages.assert_called_once()
@@ -843,7 +697,7 @@ class FallbackConversationalFlowTest(TestCase):
         {"TELEGRAM_BOT_TOKEN": "test-token", "TELEGRAM_WEBHOOK_SECRET": "test-secret"},
     )
     def test_fallback_response_receives_conversation_context(
-        self, mock_groq, mock_telegram
+        self, mock_llm_service, mock_telegram
     ):
         """Test that generate_fallback_response receives conversation context."""
         # Create conversation history
@@ -857,12 +711,12 @@ class FallbackConversationalFlowTest(TestCase):
         for role, content in messages_data:
             Message.objects.create(profile=self.profile, role=role, content=content)
 
-        # Mock Groq service
-        mock_groq_instance = Mock()
-        mock_groq_instance.generate_fallback_response.return_value = [
+        # Mock LLM service
+        mock_llm_service_instance = Mock()
+        mock_llm_service_instance.generate_fallback_response.return_value = [
             "Vejo que você está ansioso. Vamos conversar sobre isso?"
         ]
-        mock_groq.return_value = mock_groq_instance
+        mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
         mock_telegram_instance = Mock()
@@ -890,8 +744,8 @@ class FallbackConversationalFlowTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify generate_fallback_response was called with conversation_context
-        mock_groq_instance.generate_fallback_response.assert_called_once()
-        call_args = mock_groq_instance.generate_fallback_response.call_args
+        mock_llm_service_instance.generate_fallback_response.assert_called_once()
+        call_args = mock_llm_service_instance.generate_fallback_response.call_args
 
         # Check that conversation_context was passed
         self.assertIn("conversation_context", call_args[1])
@@ -904,161 +758,6 @@ class FallbackConversationalFlowTest(TestCase):
         # Verify context contains expected messages in chronological order
         self.assertEqual(context[0]["role"], "assistant")
         self.assertEqual(context[0]["content"], "Olá João! Bem-vindo.")
-
-
-class GroqServiceFallbackTest(TestCase):
-    """Tests for GroqService fallback response generation."""
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_generate_fallback_response_single_message(self, mock_groq_client):
-        """Test generating a single fallback message."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client response (single message)
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "Entendo o que você busca. Estou aqui para caminhar junto."
-        )
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        context = [
-            {"role": "assistant", "content": "Olá!"},
-            {"role": "user", "content": "Oi"},
-        ]
-
-        messages = service.generate_fallback_response(
-            user_message="Gostaria de conversar sobre espiritualidade",
-            conversation_context=context,
-            name="João",
-            inferred_gender="male",
-        )
-
-        # Should return list with one message
-        self.assertIsInstance(messages, list)
-        self.assertEqual(len(messages), 1)
-        self.assertIn("Entendo", messages[0])
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_generate_fallback_response_multiple_messages(self, mock_groq_client):
-        """Test generating multiple fallback messages."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client response (multiple messages with separator)
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = (
-            "Entendo o que você busca.|||Estou aqui para ouvir você."
-        )
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        context = [{"role": "assistant", "content": "Olá!"}]
-
-        messages = service.generate_fallback_response(
-            user_message="Preciso de ajuda espiritual",
-            conversation_context=context,
-            name="Maria",
-            inferred_gender="female",
-        )
-
-        # Should return list with two messages
-        self.assertIsInstance(messages, list)
-        self.assertEqual(len(messages), 2)
-        self.assertEqual(messages[0], "Entendo o que você busca.")
-        self.assertEqual(messages[1], "Estou aqui para ouvir você.")
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_generate_fallback_response_includes_context(self, mock_groq_client):
-        """Test that conversation context is included in the API call."""
-        from services.groq_service import GroqService
-
-        # Mock the Groq client
-        mock_response = Mock()
-        mock_response.choices = [Mock()]
-        mock_response.choices[0].message.content = "Response"
-
-        mock_client_instance = Mock()
-        mock_client_instance.chat.completions.create.return_value = mock_response
-        mock_groq_client.return_value = mock_client_instance
-
-        # Test the service
-        service = GroqService()
-        context = [
-            {"role": "assistant", "content": "Primeira mensagem"},
-            {"role": "user", "content": "Segunda mensagem"},
-        ]
-
-        service.generate_fallback_response(
-            user_message="Nova mensagem",
-            conversation_context=context,
-            name="João",
-        )
-
-        # Verify API was called with context messages
-        call_args = mock_client_instance.chat.completions.create.call_args
-        messages = call_args[1]["messages"]
-
-        # Should have system prompt + context + new user message
-        self.assertGreater(len(messages), 2)
-        # Find the context messages in the call
-        has_context = any(
-            msg.get("content") == "Primeira mensagem" for msg in messages
-        )
-        self.assertTrue(has_context)
-
-    @patch("services.groq_service.Groq")
-    @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
-    def test_split_response_messages(self, mock_groq_client):
-        """Test the message splitting utility."""
-        from services.groq_service import GroqService
-
-        # Mock client setup (not used in this test but required for init)
-        mock_client_instance = Mock()
-        mock_groq_client.return_value = mock_client_instance
-
-        service = GroqService()
-
-        # Test single message (no separator)
-        result = service._split_response_messages("Uma mensagem única")
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], "Uma mensagem única")
-
-        # Test multiple messages with separator
-        result = service._split_response_messages(
-            "Primeira|||Segunda|||Terceira"
-        )
-        self.assertEqual(len(result), 3)
-        self.assertEqual(result[0], "Primeira")
-        self.assertEqual(result[1], "Segunda")
-        self.assertEqual(result[2], "Terceira")
-
-        # Test with extra whitespace
-        result = service._split_response_messages(
-            "Primeira  |||  Segunda  "
-        )
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0], "Primeira")
-        self.assertEqual(result[1], "Segunda")
-
-        # Test limit to 3 messages
-        result = service._split_response_messages(
-            "A|||B|||C|||D|||E"
-        )
-        self.assertEqual(len(result), 3)
-        self.assertEqual(result, ["A", "B", "C"])
 
 
 class TelegramServiceMultiMessageTest(TestCase):
