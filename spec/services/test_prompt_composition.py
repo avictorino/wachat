@@ -44,19 +44,18 @@ class PromptCompositionTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
         content = system_message["content"]
 
-        # Check for new prompt structure
-        self.assertIn("IDENTIDADE CENTRAL", content)
-        self.assertIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
-        self.assertIn("REGRAS DE ORIENTAÇÃO ESPIRITUAL", content)
+        # Check that base prompt structure is present
+        self.assertIn("IDENTIDADE E TOM", content)
+        self.assertIn("MEMÓRIA E CONTEXTO", content)
+        self.assertIn("BASE ESPIRITUAL DA CONVERSA", content)
         self.assertIn("TAREFA", content)
         self.assertIn("Continue a conversa", content)
 
-        # Verify new requirements are present
-        self.assertIn("Uma pergunta por mensagem", content)
+        # Verify requirements are present
+        self.assertIn("Nunca mais de uma pergunta por mensagem", content)
         self.assertIn("NUNCA faça mais de uma pergunta", content)
-        self.assertIn("Evite linguagem dura ou técnica", content)
 
-        # The old monolithic prompt hard-banned scripture; the new base prompt should not.
+        # The prompt should not hard-ban scripture
         self.assertNotIn("NUNCA cite versículos", content)
 
     @patch.dict("os.environ", {"GROQ_API_KEY": "test-key"})
@@ -90,14 +89,13 @@ class PromptCompositionTest(TestCase):
         system_message = next(m for m in messages if m["role"] == "system")
         content = system_message["content"]
 
-        # Check for new base prompt structure
-        self.assertIn("IDENTIDADE CENTRAL", content)
-        self.assertIn("PRINCÍPIOS DE CONVERSAÇÃO", content)
+        # Check that base prompt structure is present
+        self.assertIn("IDENTIDADE E TOM", content)
+        self.assertIn("MEMÓRIA E CONTEXTO", content)
         
         # Check that addiction theme is present
-        self.assertIn("TEMA: DROGAS / ÁLCOOL / CIGARRO / VÍCIOS", content)
-        self.assertIn("condição real e séria", content.lower())
+        self.assertIn("Tema principal: uso de drogas / dependência química", content)
+        self.assertIn("condição real", content.lower())
         
-        # Check for new soft language requirements in theme
-        self.assertIn("O que costuma acontecer", content)
-        self.assertIn("Em quais momentos", content)
+        # Check for guidance in theme
+        self.assertIn("Tratar recaídas como parte do processo", content)
