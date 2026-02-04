@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 from services.prompts.themes import get_theme_prompt
 
@@ -422,3 +422,58 @@ SEPARAÇÃO EM MÚLTIPLAS MENSAGENS (quando fizer sentido)
 - Se usar múltiplas mensagens, qualquer pergunta deve estar na última mensagem."""
 
         raise ValueError(f"Unknown prompt composition mode: {mode}")
+
+    @staticmethod
+    def assemble_final_prompt(
+        *,
+        theme_id: Optional[str],
+        conversation_history: List[dict],
+        current_user_message: str,
+    ) -> str:
+        """
+        Assemble the final prompt in strict order with exact format.
+
+        Order:
+        1. Theme context (ONLY if prompt_theme exists)
+        2. Conversation history (last N messages, chronological, raw)
+        3. Current user message
+
+        Format when theme exists:
+        [Theme context]
+
+        CONTEXTO ATUAL DA CONVERSA
+
+        [History messages]
+        [Current message]
+
+        Args:
+            theme_id: Optional theme identifier (e.g., "drug_addiction")
+            conversation_history: List of dicts with 'role' and 'content' keys
+            current_user_message: The current user's message text
+
+        Returns:
+            Assembled prompt as a single string
+        """
+        parts = []
+
+        # 1. Theme context (ONLY if prompt_theme exists)
+        if theme_id:
+            theme_prompt = get_theme_prompt(theme_id)
+            if theme_prompt:
+                parts.append(theme_prompt.strip())
+                parts.append("")  # Empty line
+                parts.append("CONTEXTO ATUAL DA CONVERSA")
+                parts.append("")  # Empty line
+
+        # 2. Conversation history (last N messages, chronological, raw)
+        for msg in conversation_history:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            parts.append(f"{role}: {content}")
+
+        # 3. Current user message
+        if conversation_history:
+            parts.append("")  # Empty line before current message
+        parts.append(f"user: {current_user_message}")
+
+        return "\n".join(parts)
