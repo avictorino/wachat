@@ -20,6 +20,15 @@ from services.rag_service import get_rag_context
 logger = logging.getLogger(__name__)
 
 
+# Helper constant for gender context in Portuguese
+# This instruction is in Portuguese because it's part of the system prompt
+# sent to the LLM, which operates in Brazilian Portuguese
+GENDER_CONTEXT_INSTRUCTION = (
+    "Gênero inferido (use APENAS para ajustar sutilmente o tom, "
+    "NUNCA mencione explicitamente): {gender}"
+)
+
+
 class OllamaService(LLMServiceInterface):
     """Service class for interacting with local Ollama LLM API."""
 
@@ -441,6 +450,7 @@ IMPORTANTE:
             
             if rag_texts:
                 # Inject RAG as silent context
+                # Portuguese instruction because it's part of the system prompt for the LLM
                 system_parts.append("CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):")
                 system_parts.append("\n\n".join(rag_texts))
                 system_parts.append("\n---\n")
@@ -449,9 +459,7 @@ IMPORTANTE:
             system_parts.append(f"Nome da pessoa: {name}")
             
             if inferred_gender and inferred_gender != "unknown":
-                system_parts.append(
-                    f"Gênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
-                )
+                system_parts.append(GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender))
             
             system_prompt = "\n".join(system_parts)
 
@@ -522,6 +530,7 @@ IMPORTANTE:
             
             if rag_texts:
                 # Inject RAG as silent context
+                # Portuguese instruction because it's part of the system prompt for the LLM
                 system_parts.append("CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):")
                 system_parts.append("\n\n".join(rag_texts))
                 system_parts.append("\n---\n")
@@ -530,9 +539,7 @@ IMPORTANTE:
             system_parts.append(f"Nome da pessoa: {name}")
             
             if inferred_gender and inferred_gender != "unknown":
-                system_parts.append(
-                    f"Gênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
-                )
+                system_parts.append(GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender))
             
             system_parts.append("Esta é uma continuação natural da conversa.")
             

@@ -78,12 +78,14 @@ def get_rag_context(user_input: str, limit: int = 5) -> List[str]:
 
         # Query chunks ordered by cosine distance
         # We'll fetch more chunks initially to allow for preference filtering
+        # Fetch 2× the limit to ensure we have enough chunks after filtering by type
+        CHUNK_FETCH_MULTIPLIER = 2
         chunks = list(
             RagChunk.objects.annotate(
                 distance=CosineDistance("embedding", query_embedding)
             )
             .order_by("distance")
-            .values("text", "type", "distance")[:limit * 2]
+            .values("text", "type", "distance")[:limit * CHUNK_FETCH_MULTIPLIER]
         )
 
         if not chunks:

@@ -262,6 +262,8 @@ class Command(BaseCommand):
                     chunk_type = classify_chunk_type(chunk_text)
 
                     # Create RagChunk instance (not yet saved)
+                    # Note: embedding will be None initially if --embed is not used
+                    # This makes it explicit that embeddings need to be generated
                     chunk = RagChunk(
                         id=chunk_id,
                         text=chunk_text,
@@ -269,7 +271,7 @@ class Command(BaseCommand):
                         page=page,
                         chunk_index=ci,
                         type=chunk_type,
-                        embedding=[0.0] * EMBEDDING_DIMENSION,  # Placeholder
+                        embedding=None,  # Will be set during embedding generation
                     )
                     chunks_to_create.append(chunk)
 
@@ -289,6 +291,18 @@ class Command(BaseCommand):
                         self.stdout.write(
                             f"  Embeddings: {i}/{len(chunks_to_create)}"
                         )
+            else:
+                # Warn user that chunks without embeddings won't be useful for RAG
+                self.stdout.write(
+                    self.style.WARNING(
+                        "Skipping embedding generation. "
+                        "Chunks will be saved but won't be searchable. "
+                        "Use --embed flag for full RAG functionality."
+                    )
+                )
+                # Set placeholder embeddings for database compatibility
+                for chunk in chunks_to_create:
+                    chunk.embedding = [0.0] * EMBEDDING_DIMENSION
 
             # Use bulk_create for efficiency
             # For upsert behavior, delete existing chunks from this source first
