@@ -4,7 +4,7 @@ Ollama LLM service for AI-powered features.
 This module handles interactions with a local Ollama server for:
 - Gender inference from names
 - Welcome message generation
-- Context-aware fallback responses
+- Context-aware fallback responses with RAG integration
 """
 
 import logging
@@ -15,7 +15,7 @@ import requests
 
 from services.input_sanitizer import sanitize_input
 from services.llm_service_interface import LLMServiceInterface
-from services.prompts import PromptComposer
+from services.rag_service import get_rag_context
 
 logger = logging.getLogger(__name__)
 
@@ -415,6 +415,9 @@ IMPORTANTE:
         """
         Generate an empathetic, spiritually-aware response based on detected intent.
 
+        The system prompt is assumed to be defined in the Ollama Modelfile.
+        RAG context is injected as silent background context.
+
         Args:
             user_message: The user's original message
             intent: The detected intent category
@@ -430,31 +433,27 @@ IMPORTANTE:
             # Sanitize input before sending to LLM
             sanitized_message = sanitize_input(user_message)
 
-            if not theme_id:
-                # Default theme selection based on the detected intent.
-                from services.theme_selector import select_theme_from_intent_and_message
-
-                selection = select_theme_from_intent_and_message(
-                    intent=intent,
-                    message_text=sanitized_message,
-                    existing_theme_id=None,
-                )
-                theme_id = selection.theme_id
-
-            gender_context = ""
+            # Get RAG context (silent injection)
+            rag_texts = get_rag_context(sanitized_message, limit=5)
+            
+            # Build system message with RAG context if available
+            system_parts = []
+            
+            if rag_texts:
+                # Inject RAG as silent context
+                system_parts.append("CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):")
+                system_parts.append("\n\n".join(rag_texts))
+                system_parts.append("\n---\n")
+            
+            # Add user context
+            system_parts.append(f"Nome da pessoa: {name}")
+            
             if inferred_gender and inferred_gender != "unknown":
-                gender_context = f"\nGênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
-
-            system_prompt = PromptComposer.compose_system_prompt(
-                theme_id=theme_id, mode="intent_response"
-            )
-
-            user_prompt = (
-                f"Nome da pessoa: {name}"
-                f"\nIntenção detectada: {intent}"
-                f"\nMensagem dela: {sanitized_message}{gender_context}"
-                "\n\nResponda agora."
-            )
+                system_parts.append(
+                    f"Gênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
+                )
+            
+            system_prompt = "\n".join(system_parts)
 
             # Build messages list with conversation context if provided
             messages = [{"role": "system", "content": system_prompt}]
@@ -465,7 +464,7 @@ IMPORTANTE:
                     messages.append({"role": msg["role"], "content": msg["content"]})
 
             # Add the current user message
-            messages.append({"role": "user", "content": user_prompt})
+            messages.append({"role": "user", "content": sanitized_message})
 
             response_text = self._make_chat_request(
                 messages, temperature=0.85, max_tokens=250
@@ -475,7 +474,8 @@ IMPORTANTE:
             messages = self._split_response_messages(response_text)
 
             logger.info(
-                f"Generated intent-based response with {len(messages)} message(s) for intent: {intent} (theme_id={theme_id})"
+                f"Generated intent-based response with {len(messages)} message(s) "
+                f"for intent: {intent} (RAG chunks: {len(rag_texts)})"
             )
             return messages
 
@@ -497,6 +497,9 @@ IMPORTANTE:
         """
         Generate a context-aware fallback response when intent is unclear.
 
+        The system prompt is assumed to be defined in the Ollama Modelfile.
+        RAG context is injected as silent background context.
+
         Args:
             user_message: The user's current message
             conversation_context: List of recent messages (dicts with 'role' and 'content')
@@ -511,24 +514,34 @@ IMPORTANTE:
             # Sanitize input before sending to LLM
             sanitized_message = sanitize_input(user_message)
 
+            # Get RAG context (silent injection)
+            rag_texts = get_rag_context(sanitized_message, limit=5)
+            
+            # Build system message with RAG context if available
+            system_parts = []
+            
+            if rag_texts:
+                # Inject RAG as silent context
+                system_parts.append("CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):")
+                system_parts.append("\n\n".join(rag_texts))
+                system_parts.append("\n---\n")
+            
+            # Add user context
+            system_parts.append(f"Nome da pessoa: {name}")
+            
+            if inferred_gender and inferred_gender != "unknown":
+                system_parts.append(
+                    f"Gênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
+                )
+            
+            system_parts.append("Esta é uma continuação natural da conversa.")
+            
+            system_prompt = "\n".join(system_parts)
+
             # Build conversation context for the LLM
             context_messages = []
             for msg in conversation_context:
                 context_messages.append({"role": msg["role"], "content": msg["content"]})
-
-            gender_context = ""
-            if inferred_gender and inferred_gender != "unknown":
-                gender_context = f"\nGênero inferido (use APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
-
-            system_prompt = PromptComposer.compose_system_prompt(
-                theme_id=theme_id, mode="fallback_response"
-            )
-            system_prompt += (
-                "\n"
-                "CONTEXTO FIXO\n"
-                f"- Nome da pessoa: {name}{gender_context}\n"
-                "- Esta é uma continuação natural da conversa.\n"
-            )
 
             # Add the current user message to context
             context_messages.append({"role": "user", "content": sanitized_message})
@@ -544,7 +557,8 @@ IMPORTANTE:
             messages = self._split_response_messages(response_text)
 
             logger.info(
-                f"Generated fallback response with {len(messages)} message(s) for ambiguous intent"
+                f"Generated fallback response with {len(messages)} message(s) "
+                f"(RAG chunks: {len(rag_texts)})"
             )
             return messages
 

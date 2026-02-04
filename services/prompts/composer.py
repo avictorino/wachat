@@ -4,6 +4,20 @@ from typing import List, Optional
 
 from services.prompts.themes import get_theme_prompt
 
+# =====================================
+# DEPRECATION NOTICE
+# =====================================
+# This module is DEPRECATED and should not be used for new code.
+# 
+# The system now relies on:
+# 1. Ollama Modelfile for behavioral rules and system prompt
+# 2. RAG retrieval for contextual guidance
+# 3. Direct system messages in ollama_service.py
+#
+# BASE_PROMPT_PTBR and PromptComposer are kept only for backward compatibility
+# with existing tests. DO NOT USE in production code.
+# =====================================
+
 # Base system prompt is also defined in model/Modelfile.
 # Embedded here for use in runtime API calls (Ollama).
 BASE_PROMPT_PTBR = """Você é um companheiro virtual de inspiração cristã.
