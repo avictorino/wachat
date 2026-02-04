@@ -298,14 +298,14 @@ class AddictionIntentResponseTest(TestCase):
             system_content = system_message["content"].lower()
 
             # Theme marker
-            self.assertIn("tema: drogas / álcool / cigarro / vícios", system_content)
+            self.assertIn("tema principal: uso de drogas / dependência química", system_content)
 
             # Core non-judgment / condition framing
             required_phrases = [
                 "condição real",
-                "não como falha moral",
-                "sem julgamento",
-                "não envergonhe",
+                "não define o valor da pessoa",
+                "separar a dignidade da pessoa",
+                "reduzir culpa e vergonha",
             ]
             self.assertTrue(
                 any(p in system_content for p in required_phrases),
