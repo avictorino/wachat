@@ -103,7 +103,7 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_start_command_creates_profile(self, mock_llm_service, mock_telegram):
@@ -177,7 +177,7 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_start_command_sanitizes_harmful_names(self, mock_llm_service, mock_telegram):
@@ -232,7 +232,7 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_start_command_splits_message_preserving_content(self, mock_llm_service, mock_telegram):
@@ -312,7 +312,7 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_regular_message_detects_intent(self, mock_llm_service, mock_telegram):
@@ -383,7 +383,7 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_regular_message_without_profile_creates_one(
@@ -437,7 +437,7 @@ class TelegramWebhookViewTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_subsequent_messages_continue_conversation(self, mock_llm_service, mock_telegram):
@@ -508,7 +508,7 @@ class FallbackConversationalFlowTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_fallback_flow_with_outro_intent(self, mock_llm_service, mock_telegram):
@@ -593,7 +593,7 @@ class FallbackConversationalFlowTest(TestCase):
         {
             "TELEGRAM_WEBHOOK_SECRET": "test-secret",
             "TELEGRAM_BOT_TOKEN": "test-token",
-            "
+            "LLM_PROVIDER": "ollama",
         },
     )
     def test_conversational_flow_always_used(self, mock_llm_service, mock_telegram):
