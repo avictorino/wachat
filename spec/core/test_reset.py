@@ -23,7 +23,6 @@ class ResetUserDataUseCaseTest(TestCase):
             name="Test User",
             phone_number="+1234567890",
             inferred_gender="male",
-            detected_intent="test_intent",
         )
 
         # Create some messages

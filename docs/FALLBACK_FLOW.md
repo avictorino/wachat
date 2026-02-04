@@ -13,13 +13,13 @@ This implementation provides a graceful, context-aware fallback conversational f
 - Does NOT re-explain who the system is
 
 ### 2. Script-Driven Response
-- **No parameter passing** - doesn't pass flags like `detected_intent`, `mood`, or `topic`
+- **No parameter passing** - doesn't pass flags like `mood` or `topic`
 - Behavior is guided by a fixed prompt/script embedded in the LLM call
 - The script instructs the LLM how to behave in ambiguity
 - Treats ambiguity as a valid conversational state, not an error
 
-### 3. Fallback Conversational Script
-When intent is unclear (`"outro"`), the LLM:
+### 3. Conversational Script
+The LLM:
 - Acknowledges the user's message respectfully
 - Reflects the intention behind the message (listening, guidance, comfort)
 - Avoids labeling the user's state (e.g., "você está distante")
@@ -111,10 +111,9 @@ def _get_conversation_context(self, profile, limit: int = 5) -> list:
 - Used to provide context to fallback response generation
 
 #### Updated `_handle_regular_message()`
-- Detects when intent is `"outro"` (ambiguous/unclear)
-- Branches to fallback flow when appropriate
+- Generates conversational responses using fallback flow
 - Assembles conversation context
-- Generates fallback response (may be multiple messages)
+- Generates response (may be multiple messages)
 - Persists each message separately
 - Sends messages sequentially with pauses
 
@@ -126,9 +125,7 @@ def _get_conversation_context(self, profile, limit: int = 5) -> list:
 ```
 
 ### System Response
-This doesn't clearly match predefined intents like "ansiedade", "problemas_financeiros", etc., so it's classified as `"outro"`.
-
-**Fallback Flow Activated:**
+**Conversational Flow Activated:**
 
 1. **Context Retrieved** (last 5 messages):
    ```
@@ -169,7 +166,7 @@ The fallback script enforces:
 ## Testing
 
 ### Unit Tests
-- `FallbackConversationalFlowTest`: Tests fallback vs standard flow
+- `FallbackConversationalFlowTest`: Tests conversational flow
 - `GroqServiceFallbackTest`: Tests response generation and splitting
 - `TelegramServiceMultiMessageTest`: Tests sequential message sending
 
@@ -196,17 +193,6 @@ In code:
 - Temperature: `temperature=0.85` in `generate_fallback_response()`
 
 ## Technical Notes
-
-### When Fallback Is Triggered
-- Intent detected as `"outro"` (ambiguous/unclear)
-- This happens when user message doesn't match predefined categories:
-  - problemas_financeiros
-  - distante_religiao
-  - ato_criminoso_pecado
-  - doenca
-  - ansiedade
-  - desabafar
-  - redes_sociais
 
 ### Message Format
 - Messages use plain text (no markdown, no emojis)

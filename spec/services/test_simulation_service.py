@@ -32,10 +32,6 @@ class SimulationServiceProfileTest(TestCase):
                 "Profile should have one of the valid gender values",
             )
 
-        # Verify profiles have the specified intent (not "simulation")
-        for profile in profiles:
-            self.assertEqual(profile.detected_intent, "ansiedade")
-
         # Verify randomness: with 20 profiles, we should get more than one unique gender
         unique_genders = set(p.inferred_gender for p in profiles)
         self.assertGreater(

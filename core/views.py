@@ -317,7 +317,7 @@ class TelegramWebhookView(View):
         
         For other themes:
         - Uses the existing single-LLM simulation approach
-        - Creates a new simulation profile with the specified theme as detected_intent
+        - Creates a new simulation profile with the specified theme
         - Generates a simulated conversation between ROLE_A (seeker) and ROLE_B (listener)
         - Persists all messages to the database
         - Sends the conversation transcript back to Telegram with role identification
@@ -326,7 +326,7 @@ class TelegramWebhookView(View):
 
         Args:
             chat_id: Telegram chat ID
-            theme: Optional theme/intent for the conversation (e.g., "doenca", "drogas")
+            theme: Optional theme for the conversation (e.g., "doenca", "drogas")
             num_messages: Optional number of messages (only for 'drogas' theme, default: 20)
 
         Returns:
@@ -380,9 +380,9 @@ class TelegramWebhookView(View):
             init_msg = f"🔄 Iniciando simulação de conversa...\n\nGerando diálogo sobre tema: *{theme}*"
             telegram_service.send_message(chat_id, init_msg, parse_mode="Markdown")
 
-            # Step 1: Create new profile for simulation with theme as detected_intent
+            # Step 1: Create new profile for simulation with theme
             profile = simulation_service.create_simulation_profile(theme)
-            logger.info(f"Created simulation profile {profile.id} with intent: {theme}")
+            logger.info(f"Created simulation profile {profile.id} with theme: {theme}")
 
             # Step 2: Generate simulated conversation with theme context
             num_messages_default = 8  # Fixed number of messages for simplicity
@@ -680,117 +680,58 @@ class TelegramWebhookView(View):
             Message.objects.create(profile=profile, role="user", content=message_text)
             logger.info(f"Persisted user message for profile {profile.id}")
 
-            # Initialize LLM service for intent detection and response generation
+            # Initialize LLM service for response generation
             llm_service = get_llm_service()
 
-            # Detect intent (and optionally activate a thematic prompt)
-            # - We still prioritize intent detection early in the conversation.
-            # - Additionally, we allow theme activation later if the user reveals a theme mid-chat.
+            # Select/persist an active theme (Base + Theme prompt composition)
             message_count = Message.objects.filter(profile=profile).count()
 
-            existing_intent = profile.detected_intent
-            detected_intent = existing_intent
+            # Check if we should detect theme (early messages or keyword match)
+            should_detect_theme = message_count <= 2
 
-            selection_pre = select_theme_from_intent_and_message(
-                intent=existing_intent,
-                message_text=message_text,
-                existing_theme_id=profile.prompt_theme,
-            )
-
-            should_detect_intent = (not existing_intent and message_count <= 2) or (
-                selection_pre.reason == "keyword_match" and not profile.prompt_theme
-            )
-
-            if should_detect_intent:
-                new_intent = llm_service.detect_intent(message_text)
-                detected_intent = new_intent
-
-                # Persist the most useful/clear intent for routing.
-                # If the model is uncertain ("outro") and we already have an intent, keep the existing one.
-                if new_intent != "outro" or not existing_intent:
-                    profile.detected_intent = new_intent
-                    profile.save(update_fields=["detected_intent"])
+            if should_detect_theme:
+                selection = select_theme_from_intent_and_message(
+                    intent=None,
+                    message_text=message_text,
+                    existing_theme_id=profile.prompt_theme,
+                )
+                if selection.theme_id and selection.theme_id != profile.prompt_theme:
+                    profile.prompt_theme = selection.theme_id
+                    profile.save(update_fields=["prompt_theme"])
                     logger.info(
-                        f"Detected and stored intent '{new_intent}' for profile {profile.id}"
+                        f"Activated theme '{selection.theme_id}' for profile {profile.id} via {selection.reason}"
                     )
-                else:
-                    detected_intent = existing_intent or "outro"
-            else:
-                detected_intent = existing_intent or "outro"
 
-            # Select/persist an active theme (Base + Theme prompt composition)
-            selection = select_theme_from_intent_and_message(
-                intent=detected_intent,
-                message_text=message_text,
-                existing_theme_id=profile.prompt_theme,
+            # Use context-aware conversational flow for response generation
+            logger.info(
+                f"Using conversational flow for profile {profile.id}"
             )
-            if selection.theme_id and selection.theme_id != profile.prompt_theme:
-                profile.prompt_theme = selection.theme_id
-                profile.save(update_fields=["prompt_theme"])
-                logger.info(
-                    f"Activated theme '{selection.theme_id}' for profile {profile.id} via {selection.reason}"
+
+            # Get conversation context (last 10 messages for continuity)
+            context = self._get_conversation_context(profile, limit=10)
+
+            # Generate response (may return multiple messages)
+            response_messages = llm_service.generate_fallback_response(
+                user_message=message_text,
+                conversation_context=context,
+                name=profile.name,
+                inferred_gender=profile.inferred_gender,
+                theme_id=profile.prompt_theme,
+            )
+
+            # Persist each assistant response separately
+            for response_msg in response_messages:
+                Message.objects.create(
+                    profile=profile, role="assistant", content=response_msg
                 )
+            logger.info(
+                f"Persisted {len(response_messages)} response(s) for profile {profile.id}"
+            )
 
-            # Choose response generation strategy based on intent
-            if detected_intent == "outro":
-                # Use context-aware fallback for ambiguous/unclear intent
-                logger.info(
-                    f"Using fallback conversational flow for profile {profile.id}"
-                )
-
-                # Get conversation context (last 10 messages for continuity)
-                context = self._get_conversation_context(profile, limit=10)
-
-                # Generate fallback response (may return multiple messages)
-                response_messages = llm_service.generate_fallback_response(
-                    user_message=message_text,
-                    conversation_context=context,
-                    name=profile.name,
-                    inferred_gender=profile.inferred_gender,
-                    theme_id=profile.prompt_theme,
-                )
-
-                # Persist each assistant response separately
-                for response_msg in response_messages:
-                    Message.objects.create(
-                        profile=profile, role="assistant", content=response_msg
-                    )
-                logger.info(
-                    f"Persisted {len(response_messages)} fallback response(s) for profile {profile.id}"
-                )
-
-                # Send all responses sequentially with pauses
-                success = telegram_service.send_messages(
-                    chat_id, response_messages, pause_seconds=1.5
-                )
-
-            else:
-                # Use intent-based response for clear intent
-                # Get conversation context (last 10 messages for continuity)
-                context = self._get_conversation_context(profile, limit=10)
-
-                response_messages = llm_service.generate_intent_response(
-                    user_message=message_text,
-                    intent=detected_intent,
-                    name=profile.name,
-                    inferred_gender=profile.inferred_gender,
-                    theme_id=profile.prompt_theme,
-                    conversation_context=context,
-                )
-
-                # Persist each assistant response separately
-                for response_msg in response_messages:
-                    Message.objects.create(
-                        profile=profile, role="assistant", content=response_msg
-                    )
-                logger.info(
-                    f"Persisted {len(response_messages)} intent-based response(s) for profile {profile.id}"
-                )
-
-                # Send all responses sequentially with pauses
-                success = telegram_service.send_messages(
-                    chat_id, response_messages, pause_seconds=1.5
-                )
+            # Send all responses sequentially with pauses
+            success = telegram_service.send_messages(
+                chat_id, response_messages, pause_seconds=1.5
+            )
 
             if success:
                 logger.info(f"Response sent to chat {chat_id}")
