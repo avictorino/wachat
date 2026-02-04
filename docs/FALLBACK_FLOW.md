@@ -53,7 +53,7 @@ The LLM:
 
 ## Implementation Components
 
-### GroqService
+### LLM Service
 
 #### `generate_fallback_response()`
 ```python
@@ -167,7 +167,6 @@ The fallback script enforces:
 
 ### Unit Tests
 - `FallbackConversationalFlowTest`: Tests conversational flow
-- `GroqServiceFallbackTest`: Tests response generation and splitting
 - `TelegramServiceMultiMessageTest`: Tests sequential message sending
 
 ### Manual Testing
@@ -181,7 +180,7 @@ Run `/tmp/test_fallback_flow.py` to see a demonstration of:
 
 ### Environment Variables
 No additional environment variables required. Uses existing:
-- `GROQ_API_KEY`
+- `LLM_PROVIDER`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_WEBHOOK_SECRET`
 
@@ -200,7 +199,7 @@ In code:
 - Conversational, not formal
 
 ### Error Handling
-- If Groq API fails, returns simple fallback message
+- If LLM API fails, returns simple fallback message
 - If message sending fails, logs error but doesn't crash
 - Partial send failures reported but don't block subsequent messages
 

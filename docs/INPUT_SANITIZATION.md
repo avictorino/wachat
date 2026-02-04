@@ -26,8 +26,8 @@ This service ensures that:
    - `sanitize_input()`: Direct access to sanitization
 
 3. **Integration Points**
-   - `GroqService.infer_gender()`: Sanitizes names before gender inference
-   - `GroqService.generate_welcome_message()`: Sanitizes names before message generation
+   - `OllamaService.infer_gender()`: Sanitizes names before gender inference
+   - `OllamaService.generate_welcome_message()`: Sanitizes names before message generation
 
 ## Filtered Content Categories
 
@@ -163,12 +163,10 @@ sanitize_input(123)  # Returns: "123"
 
 Comprehensive tests are available in:
 - `services/test_input_sanitizer.py` - Unit tests for the sanitizer
-- `services/test_groq_service_sanitization.py` - Integration tests
 
 Run tests:
 ```bash
 python manage.py test services.test_input_sanitizer
-python manage.py test services.test_groq_service_sanitization
 ```
 
 ## Monitoring
