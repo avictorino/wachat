@@ -92,10 +92,10 @@ class PromptCompositionTest(TestCase):
         # Check that base prompt structure is present
         self.assertIn("IDENTIDADE E TOM", content)
         self.assertIn("MEMÓRIA E CONTEXTO", content)
-        
+
         # Check that addiction theme is present (plain text format)
         self.assertIn("Contexto do tema: uso de drogas ou dependência química", content)
         self.assertIn("condição que aprisiona", content)
-        
+
         # Check for guidance in theme
         self.assertIn("Recaídas fazem parte do processo", content)
