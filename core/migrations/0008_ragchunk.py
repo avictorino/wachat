@@ -76,8 +76,6 @@ class Migration(migrations.Migration):
                     pgvector.django.vector.VectorField(
                         dimensions=768,
                         help_text="Vector embedding of the text (768-dimensional for nomic-embed-text)",
-                        null=True,
-                        blank=True,
                     ),
                 ),
                 (
