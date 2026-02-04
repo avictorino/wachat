@@ -686,15 +686,8 @@ class TelegramWebhookView(View):
             # Select/persist an active theme (Base + Theme prompt composition)
             message_count = Message.objects.filter(profile=profile).count()
 
-            selection_pre = select_theme_from_intent_and_message(
-                intent=None,
-                message_text=message_text,
-                existing_theme_id=profile.prompt_theme,
-            )
-
-            should_detect_theme = (message_count <= 2) or (
-                selection_pre.reason == "keyword_match" and not profile.prompt_theme
-            )
+            # Check if we should detect theme (early messages or keyword match)
+            should_detect_theme = message_count <= 2
 
             if should_detect_theme:
                 selection = select_theme_from_intent_and_message(
@@ -709,7 +702,7 @@ class TelegramWebhookView(View):
                         f"Activated theme '{selection.theme_id}' for profile {profile.id} via {selection.reason}"
                     )
 
-            # Use context-aware fallback for response generation
+            # Use context-aware conversational flow for response generation
             logger.info(
                 f"Using conversational flow for profile {profile.id}"
             )
