@@ -9,7 +9,7 @@ import logging
 import random
 from typing import List
 
-from groq import Groq
+from services.llm_factory import get_llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,11 @@ class HumanSimulator:
         Initialize the human simulator.
 
         Args:
-            api_key: Groq API key
+            api_key: API key (kept for compatibility, uses configured LLM provider)
             name: The simulated person's name
             domain: The domain of conversation (e.g., 'spiritual', 'relationship', 'grief')
         """
-        self.client = Groq(api_key=api_key)
-        self.model = "llama-3.3-70b-versatile"
+        self.llm_service = get_llm_service()
         self.name = name
         self.domain = domain
         self.conversation_state = {
@@ -59,18 +58,25 @@ class HumanSimulator:
             system_prompt = self._build_system_prompt()
             user_prompt = self._build_user_prompt(conversation_history, turn_number)
 
-            # Generate message
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=0.9,  # High temperature for more variability
-                max_tokens=200,
-            )
-
-            message = response.choices[0].message.content.strip()
+            # Generate message using configured LLM service
+            # Use internal method to call LLM directly
+            if hasattr(self.llm_service, 'client'):
+                # OllamaService has client attribute
+                response = self.llm_service.client.chat(
+                    model=self.llm_service.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    options={
+                        "temperature": 0.9,
+                        "num_predict": 200,
+                    }
+                )
+                message = response['message']['content'].strip()
+            else:
+                # Fallback if client structure is different
+                raise AttributeError("LLM service client not available")
 
             # Update emotional state based on turn
             self._update_emotional_state(turn_number)

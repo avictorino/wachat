@@ -137,7 +137,7 @@ class TelegramWebhookView(View):
         This method:
         1. Extracts user data from Telegram
         2. Creates or retrieves user Profile
-        3. Infers gender using Groq
+        3. Infers gender using LLM
         4. Generates personalized welcome message
         5. Persists the welcome message
         6. Sends the message to the user
@@ -333,9 +333,12 @@ class TelegramWebhookView(View):
             JsonResponse indicating success
         """
         try:
-            # Special handling for 'drogas' theme with dual LLM
+            # Special handling for 'drogas' theme - no longer supported
             if theme == "drogas":
-                return self._handle_drug_addiction_simulation(chat_id, num_messages)
+                telegram_service = TelegramService()
+                error_msg = "❌ A simulação de dependência química não está mais disponível."
+                telegram_service.send_message(chat_id, error_msg)
+                return JsonResponse({"status": "ok"}, status=200)
             
             # Original simulation logic for other themes
             logger.info(
@@ -344,15 +347,14 @@ class TelegramWebhookView(View):
 
             # Initialize services
             telegram_service = TelegramService()
-            groq_api_key = os.environ.get("GROQ_API_KEY")
 
-            if not groq_api_key:
+            if not os.environ.get("LLM_PROVIDER"):
                 error_msg = "Simulation service is not available at the moment."
                 telegram_service.send_message(chat_id, error_msg)
-                logger.error("GROQ_API_KEY not configured for simulation")
+                logger.error("LLM_PROVIDER not configured for simulation")
                 return JsonResponse({"status": "ok"}, status=200)
 
-            simulation_service = SimulationService(groq_api_key)
+            simulation_service = SimulationService()
             llm_service = get_llm_service()
 
             # Approximate theme using LLM if provided
@@ -431,101 +433,6 @@ class TelegramWebhookView(View):
                 logger.error("Failed to send error message to user")
             return JsonResponse({"status": "error"}, status=500)
     
-    def _handle_drug_addiction_simulation(self, chat_id: str, num_messages: int = None):
-        """
-        Handle drug addiction simulation using dual LLMs.
-        
-        Uses:
-        - Groq for Person role (struggling with addiction)
-        - Ollama for Counselor role (following DRUG_ADDICTION_THEME_PROMPT_PTBR)
-        
-        Args:
-            chat_id: Telegram chat ID
-            num_messages: Target number of messages (default: 20, ±10 variance)
-        
-        Returns:
-            JsonResponse indicating success
-        """
-        try:
-            from services.drug_addiction_simulation_service import DrugAddictionSimulationService
-            
-            logger.info(f"Starting drug addiction simulation for chat {chat_id}")
-            
-            # Initialize services
-            telegram_service = TelegramService()
-            
-            # Set default num_messages
-            if num_messages is None:
-                num_messages = 20
-            
-            # Validate num_messages range and notify user if out of range
-            if num_messages < 10 or num_messages > 40:
-                original_num_messages = num_messages
-                num_messages = 20
-                telegram_service.send_message(
-                    chat_id,
-                    f"⚠️ Número de mensagens ({original_num_messages}) fora do intervalo permitido (10-40). Usando padrão: 20"
-                )
-                logger.warning(f"num_messages {original_num_messages} out of range, using default: {num_messages}")
-            
-            # Send initial message
-            init_msg = f"🔄 Iniciando simulação sobre dependência química...\n\n💊 Usando Groq (Pessoa) + Ollama (Counselor)\n📊 Alvo: ~{num_messages} mensagens (±10 variância natural)"
-            telegram_service.send_message(chat_id, init_msg)
-            
-            # Initialize simulation service
-            sim_service = DrugAddictionSimulationService()
-            
-            # Generate conversation
-            logger.info(f"Generating conversation with target {num_messages} messages")
-            conversation = sim_service.generate_conversation(num_messages)
-            logger.info(f"Generated {len(conversation)} messages")
-            
-            # Send each message
-            for i, msg in enumerate(conversation):
-                role_emoji = "🧑‍💬" if msg["role"] == "Person" else "🌿"
-                prefix = f"{role_emoji} {msg['role']}:"
-                formatted_msg = f"{prefix}\n{msg['content']}"
-                
-                telegram_service.send_message(chat_id, formatted_msg)
-                
-                # Small pause for readability
-                time.sleep(MESSAGE_DELAY_SECONDS)
-            
-            logger.info(f"Sent {len(conversation)} messages to chat {chat_id}")
-            
-            # Generate critical overviews from both LLMs
-            logger.info("Generating critical overviews...")
-            
-            # Overview from Groq
-            overview_groq = sim_service.generate_critical_overview_groq(conversation)
-            groq_msg = f"📊 *Análise Crítica (Groq)*\n\n{overview_groq}"
-            telegram_service.send_message(chat_id, groq_msg, parse_mode="Markdown")
-            logger.info("Sent Groq overview")
-            
-            # Small pause between overviews
-            time.sleep(OVERVIEW_DELAY_SECONDS)
-            
-            # Overview from Ollama
-            overview_ollama = sim_service.generate_critical_overview_ollama(conversation)
-            ollama_msg = f"📊 *Análise Crítica (Ollama)*\n\n{overview_ollama}"
-            telegram_service.send_message(chat_id, ollama_msg, parse_mode="Markdown")
-            logger.info("Sent Ollama overview")
-            
-            # Final summary
-            summary_msg = f"✅ Simulação concluída!\n\n📈 Total: {len(conversation)} mensagens\n🔍 2 análises críticas enviadas"
-            telegram_service.send_message(chat_id, summary_msg)
-            
-            return JsonResponse({"status": "ok"}, status=200)
-            
-        except Exception as e:
-            logger.error(f"Error in drug addiction simulation: {str(e)}", exc_info=True)
-            try:
-                telegram_service = TelegramService()
-                error_msg = "❌ Erro ao executar simulação de dependência química. Verifique se o Ollama está rodando e tente novamente."
-                telegram_service.send_message(chat_id, error_msg)
-            except Exception:
-                logger.error("Failed to send error message to user")
-            return JsonResponse({"status": "error"}, status=500)
 
     def _handle_reset_confirmation(
         self,
@@ -631,7 +538,7 @@ class TelegramWebhookView(View):
         1. Retrieves or creates user profile
         2. Persists the user's message
         3. Detects intent from the message (if not already detected)
-        4. Generates a response using Groq:
+        4. Generates a response using LLM:
            - If intent is clear and matches a category: uses intent-based response
            - If intent is "outro" (unclear/ambiguous): uses context-aware fallback
         5. Persists the assistant's response(s)
