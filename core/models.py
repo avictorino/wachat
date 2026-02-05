@@ -94,6 +94,11 @@ class Message(models.Model):
         default="telegram",
         help_text="Channel through which the message was sent",
     )
+    ollama_prompt = models.JSONField(
+        null=True,
+        blank=True,
+        help_text="Full Ollama prompt payload sent to LLM (for observability)",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

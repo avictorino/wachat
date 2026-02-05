@@ -279,7 +279,12 @@
                 <div class="message {{ message.role }}">
                     <div class="message-bubble">
                         <div class="message-content">{{ message.content }}</div>
-                        <div class="message-time">{{ message.created_at|date:"H:i" }}</div>
+                        <div class="message-time">
+                            {{ message.created_at|date:"H:i" }}
+                            {% if message.role == "user" %}
+                                <a href="/admin/core/message/{{ message.id }}/change/" target="_blank" style="margin-left: 8px; font-size: 10px; color: #667781; text-decoration: none;">🔍 ver prompt</a>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
             {% endfor %}
