@@ -214,9 +214,7 @@ Crie sensação de presença humana genuína."""
             if inferred_gender and inferred_gender != "unknown":
                 gender_context = f"\nGênero inferido (use isso APENAS para ajustar sutilmente o tom, NUNCA mencione explicitamente): {inferred_gender}"
 
-            user_prompt = (
-                f"Crie uma mensagem de boas-vindas para: {sanitized_name}{gender_context}"
-            )
+            user_prompt = f"Crie uma mensagem de boas-vindas para: {sanitized_name}{gender_context}"
 
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -443,24 +441,28 @@ IMPORTANTE:
             sanitized_message = sanitize_input(user_message)
 
             # Get RAG context (silent injection)
-            rag_texts = get_rag_context(sanitized_message, limit=5)
-            
+            rag_texts = get_rag_context(sanitized_message, limit=3)
+
             # Build system message with RAG context if available
             system_parts = []
-            
+
             if rag_texts:
                 # Inject RAG as silent context
                 # Portuguese instruction because it's part of the system prompt for the LLM
-                system_parts.append("CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):")
+                system_parts.append(
+                    "CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):"
+                )
                 system_parts.append("\n\n".join(rag_texts))
                 system_parts.append("\n---\n")
-            
+
             # Add user context
             system_parts.append(f"Nome da pessoa: {name}")
-            
+
             if inferred_gender and inferred_gender != "unknown":
-                system_parts.append(GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender))
-            
+                system_parts.append(
+                    GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender)
+                )
+
             system_prompt = "\n".join(system_parts)
 
             # Build messages list with conversation context if provided
@@ -523,38 +525,46 @@ IMPORTANTE:
             sanitized_message = sanitize_input(user_message)
 
             # Get RAG context (silent injection)
-            rag_texts = get_rag_context(sanitized_message, limit=5)
-            
+            rag_texts = get_rag_context(sanitized_message, limit=3)
+
             # Build system message with RAG context if available
             system_parts = []
-            
+
             if rag_texts:
                 # Inject RAG as silent context
                 # Portuguese instruction because it's part of the system prompt for the LLM
-                system_parts.append("CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):")
+                system_parts.append(
+                    "CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):"
+                )
                 system_parts.append("\n\n".join(rag_texts))
                 system_parts.append("\n---\n")
-            
+
             # Add user context
             system_parts.append(f"Nome da pessoa: {name}")
-            
+
             if inferred_gender and inferred_gender != "unknown":
-                system_parts.append(GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender))
-            
+                system_parts.append(
+                    GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender)
+                )
+
             system_parts.append("Esta é uma continuação natural da conversa.")
-            
+
             system_prompt = "\n".join(system_parts)
 
             # Build conversation context for the LLM
             context_messages = []
             for msg in conversation_context:
-                context_messages.append({"role": msg["role"], "content": msg["content"]})
+                context_messages.append(
+                    {"role": msg["role"], "content": msg["content"]}
+                )
 
             # Add the current user message to context
             context_messages.append({"role": "user", "content": sanitized_message})
 
             # Prepend system message
-            all_messages = [{"role": "system", "content": system_prompt}] + context_messages
+            all_messages = [
+                {"role": "system", "content": system_prompt}
+            ] + context_messages
 
             response_text = self._make_chat_request(
                 all_messages, temperature=0.85, max_tokens=350
