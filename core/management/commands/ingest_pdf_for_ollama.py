@@ -3,6 +3,7 @@ import os
 import re
 from typing import Iterator, List, Tuple
 
+import dotenv
 import fitz  # PyMuPDF
 import requests
 from django.core.management.base import BaseCommand, CommandError
@@ -14,11 +15,131 @@ from core.models import RagChunk
 # ENV / CONFIG
 # ==========================
 
-DEFAULT_PDF_PATH = f"{BASE_DIR}/model/pdfs"
-DEFAULT_OUT_DIR = f"{BASE_DIR}/model/rag"
+dotenv.read_dotenv(BASE_DIR)
+
+DEFAULT_PDF_PATH = "/Users/avictorino/Projects/wachat/model/pdfs"
+DEFAULT_OUT_DIR = "/Users/avictorino/Projects/wachat/model/rag"
 
 EMBEDDING_DIMENSION = 768  # nomic-embed-text
 
+# ==========================
+# CONVERSATIONAL PROMPT
+# ==========================
+
+CONVERSATION_PROMPT = """
+Transforme o texto abaixo em uma conversa natural, humana e imperfeita entre duas pessoas reais.
+
+O OBJETIVO DESTA CONVERSA
+- Esta conversa NÃO é uma resposta final ao usuário
+- Ela será usada como material de indexação para RAG
+- Portanto, ela DEVE preservar as IDEIAS CENTRAIS do texto
+- Use linguagem humana, mas mantenha pistas claras do conteúdo original
+
+========================
+FORMATO OBRIGATÓRIO
+========================
+- Use SOMENTE este formato
+- Uma fala por linha
+- Não escreva nada fora do formato
+
+FORMATO EXATO:
+USUARIO: texto
+CONSELHEIRO: texto
+
+Exemplo (apenas formato):
+USUARIO: …
+CONSELHEIRO: …
+USUARIO: …
+CONSELHEIRO: …
+
+========================
+REGRAS DE LINGUAGEM
+========================
+- linguagem falada, cotidiana e simples
+- frases imperfeitas, com hesitação
+- respostas parciais
+- uma única ideia por fala
+- evite abstrações vagas demais
+- prefira imagens simples e concretas
+
+Exemplos de imagens permitidas:
+- tudo foi ficando estreito
+- sobrou só isso
+- o resto foi ficando de lado
+- sempre igual, dia após dia
+- parece que só gira nisso
+
+========================
+REGRAS PARA O USUARIO
+========================
+O usuário:
+- NÃO faz perguntas analíticas ou gerais
+- NÃO pergunta "como", "por que", "o que fazer"
+- NÃO pede explicações
+- NÃO teoriza
+- fala a partir da vivência e da percepção
+- expressa sensação, confusão, desgaste, repetição, perda de espaço
+- usa imagens simples ligadas ao texto
+- pode repetir palavras
+- pode mencionar fé apenas como sentimento pessoal
+
+========================
+REGRAS PARA O CONSELHEIRO
+========================
+O conselheiro:
+- representa presença, escuta e eco emocional
+- NÃO orienta
+- NÃO aconselha
+- NÃO explica
+- NÃO ensina
+- NÃO conclui
+- NÃO fecha a conversa
+- NÃO promete ajuda
+- NÃO diz o que deve ser feito
+- NÃO faz perguntas
+- NÃO organiza o pensamento do usuário
+
+O conselheiro DEVE:
+- reagir apenas ao que foi dito
+- ecoar as MESMAS imagens e palavras do usuário
+- manter o foco nas ideias trazidas
+- refletir sentimento E percepção, sem explicar
+- usar expressões de leveza e incerteza, como:
+  parece, soa, dá a impressão, fica a sensação
+
+O conselheiro pode falar um pouco mais que o usuário,
+mas nunca para explicar ou interpretar causas.
+
+========================
+PROIBIÇÕES ABSOLUTAS
+========================
+NÃO use:
+- termos técnicos, acadêmicos ou institucionais
+- linguagem clínica, terapêutica ou moral
+- explicações causais
+- conclusões
+- abstrações genéricas como apenas:
+  tristeza, desespero, dor profunda
+
+NÃO use as palavras:
+importante, precisa, deve, ajuda, tratar, superar,
+caminho, esperança, processo, jornada, solução
+
+========================
+IMPORTANTE
+========================
+- Esta conversa deve continuar aberta
+- Não resolva nada
+- Não explique o texto original
+- Não se afaste das ideias centrais do texto
+- Se quebrar qualquer regra, a resposta será descartada
+- Não use listas
+- Não use aspas
+- Não use markdown
+
+========================
+Texto:
+"""
 
 # ==========================
 # TEXT CLEANUP
@@ -57,11 +178,7 @@ def extract_semantic_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
 # ==========================
 
 
-def sentence_chunk(
-    text: str,
-    max_chars: int,
-    overlap_sentences: int = 1,
-) -> List[str]:
+def sentence_chunk(text: str, max_chars: int) -> List[str]:
     sentences = re.split(r"(?<=[.!?])\s+", text)
 
     chunks: List[str] = []
@@ -79,9 +196,7 @@ def sentence_chunk(
             chunk = " ".join(buffer).strip()
             if chunk:
                 chunks.append(chunk)
-
-            buffer = buffer[-overlap_sentences:] if overlap_sentences else []
-            buffer.append(s)
+            buffer = [s]
 
     if buffer:
         chunks.append(" ".join(buffer).strip())
@@ -97,7 +212,7 @@ def sentence_chunk(
 def should_skip_chunk(text: str) -> bool:
     upper = text.upper()
     return (
-        len(text) < 300
+        len(text) < 100
         or "ISBN" in upper
         or "©" in text
         or "ÍNDICE" in upper
@@ -108,93 +223,64 @@ def should_skip_chunk(text: str) -> bool:
 
 
 # ==========================
-# CHUNK CLASSIFICATION
+# OLLAMA – CONVERSATION
 # ==========================
 
 
-def classify_chunk_type(text: str) -> str:
-    """
-    Classify chunk as 'behavior' or 'content'.
+def ollama_generate_conversations(
+    text: str,
+    ollama_url: str,
+) -> Tuple[list[list[dict]], List[float]]:
 
-    Behavior: content about posture, tone, guidance, care, relationship
-    Content: informational or doctrinal content
+    resp = requests.post(
+        f"{ollama_url.rstrip('/')}/api/generate",
+        json={
+            "model": "llama3:8b",
+            "prompt": CONVERSATION_PROMPT + text,
+            "stream": False,
+        },
+        timeout=120,
+    )
+    resp.raise_for_status()
 
-    Args:
-        text: The chunk text to classify
+    raw = resp.json().get("response", "")
 
-    Returns:
-        "behavior" or "content"
-    """
-    text_lower = text.lower()
+    conversations = parse_conversation_lines(raw)
 
-    # Keywords that indicate behavioral/guidance content
-    behavior_keywords = [
-        "postura",
-        "tom",
-        "cuidado",
-        "relacionamento",
-        "acolhimento",
-        "empatia",
-        "escuta",
-        "presença",
-        "acompanhamento",
-        "orientação",
-        "guia",
-        "direção",
-        "conselho",
-        "apoio",
-        "sustentação",
-        "companhia",
-        "proximidade",
-        "atenção",
-        "sensibilidade",
-        "discernimento",
-        "sabedoria pastoral",
-        "pastoral",
-        "ministério",
-    ]
+    if not isinstance(conversations, list):
+        raise RuntimeError(f"Missing conversations array: {raw}")
 
-    # Check for behavior keywords
-    keyword_count = sum(1 for keyword in behavior_keywords if keyword in text_lower)
+    for convo in conversations:
+        if not isinstance(convo, list):
+            raise RuntimeError(f"Conversation is not a list: {convo}")
 
-    # If multiple behavior keywords found, classify as behavior
-    if keyword_count >= 2:
-        return "behavior"
+        for turn in convo:
+            if not isinstance(turn, dict) or "role" not in turn or "text" not in turn:
+                raise RuntimeError(f"Invalid turn format: {turn}")
 
-    # Default to content
-    return "content"
+    embed_input = " ".join(turn["text"] for convo in conversations for turn in convo)
+    resp = requests.post(
+        f"{ollama_url.rstrip('/')}/api/embeddings",
+        json={
+            "model": "nomic-embed-text",
+            "prompt": embed_input,
+            "stream": False,
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
 
+    data = resp.json()
+    embedding = data.get("embedding")
 
-# ==========================
-# JSONL OUTPUT
-# ==========================
+    if not isinstance(embedding, list):
+        raise RuntimeError(f"Invalid embedding response: {data}")
 
-
-def write_jsonl(chunks: List[RagChunk], out_path: str) -> None:
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
-    with open(out_path, "w", encoding="utf-8") as f:
-        for chunk in chunks:
-            f.write(
-                json.dumps(
-                    {
-                        "id": chunk.id,
-                        "text": chunk.text,
-                        "metadata": {
-                            "source": chunk.source,
-                            "page": chunk.page,
-                            "chunk_index": chunk.chunk_index,
-                            "type": chunk.type,
-                        },
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+    return conversations, embedding
 
 
 # ==========================
-# OLLAMA EMBEDDINGS
+# OLLAMA – EMBEDDINGS
 # ==========================
 
 
@@ -215,19 +301,77 @@ def ollama_embed(text: str, ollama_url: str, embed_model: str) -> List[float]:
     return embedding
 
 
+def parse_conversation_lines(text: str) -> list[list[dict]]:
+    conversations = []
+    current = []
+
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        if line.startswith("USUARIO:"):
+            if current:
+                conversations.append(current)
+                current = []
+            current.append(
+                {"role": "usuario", "text": line[len("USUARIO:") :].strip()}  # noqa
+            )
+
+        elif line.startswith("CONSELHEIRO:"):
+            current.append(
+                {
+                    "role": "conselheiro",
+                    "text": line[len("CONSELHEIRO:") :].strip(),  # noqa
+                }
+            )
+
+    if current:
+        conversations.append(current)
+
+    return conversations
+
+
+# ==========================
+# JSONL OUTPUT
+# ==========================
+
+
+def write_jsonl(chunks: List[RagChunk], out_path: str) -> None:
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for chunk in chunks:
+            f.write(
+                json.dumps(
+                    {
+                        "id": chunk.id,
+                        "conversation": chunk.conversations,
+                        "raw_text": chunk.raw_text,
+                        "metadata": {
+                            "source": chunk.source,
+                            "page": chunk.page,
+                            "chunk_index": chunk.chunk_index,
+                            "type": chunk.type,
+                        },
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+
 # ==========================
 # DJANGO COMMAND
 # ==========================
 
 
 class Command(BaseCommand):
-    help = "Batch semantic PDF ingestion for RAG (directory-based)"
+    help = "Batch conversational PDF ingestion for RAG (Ollama + Mistral)"
 
     def add_arguments(self, parser):
         parser.add_argument("--chunk-size", type=int, default=900)
-        parser.add_argument("--embed", action="store_true")
         parser.add_argument("--ollama-url", default="http://localhost:11434")
-        parser.add_argument("--embed-model", default="nomic-embed-text")
 
     def handle(self, *args, **options):
         if not os.path.isdir(DEFAULT_PDF_PATH):
@@ -246,77 +390,55 @@ class Command(BaseCommand):
 
             self.stdout.write(self.style.NOTICE(f"Processing: {pdf_file}"))
 
-            chunks_to_create = []
+            page_chunk_counter: dict[int, int] = {}
 
             for page, block in extract_semantic_blocks(pdf_path):
                 if page <= 10:
                     continue
 
-                for ci, chunk_text in enumerate(
-                    sentence_chunk(block, options["chunk_size"])
-                ):
+                if page not in page_chunk_counter:
+                    page_chunk_counter[page] = 0
+
+                for chunk_text in sentence_chunk(block, options["chunk_size"]):
                     if should_skip_chunk(chunk_text):
                         continue
 
-                    chunk_id = f"{source}:p{page}:c{ci}"
-                    chunk_type = classify_chunk_type(chunk_text)
+                    conversations, embedding = ollama_generate_conversations(
+                        chunk_text,
+                        options["ollama_url"],
+                    )
 
-                    # Create RagChunk instance (not yet saved)
-                    # Note: embedding will be None initially if --embed is not used
-                    # This makes it explicit that embeddings need to be generated
-                    chunk = RagChunk(
+                    if not conversations:
+                        continue
+
+                    conversation_text = " ".join(
+                        turn["text"]
+                        for convo in conversations
+                        for turn in convo
+                        if turn.get("text")
+                    )
+
+                    if not conversation_text.strip():
+                        continue
+
+                    ci = page_chunk_counter[page]
+                    page_chunk_counter[page] += 1
+
+                    chunk_id = f"{source}:p{page}:c{ci}"
+
+                    RagChunk.objects.filter(id=chunk_id).delete()
+                    RagChunk(
                         id=chunk_id,
-                        text=chunk_text,
+                        text=conversation_text,
+                        raw_text=chunk_text,
+                        conversations=conversations,
                         source=source,
                         page=page,
                         chunk_index=ci,
-                        type=chunk_type,
-                        embedding=None,  # Will be set during embedding generation
-                    )
-                    chunks_to_create.append(chunk)
+                        type="conversations",
+                        embedding=embedding,
+                    ).save()
 
-            if not chunks_to_create:
-                self.stdout.write(self.style.WARNING(f"No valid chunks in {pdf_file}"))
-                continue
-
-            # Generate embeddings if requested
-            if options["embed"]:
-                for i, chunk in enumerate(chunks_to_create, 1):
-                    chunk.embedding = ollama_embed(
-                        chunk.text,
-                        options["ollama_url"],
-                        options["embed_model"],
-                    )
-                    if i % 50 == 0:
-                        self.stdout.write(
-                            f"  Embeddings: {i}/{len(chunks_to_create)}"
-                        )
-            else:
-                # Warn user that chunks without embeddings won't be useful for RAG
-                self.stdout.write(
-                    self.style.WARNING(
-                        "Skipping embedding generation. "
-                        "Chunks will be saved but won't be searchable. "
-                        "Use --embed flag for full RAG functionality."
-                    )
-                )
-                # Set placeholder embeddings for database compatibility
-                for chunk in chunks_to_create:
-                    chunk.embedding = [0.0] * EMBEDDING_DIMENSION
-
-            # Use bulk_create for efficiency
-            # For upsert behavior, delete existing chunks from this source first
-            RagChunk.objects.filter(source=source).delete()
-            RagChunk.objects.bulk_create(chunks_to_create, batch_size=500)
-
-            # Write JSONL output
-            jsonl_path = os.path.join(DEFAULT_OUT_DIR, f"{source}.jsonl")
-            write_jsonl(chunks_to_create, jsonl_path)
-
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"{pdf_file}: {len(chunks_to_create)} chunks ingested"
-                )
-            )
+                    self.stdout.write(self.style.SUCCESS("Chunk saved: " + chunk_id))
 
         self.stdout.write(self.style.SUCCESS("All PDFs processed successfully"))

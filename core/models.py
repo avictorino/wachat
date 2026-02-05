@@ -105,38 +105,61 @@ class Message(models.Model):
 
 class RagChunk(models.Model):
     """
-    RAG (Retrieval-Augmented Generation) chunk storage.
+    RAG (Retrieval-Augmented Generation) conversational chunk storage.
 
-    Stores text chunks extracted from PDFs with their embeddings
-    for semantic search during response generation.
+    Stores conversational chunks derived from source documents,
+    optimized for human-like semantic retrieval.
     """
 
     TYPE_CHOICES = [
+        ("conversation", "Conversation"),
         ("behavior", "Behavior"),
         ("content", "Content"),
     ]
 
+    # Stable deterministic ID: <source>:p<page>:c<chunk_index>
     id = models.CharField(max_length=255, primary_key=True)
+
+    # Source metadata
     source = models.CharField(
         max_length=255,
         db_index=True,
         help_text="Source document identifier (e.g., filename without extension)",
     )
     page = models.IntegerField(help_text="Page number in the source document")
-    chunk_index = models.IntegerField(
-        help_text="Index of the chunk within the page"
+    chunk_index = models.IntegerField(help_text="Index of the chunk within the page")
+
+    # Original extracted text (raw book content)
+    raw_text = models.TextField(
+        help_text="Original text extracted from the source document"
     )
-    text = models.TextField(help_text="The actual text content of the chunk")
+
+    # Structured conversational representation (RAG-first)
+    conversations = models.JSONField(
+        help_text="Structured conversation derived from the raw text.",
+        default=list,
+    )
+
+    # Flattened conversational text (fallback, debugging, simple search)
+    text = models.TextField(
+        help_text="Flattened conversational text for fallback usage"
+    )
+
+    # Vector embedding based on conversational text
     embedding = VectorField(
         dimensions=768,
-        help_text="Vector embedding of the text (768-dimensional for nomic-embed-text)",
+        help_text="Vector embedding derived from the conversational text",
     )
+
+    # Chunk semantic type
     type = models.CharField(
         max_length=20,
         choices=TYPE_CHOICES,
-        default="content",
-        help_text="Type of chunk: behavior (guidance/posture) or content (informational)",
+        default="conversation",
+        help_text="Semantic type of the chunk",
     )
+
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         indexes = [
