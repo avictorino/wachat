@@ -52,7 +52,7 @@ class MessageAdmin(admin.ModelAdmin):
         """Display ollama_prompt as formatted JSON."""
         if obj.ollama_prompt:
             formatted_json = json.dumps(obj.ollama_prompt, indent=2, ensure_ascii=False)
-            return format_html('<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto;">{}</pre>', formatted_json)
+            return format_html('<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto; font-family: monospace;">{}</pre>', formatted_json)
         return "No prompt payload available"
     ollama_prompt_display.short_description = "Ollama Prompt Payload"
 
@@ -91,7 +91,7 @@ class RagChunkAdmin(admin.ModelAdmin):
     list_display = ["id", "source", "page", "chunk_index", "type", "created_at"]
     list_filter = ["type", "source", "created_at"]
     search_fields = ["id", "source", "raw_text", "text"]
-    readonly_fields = ["id", "created_at"]
+    readonly_fields = ["id", "created_at", "conversations_display"]
     ordering = ["source", "page", "chunk_index"]
 
     # Exclude vector fields from display
@@ -99,6 +99,14 @@ class RagChunkAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("Identification", {"fields": ("id", "source", "page", "chunk_index", "type")}),
-        ("Content", {"fields": ("raw_text", "conversations", "text")}),
+        ("Content", {"fields": ("raw_text", "conversations_display", "text")}),
         ("Metadata", {"fields": ("created_at",)}),
     )
+
+    def conversations_display(self, obj):
+        """Display conversations as formatted JSON."""
+        if obj.conversations:
+            formatted_json = json.dumps(obj.conversations, indent=2, ensure_ascii=False)
+            return format_html('<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto; font-family: monospace;">{}</pre>', formatted_json)
+        return "No conversations available"
+    conversations_display.short_description = "Conversations (Formatted)"
