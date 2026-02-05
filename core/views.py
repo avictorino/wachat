@@ -23,6 +23,13 @@ from services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
 
+# Initialize Faker once at module level for efficiency
+_faker = Faker('pt_BR')
+
+# Gender constants
+GENDER_MALE = "male"
+GENDER_FEMALE = "female"
+
 # Constants for simulation timing
 MESSAGE_DELAY_SECONDS = 0.6  # Delay between conversation messages
 OVERVIEW_DELAY_SECONDS = 1.0  # Delay between overview messages
@@ -812,17 +819,14 @@ class ChatView(View):
 
     def _handle_new_profile(self, request):
         """Create new profile and redirect to it."""
-        # Generate a random name using Faker
-        faker = Faker('pt_BR')
-
         # Randomly choose a gender for the profile
-        gender = random.choice(["male", "female"])
+        gender = random.choice([GENDER_MALE, GENDER_FEMALE])
 
         # Generate a realistic name based on the gender using Faker
-        if gender == "male":
-            profile_name = faker.first_name_male()
+        if gender == GENDER_MALE:
+            profile_name = _faker.first_name_male()
         else:
-            profile_name = faker.first_name_female()
+            profile_name = _faker.first_name_female()
 
         profile = Profile.objects.create(name=profile_name, inferred_gender=gender)
         logger.info(f"Created new profile: {profile.id} with name: {profile_name}, gender: {gender}")
