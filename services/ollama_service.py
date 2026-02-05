@@ -37,6 +37,7 @@ class OllamaService(LLMServiceInterface):
         self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         self.model = os.environ.get("OLLAMA_MODEL", "llama3.1")
         self.api_url = f"{self.base_url}/api/chat"
+        self._last_prompt_payload = None  # Store last payload for observability
 
         logger.info(
             f"Initialized OllamaService with base_url={self.base_url}, model={self.model}"
@@ -77,6 +78,9 @@ class OllamaService(LLMServiceInterface):
         # Add max_tokens if provided (Ollama calls it num_predict)
         if max_tokens:
             payload["options"]["num_predict"] = max_tokens
+
+        # Store payload for observability before sending
+        self._last_prompt_payload = payload
 
         try:
             response = requests.post(
@@ -609,3 +613,16 @@ IMPORTANTE:
             return [response.strip()]
 
         return messages
+
+    def get_last_prompt_payload(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the last Ollama prompt payload sent for observability.
+
+        Returns:
+            The last payload dict sent to Ollama, or None if no request was made yet
+        """
+        return self._last_prompt_payload
+
+    def clear_last_prompt_payload(self) -> None:
+        """Clear the stored last prompt payload."""
+        self._last_prompt_payload = None

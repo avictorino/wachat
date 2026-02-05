@@ -636,6 +636,14 @@ class TelegramWebhookView(View):
                 theme_id=profile.prompt_theme,
             )
 
+            # Capture and save Ollama prompt payload for observability
+            if hasattr(llm_service, 'get_last_prompt_payload'):
+                prompt_payload = llm_service.get_last_prompt_payload()
+                if prompt_payload:
+                    actual_message.ollama_prompt = prompt_payload
+                    actual_message.save(update_fields=['ollama_prompt'])
+                    logger.info(f"Saved Ollama prompt payload to message {actual_message.id}")
+
             # Persist each assistant response separately
             for response_msg in response_messages:
                 Message.objects.create(
