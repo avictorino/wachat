@@ -10,7 +10,6 @@ import os
 from typing import List
 
 import requests
-from django.db.models import F
 from pgvector.django import CosineDistance
 
 from core.models import RagChunk
@@ -55,7 +54,7 @@ def get_embedding(text: str) -> List[float]:
         raise RuntimeError(f"Failed to generate embedding: {str(e)}")
 
 
-def get_rag_context(user_input: str, limit: int = 5) -> List[str]:
+def get_rag_context(user_input: str, limit: int = 3) -> List[str]:
     """
     Retrieve relevant RAG context based on semantic similarity to user input.
 
@@ -67,7 +66,7 @@ def get_rag_context(user_input: str, limit: int = 5) -> List[str]:
 
     Args:
         user_input: The user's message text
-        limit: Maximum number of chunks to retrieve (default: 5)
+        limit: Maximum number of chunks to retrieve (default: 3)
 
     Returns:
         List of text strings from the most relevant chunks
@@ -85,7 +84,7 @@ def get_rag_context(user_input: str, limit: int = 5) -> List[str]:
                 distance=CosineDistance("embedding", query_embedding)
             )
             .order_by("distance")
-            .values("text", "type", "distance")[:limit * CHUNK_FETCH_MULTIPLIER]
+            .values("text", "type", "distance")[: limit * CHUNK_FETCH_MULTIPLIER]
         )
 
         if not chunks:
@@ -98,10 +97,10 @@ def get_rag_context(user_input: str, limit: int = 5) -> List[str]:
 
         # Take up to limit chunks, prioritizing behavior
         selected_chunks = []
-        
+
         # Add behavior chunks first (up to limit)
         selected_chunks.extend(behavior_chunks[:limit])
-        
+
         # Fill remaining slots with content chunks if needed
         remaining = limit - len(selected_chunks)
         if remaining > 0:
