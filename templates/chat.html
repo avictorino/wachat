@@ -250,7 +250,6 @@
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
             {% csrf_token %}
             <input type="hidden" name="action" value="new_profile">
-            <input type="text" name="profile_name" placeholder="Profile name (optional)" value="">
             <button type="submit">➕ New Profile</button>
         </form>
         
