@@ -440,20 +440,11 @@ IMPORTANTE:
             # Sanitize input before sending to LLM
             sanitized_message = sanitize_input(user_message)
 
-            # Get RAG context (silent injection)
-            rag_texts = get_rag_context(sanitized_message, limit=3)
+            # Get RAG context (reduced and focused)
+            rag_texts = get_rag_context(sanitized_message, limit=2)
 
-            # Build system message with RAG context if available
+            # Build system message with user context only
             system_parts = []
-
-            if rag_texts:
-                # Inject RAG as silent context
-                # Portuguese instruction because it's part of the system prompt for the LLM
-                system_parts.append(
-                    "CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):"
-                )
-                system_parts.append("\n\n".join(rag_texts))
-                system_parts.append("\n---\n")
 
             # Add user context
             system_parts.append(f"Nome da pessoa: {name}")
@@ -465,8 +456,16 @@ IMPORTANTE:
 
             system_prompt = "\n".join(system_parts)
 
-            # Build messages list with conversation context if provided
+            # Build messages list starting with system context
             messages = [{"role": "system", "content": system_prompt}]
+
+            # Inject RAG as implicit memory (assistant role) if available
+            if rag_texts:
+                # Inject RAG context as assistant message with clear prefix
+                # Portuguese instruction because it's for the LLM context
+                rag_content = "Contexto para referência apenas. Não cite ou repita.\n\n"
+                rag_content += "\n\n".join(rag_texts)
+                messages.append({"role": "assistant", "content": rag_content})
 
             # Add conversation context if provided
             if conversation_context:
@@ -477,7 +476,7 @@ IMPORTANTE:
             messages.append({"role": "user", "content": sanitized_message})
 
             response_text = self._make_chat_request(
-                messages, temperature=0.85, max_tokens=250
+                messages, temperature=0.65, max_tokens=250
             )
 
             # Split response into multiple messages if separator is used
@@ -524,20 +523,11 @@ IMPORTANTE:
             # Sanitize input before sending to LLM
             sanitized_message = sanitize_input(user_message)
 
-            # Get RAG context (silent injection)
-            rag_texts = get_rag_context(sanitized_message, limit=3)
+            # Get RAG context (reduced and focused)
+            rag_texts = get_rag_context(sanitized_message, limit=2)
 
-            # Build system message with RAG context if available
+            # Build system message with user context only
             system_parts = []
-
-            if rag_texts:
-                # Inject RAG as silent context
-                # Portuguese instruction because it's part of the system prompt for the LLM
-                system_parts.append(
-                    "CONTEXTO DE REFERÊNCIA (use de forma natural e implícita):"
-                )
-                system_parts.append("\n\n".join(rag_texts))
-                system_parts.append("\n---\n")
 
             # Add user context
             system_parts.append(f"Nome da pessoa: {name}")
@@ -551,23 +541,28 @@ IMPORTANTE:
 
             system_prompt = "\n".join(system_parts)
 
-            # Build conversation context for the LLM
-            context_messages = []
+            # Build conversation context starting with system message
+            all_messages = [{"role": "system", "content": system_prompt}]
+
+            # Inject RAG as implicit memory (assistant role) if available
+            if rag_texts:
+                # Inject RAG context as assistant message with clear prefix
+                # Portuguese instruction because it's for the LLM context
+                rag_content = "Contexto para referência apenas. Não cite ou repita.\n\n"
+                rag_content += "\n\n".join(rag_texts)
+                all_messages.append({"role": "assistant", "content": rag_content})
+
+            # Add conversation context
             for msg in conversation_context:
-                context_messages.append(
+                all_messages.append(
                     {"role": msg["role"], "content": msg["content"]}
                 )
 
-            # Add the current user message to context
-            context_messages.append({"role": "user", "content": sanitized_message})
-
-            # Prepend system message
-            all_messages = [
-                {"role": "system", "content": system_prompt}
-            ] + context_messages
+            # Add the current user message
+            all_messages.append({"role": "user", "content": sanitized_message})
 
             response_text = self._make_chat_request(
-                all_messages, temperature=0.85, max_tokens=350
+                all_messages, temperature=0.65, max_tokens=350
             )
 
             # Split response into multiple messages if separator is used
