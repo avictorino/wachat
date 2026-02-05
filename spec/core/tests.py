@@ -655,13 +655,22 @@ class FallbackConversationalFlowTest(TestCase):
             ("user", "Tenho passado por momentos difíceis"),
         ]
 
+        created_messages = []
         for role, content in messages_data:
-            Message.objects.create(profile=self.profile, role=role, content=content)
+            msg = Message.objects.create(profile=self.profile, role=role, content=content)
+            created_messages.append(msg)
+
+        # Create a new message that we want to exclude from context
+        actual_message = Message.objects.create(
+            profile=self.profile, role="user", content="Current message"
+        )
 
         view = TelegramWebhookView()
-        context = view._get_conversation_context(self.profile, limit=5)
+        context = view._get_conversation_context(
+            self.profile, actual_message_id=actual_message.id, limit=5
+        )
 
-        # Should get last 5 messages in chronological order
+        # Should get last 5 messages in chronological order (excluding actual_message)
         self.assertEqual(len(context), 5)
         self.assertEqual(context[0]["role"], "user")
         self.assertEqual(context[0]["content"], "Oi, obrigado")
@@ -683,10 +692,17 @@ class FallbackConversationalFlowTest(TestCase):
         )
         Message.objects.create(profile=self.profile, role="user", content="Hi")
 
-        view = TelegramWebhookView()
-        context = view._get_conversation_context(self.profile, limit=5)
+        # Create actual message to exclude
+        actual_message = Message.objects.create(
+            profile=self.profile, role="user", content="Current message"
+        )
 
-        # Should only have assistant and user messages
+        view = TelegramWebhookView()
+        context = view._get_conversation_context(
+            self.profile, actual_message_id=actual_message.id, limit=5
+        )
+
+        # Should only have assistant and user messages (excluding actual_message)
         self.assertEqual(len(context), 2)
         self.assertNotIn("system", [msg["role"] for msg in context])
 
