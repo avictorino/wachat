@@ -16,3 +16,4 @@ pre-commit==4.3.0
 gunicorn==23.0.0
 pymupdf==1.26.5
 pgvector==0.4.2
+Faker==34.0.1
