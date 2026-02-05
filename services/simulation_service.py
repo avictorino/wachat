@@ -10,10 +10,15 @@ import random
 import uuid
 from typing import List, Tuple
 
+from faker import Faker
+
 from core.models import Message, Profile
 from services.llm_factory import get_llm_service
 
 logger = logging.getLogger(__name__)
+
+# Initialize Faker once at module level for efficiency
+_faker = Faker('pt_BR')
 
 # Role labels for analysis output
 ROLE_LABEL_SEEKER = "Pessoa"  # Portuguese for "Person"
@@ -76,12 +81,14 @@ class SimulationService:
         Returns:
             A new Profile instance marked with the theme
         """
-        # Generate a unique simulation identifier using UUID
-        sim_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
-        sim_name = f"Simulation_{sim_id}"
-
         # Randomly choose a gender for the simulated profile
-        gender = random.choice(["male", "female", "unknown"])
+        gender = random.choice(["male", "female"])
+        
+        # Generate a realistic name based on the gender using Faker
+        if gender == "male":
+            sim_name = _faker.first_name_male()
+        else:
+            sim_name = _faker.first_name_female()
 
         # Use theme, or default to "desabafar"
         theme = theme if theme else "desabafar"
@@ -92,7 +99,7 @@ class SimulationService:
             inferred_gender=gender,
         )
 
-        logger.info(f"Created simulation profile: {profile.id} with gender: {gender}, theme: {theme}")
+        logger.info(f"Created simulation profile: {profile.id} with name: {sim_name}, gender: {gender}, theme: {theme}")
         return profile
 
     def generate_simulated_conversation(
