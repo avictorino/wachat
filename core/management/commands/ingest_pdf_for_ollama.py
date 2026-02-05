@@ -279,28 +279,6 @@ def ollama_generate_conversations(
     return conversations, embedding
 
 
-# ==========================
-# OLLAMA – EMBEDDINGS
-# ==========================
-
-
-def ollama_embed(text: str, ollama_url: str, embed_model: str) -> List[float]:
-    resp = requests.post(
-        f"{ollama_url.rstrip('/')}/api/embeddings",
-        json={"model": embed_model, "prompt": text},
-        timeout=60,
-    )
-    resp.raise_for_status()
-
-    data = resp.json()
-    embedding = data.get("embedding")
-
-    if not isinstance(embedding, list):
-        raise RuntimeError(f"Invalid embedding response: {data}")
-
-    return embedding
-
-
 def parse_conversation_lines(text: str) -> list[list[dict]]:
     conversations = []
     current = []
