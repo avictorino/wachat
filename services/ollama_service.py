@@ -622,7 +622,3 @@ IMPORTANTE:
             The last payload dict sent to Ollama, or None if no request was made yet
         """
         return self._last_prompt_payload
-
-    def clear_last_prompt_payload(self) -> None:
-        """Clear the stored last prompt payload."""
-        self._last_prompt_payload = None

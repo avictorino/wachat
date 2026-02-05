@@ -1,4 +1,7 @@
+import json
+
 from django.contrib import admin
+from django.utils.html import format_html
 
 from core.models import Message, Profile, RagChunk
 
@@ -48,8 +51,6 @@ class MessageAdmin(admin.ModelAdmin):
     def ollama_prompt_display(self, obj):
         """Display ollama_prompt as formatted JSON."""
         if obj.ollama_prompt:
-            import json
-            from django.utils.html import format_html
             formatted_json = json.dumps(obj.ollama_prompt, indent=2, ensure_ascii=False)
             return format_html('<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto;">{}</pre>', formatted_json)
         return "No prompt payload available"
