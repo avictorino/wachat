@@ -212,8 +212,9 @@ class OllamaServiceTest(TestCase):
         service = OllamaService()
         messages = service.generate_intent_response(
             user_message="Preciso de ajuda",
-            intent="ansiedade",
-            name="João"
+            conversation_context=[],
+            name="João",
+            intent="ansiedade"
         )
 
         # Should split into 3 messages by paragraph breaks
@@ -224,8 +225,8 @@ class OllamaServiceTest(TestCase):
 
     @patch("services.ollama_service.requests.post")
     @patch("services.ollama_service.sanitize_input")
-    def test_generate_fallback_response_with_context(self, mock_sanitize, mock_post):
-        """Test that generate_fallback_response includes conversation context."""
+    def test_generate_intent_response_with_context(self, mock_sanitize, mock_post):
+        """Test that generate_intent_response includes conversation context."""
         mock_sanitize.return_value = "Obrigado"
         
         mock_response = Mock()
@@ -241,7 +242,7 @@ class OllamaServiceTest(TestCase):
             {"role": "assistant", "content": "Entendo. O que aconteceu?"}
         ]
         
-        messages = service.generate_fallback_response(
+        messages = service.generate_intent_response(
             user_message="Obrigado",
             conversation_context=context,
             name="Maria"

@@ -71,46 +71,24 @@ class LLMServiceInterface(ABC):
     def generate_intent_response(
         self,
         user_message: str,
-        intent: str,
-        name: str,
-        inferred_gender: Optional[str] = None,
-        theme_id: Optional[str] = None,
-        conversation_context: Optional[List[dict]] = None,
-    ) -> List[str]:
-        """
-        Generate an empathetic, spiritually-aware response based on detected intent.
-
-        Args:
-            user_message: The user's original message
-            intent: The detected intent category
-            name: The user's name
-            inferred_gender: Inferred gender (male/female/unknown or None)
-            theme_id: Optional theme identifier
-            conversation_context: Optional list of recent messages (dicts with 'role' and 'content')
-
-        Returns:
-            List of message strings to send sequentially
-        """
-        pass
-
-    @abstractmethod
-    def generate_fallback_response(
-        self,
-        user_message: str,
         conversation_context: List[dict],
         name: str,
         inferred_gender: Optional[str] = None,
+        intent: Optional[str] = None,
         theme_id: Optional[str] = None,
     ) -> List[str]:
         """
-        Generate a context-aware fallback response when intent is unclear.
+        Generate an empathetic, spiritually-aware conversational response.
+
+        This is the single unified method for generating all conversational responses.
 
         Args:
-            user_message: The user's current message
+            user_message: The user's original message
             conversation_context: List of recent messages (dicts with 'role' and 'content')
             name: The user's name
             inferred_gender: Inferred gender (male/female/unknown or None)
-            theme_id: Optional theme identifier
+            intent: Optional detected intent (used only for logging/analytics)
+            theme_id: Optional theme identifier (used only for logging/analytics)
 
         Returns:
             List of message strings to send sequentially

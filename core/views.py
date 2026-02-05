@@ -19,7 +19,6 @@ from services.message_splitter import split_welcome_message
 from services.reset_user_data import ResetUserDataUseCase
 from services.simulation_service import SimulationService
 from services.telegram_service import TelegramService
-from services.theme_selector import select_theme_from_intent_and_message
 
 logger = logging.getLogger(__name__)
 
@@ -600,25 +599,6 @@ class TelegramWebhookView(View):
             # Initialize LLM service for response generation
             llm_service = get_llm_service()
 
-            # Select/persist an active theme (Base + Theme prompt composition)
-            message_count = Message.objects.filter(profile=profile).count()
-
-            # Check if we should detect theme (early messages or keyword match)
-            should_detect_theme = message_count <= 2
-
-            if should_detect_theme:
-                selection = select_theme_from_intent_and_message(
-                    intent=None,
-                    message_text=message_text,
-                    existing_theme_id=profile.prompt_theme,
-                )
-                if selection.theme_id and selection.theme_id != profile.prompt_theme:
-                    profile.prompt_theme = selection.theme_id
-                    profile.save(update_fields=["prompt_theme"])
-                    logger.info(
-                        f"Activated theme '{selection.theme_id}' for profile {profile.id} via {selection.reason}"
-                    )
-
             # Use context-aware conversational flow for response generation
             logger.info(f"Using conversational flow for profile {profile.id}")
 
@@ -628,11 +608,13 @@ class TelegramWebhookView(View):
             )
 
             # Generate response (may return multiple messages)
-            response_messages = llm_service.generate_fallback_response(
+            # theme_id is passed for logging/analytics only
+            response_messages = llm_service.generate_intent_response(
                 user_message=message_text,
                 conversation_context=context,
                 name=profile.name,
                 inferred_gender=profile.inferred_gender,
+                intent=None,
                 theme_id=profile.prompt_theme,
             )
 
@@ -793,34 +775,19 @@ class ChatView(View):
         # Get LLM service
         llm_service = get_llm_service()
 
-        # Check and set theme if needed (reuse logic from _handle_regular_message)
-        message_count = Message.objects.filter(profile=profile).count()
-        should_detect_theme = message_count <= 2
-
-        if should_detect_theme:
-            selection = select_theme_from_intent_and_message(
-                intent=None,
-                message_text=message_text,
-                existing_theme_id=profile.prompt_theme,
-            )
-            if selection.theme_id and selection.theme_id != profile.prompt_theme:
-                profile.prompt_theme = selection.theme_id
-                profile.save(update_fields=["prompt_theme"])
-                logger.info(
-                    f"Activated theme '{selection.theme_id}' for profile {profile.id}"
-                )
-
         # Get conversation context
         context = self._get_conversation_context(
             profile, actual_message_id=actual_message.id, limit=10
         )
 
         # Generate LLM response
-        response_messages = llm_service.generate_fallback_response(
+        # theme_id is passed for logging/analytics only
+        response_messages = llm_service.generate_intent_response(
             user_message=message_text,
             conversation_context=context,
             name=profile.name,
             inferred_gender=profile.inferred_gender,
+            intent=None,
             theme_id=profile.prompt_theme,
         )
 
