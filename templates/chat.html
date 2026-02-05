@@ -257,7 +257,7 @@
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
             {% csrf_token %}
             <input type="hidden" name="action" value="simulate">
-            <input type="text" name="theme" placeholder="Theme (optional: desabafar, ansiedade, etc.)" value="desabafar">
+            <input type="text" name="theme" placeholder="Theme (optional, default: desabafar)" value="">
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
     </div>
