@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Simulation</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #e5ddd5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Header with controls */
+        .header {
+            background-color: #075e54;
+            color: white;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .header h1 {
+            font-size: 18px;
+            font-weight: 500;
+            margin-right: auto;
+        }
+        
+        .header select,
+        .header button,
+        .header input[type="text"] {
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .header select {
+            background-color: white;
+            color: #075e54;
+            min-width: 200px;
+        }
+        
+        .header button {
+            background-color: #25d366;
+            color: white;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        .header button:hover {
+            background-color: #20bd5a;
+        }
+        
+        .header button.secondary {
+            background-color: #34b7f1;
+        }
+        
+        .header button.secondary:hover {
+            background-color: #2a9fd8;
+        }
+        
+        .header input[type="text"] {
+            flex: 1;
+            min-width: 150px;
+        }
+        
+        /* Chat container */
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEXm5uaZmZn///+AgICIiIhwcHCcnJyXl5exsbGampqRkZGOjo7e3t7s7OyhoaGWlpbx8fG3t7fCwsLJycnV1dXQ0NDc3Ny7u7ukpKSysrKtra3fZq/RAAAACXBIWXMAAA7EAAAOxAGVKw4bAAABAElEQVRIie2VyQ6DMAxE7ZCwlK3s+/9/Zo5VpRYJKKUSh3mHKLIe7HgSzF/hD0EqBtJRABHDMuU/pTNBv4ygBtMKJ0AqYqExgQTQQg4iEEZnEgEoEBEQYQkDiBgYG7O0CGEEgQGxQWRBKEFFADEKUJYHEkIdN+ADmDmBEBVcMEQHl+pMQjCAhYwGMzCQGdOKAwoFJjQGMCJQCJgwCWQijCJwDBHBhpAjdEFCEGSgEfQgiABTQWIPwoSAAr8jxIMLGALQ5zPMfIy4vZFj7MJSBgJVCCz+kYGsUvYl5ElpOTrOC6hd/MtVwPLqdvVnLC4F1NfXkr+j/l39P+vxAh6eGeU1/MqmAAAAAElFTkSuQmCC') repeat;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: #667781;
+        }
+        
+        .empty-state h2 {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .empty-state p {
+            font-size: 14px;
+        }
+        
+        /* Messages */
+        .message {
+            margin-bottom: 12px;
+            display: flex;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.user {
+            justify-content: flex-end;
+        }
+        
+        .message.assistant {
+            justify-content: flex-start;
+        }
+        
+        .message.system {
+            justify-content: center;
+        }
+        
+        .message-bubble {
+            max-width: 65%;
+            padding: 8px 12px;
+            border-radius: 8px;
+            word-wrap: break-word;
+            position: relative;
+        }
+        
+        .message.user .message-bubble {
+            background-color: #dcf8c6;
+            border-bottom-right-radius: 0;
+        }
+        
+        .message.assistant .message-bubble {
+            background-color: white;
+            border-bottom-left-radius: 0;
+        }
+        
+        .message.system .message-bubble {
+            background-color: #fff4cc;
+            border-radius: 8px;
+            max-width: 80%;
+            font-size: 13px;
+            white-space: pre-wrap;
+        }
+        
+        .message-content {
+            font-size: 14px;
+            line-height: 1.5;
+            color: #303030;
+            white-space: pre-wrap;
+        }
+        
+        .message-time {
+            font-size: 11px;
+            color: #667781;
+            margin-top: 4px;
+            text-align: right;
+        }
+        
+        /* Input area */
+        .input-area {
+            background-color: #f0f0f0;
+            padding: 10px 15px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .input-area form {
+            display: flex;
+            gap: 10px;
+            flex: 1;
+        }
+        
+        .input-area input[type="text"] {
+            flex: 1;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+            outline: none;
+        }
+        
+        .input-area button {
+            padding: 10px 20px;
+            background-color: #075e54;
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .input-area button:hover {
+            background-color: #064d44;
+        }
+        
+        .input-area button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .message-bubble {
+                max-width: 80%;
+            }
+            
+            .header {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .header h1 {
+                margin-bottom: 10px;
+            }
+            
+            .header select,
+            .header button,
+            .header input[type="text"] {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header with controls -->
+    <div class="header">
+        <h1>💬 Chat Simulation</h1>
+        
+        <!-- Profile selector -->
+        <form method="get" action="/chat/" style="display: flex; gap: 10px; flex: 1;">
+            <select name="profile_id" onchange="this.form.submit()">
+                <option value="">Select Profile...</option>
+                {% for profile in profiles %}
+                    <option value="{{ profile.id }}" {% if selected_profile and profile.id == selected_profile.id %}selected{% endif %}>
+                        {{ profile.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </form>
+        
+        <!-- New Profile button -->
+        <form method="post" action="/chat/">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="new_profile">
+            <button type="submit">➕ New Profile</button>
+        </form>
+        
+        <!-- Simulate button with theme input -->
+        <form method="post" action="/chat/" style="display: flex; gap: 10px;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="simulate">
+            <input type="text" name="theme" placeholder="Theme (optional: desabafar, ansiedade, etc.)" value="desabafar">
+            <button type="submit" class="secondary">🎭 Simulate</button>
+        </form>
+    </div>
+    
+    <!-- Chat messages area -->
+    <div class="chat-container" id="chatContainer">
+        {% if not selected_profile %}
+            <div class="empty-state">
+                <h2>Welcome to Chat Simulation</h2>
+                <p>Select a profile or create a new one to start chatting.</p>
+            </div>
+        {% elif not messages %}
+            <div class="empty-state">
+                <h2>No messages yet</h2>
+                <p>Send a message to start the conversation or run a simulation.</p>
+            </div>
+        {% else %}
+            {% for message in messages %}
+                <div class="message {{ message.role }}">
+                    <div class="message-bubble">
+                        <div class="message-content">{{ message.content }}</div>
+                        <div class="message-time">{{ message.created_at|date:"H:i" }}</div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% endif %}
+    </div>
+    
+    <!-- Input area -->
+    {% if selected_profile %}
+    <div class="input-area">
+        <form method="post" action="/chat/">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="send_message">
+            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+            <input type="text" name="message_text" placeholder="Type a message..." required autofocus>
+            <button type="submit">Send</button>
+        </form>
+    </div>
+    {% endif %}
+    
+    <script>
+        // Auto-scroll to bottom on page load
+        window.addEventListener('load', function() {
+            const chatContainer = document.getElementById('chatContainer');
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        });
+    </script>
+</body>
+</html>
