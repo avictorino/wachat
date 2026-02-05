@@ -329,7 +329,7 @@ class TelegramWebhookViewTest(TestCase):
 
         # Mock LLM service
         mock_llm_service_instance = Mock()
-        mock_llm_service_instance.generate_fallback_response.return_value = ["Entendo que você está se sentindo ansioso. Quer me contar um pouco mais sobre isso?"]
+        mock_llm_service_instance.generate_intent_response.return_value = ["Entendo que você está se sentindo ansioso. Quer me contar um pouco mais sobre isso?"]
         mock_llm_service.return_value = mock_llm_service_instance
 
         # Mock Telegram service
@@ -373,7 +373,7 @@ class TelegramWebhookViewTest(TestCase):
 
         # Verify services were called
         # Intent detection has been removed, now uses fallback flow
-        mock_llm_service_instance.generate_fallback_response.assert_called_once()
+        mock_llm_service_instance.generate_intent_response.assert_called_once()
         mock_telegram_instance.send_messages.assert_called_once()
 
     @patch("core.views.TelegramService")
@@ -392,7 +392,7 @@ class TelegramWebhookViewTest(TestCase):
         """Test that regular message from unknown user creates profile."""
         # Mock LLM service
         mock_llm_service_instance = Mock()
-        mock_llm_service_instance.generate_fallback_response.return_value = [
+        mock_llm_service_instance.generate_intent_response.return_value = [
             "Estou aqui para ouvir. O que você gostaria de compartilhar?"
         ]
         mock_llm_service.return_value = mock_llm_service_instance
@@ -456,7 +456,7 @@ class TelegramWebhookViewTest(TestCase):
 
         # Mock LLM service
         mock_llm_service_instance = Mock()
-        mock_llm_service_instance.generate_fallback_response.return_value = [
+        mock_llm_service_instance.generate_intent_response.return_value = [
             "Continue me contando sobre isso."
         ]
         mock_llm_service.return_value = mock_llm_service_instance
@@ -487,7 +487,7 @@ class TelegramWebhookViewTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify response generation used fallback flow with context
-        mock_llm_service_instance.generate_fallback_response.assert_called_once()
+        mock_llm_service_instance.generate_intent_response.assert_called_once()
 
 
 class FallbackConversationalFlowTest(TestCase):
@@ -525,7 +525,7 @@ class FallbackConversationalFlowTest(TestCase):
 
         # Mock LLM service
         mock_llm_service_instance = Mock()
-        mock_llm_service_instance.generate_fallback_response.return_value = [
+        mock_llm_service_instance.generate_intent_response.return_value = [
             "Entendo o que você busca.",
             "Estou aqui para caminhar junto com você nessa jornada.",
         ]
@@ -557,8 +557,8 @@ class FallbackConversationalFlowTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify fallback response was called with conversation context
-        mock_llm_service_instance.generate_fallback_response.assert_called_once()
-        call_args = mock_llm_service_instance.generate_fallback_response.call_args
+        mock_llm_service_instance.generate_intent_response.assert_called_once()
+        call_args = mock_llm_service_instance.generate_intent_response.call_args
 
         # Check that context was passed
         self.assertIn("conversation_context", call_args[1])
@@ -605,7 +605,7 @@ class FallbackConversationalFlowTest(TestCase):
 
         # Mock LLM service
         mock_llm_service_instance = Mock()
-        mock_llm_service_instance.generate_fallback_response.return_value = [
+        mock_llm_service_instance.generate_intent_response.return_value = [
             "Entendo que você está ansioso. Como posso ajudar?"
         ]
         mock_llm_service.return_value = mock_llm_service_instance
@@ -636,7 +636,7 @@ class FallbackConversationalFlowTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
         # Verify fallback flow was used (not intent-based)
-        mock_llm_service_instance.generate_fallback_response.assert_called_once()
+        mock_llm_service_instance.generate_intent_response.assert_called_once()
 
         # Verify messages were sent
         mock_telegram_instance.send_messages.assert_called_once()
@@ -655,13 +655,22 @@ class FallbackConversationalFlowTest(TestCase):
             ("user", "Tenho passado por momentos difíceis"),
         ]
 
+        created_messages = []
         for role, content in messages_data:
-            Message.objects.create(profile=self.profile, role=role, content=content)
+            msg = Message.objects.create(profile=self.profile, role=role, content=content)
+            created_messages.append(msg)
+
+        # Create a new message that we want to exclude from context
+        actual_message = Message.objects.create(
+            profile=self.profile, role="user", content="Current message"
+        )
 
         view = TelegramWebhookView()
-        context = view._get_conversation_context(self.profile, limit=5)
+        context = view._get_conversation_context(
+            self.profile, actual_message_id=actual_message.id, limit=5
+        )
 
-        # Should get last 5 messages in chronological order
+        # Should get last 5 messages in chronological order (excluding actual_message)
         self.assertEqual(len(context), 5)
         self.assertEqual(context[0]["role"], "user")
         self.assertEqual(context[0]["content"], "Oi, obrigado")
@@ -683,10 +692,17 @@ class FallbackConversationalFlowTest(TestCase):
         )
         Message.objects.create(profile=self.profile, role="user", content="Hi")
 
-        view = TelegramWebhookView()
-        context = view._get_conversation_context(self.profile, limit=5)
+        # Create actual message to exclude
+        actual_message = Message.objects.create(
+            profile=self.profile, role="user", content="Current message"
+        )
 
-        # Should only have assistant and user messages
+        view = TelegramWebhookView()
+        context = view._get_conversation_context(
+            self.profile, actual_message_id=actual_message.id, limit=5
+        )
+
+        # Should only have assistant and user messages (excluding actual_message)
         self.assertEqual(len(context), 2)
         self.assertNotIn("system", [msg["role"] for msg in context])
 
@@ -699,7 +715,7 @@ class FallbackConversationalFlowTest(TestCase):
     def test_fallback_response_receives_conversation_context(
         self, mock_llm_service, mock_telegram
     ):
-        """Test that generate_fallback_response receives conversation context."""
+        """Test that generate_intent_response receives conversation context."""
         # Create conversation history
         messages_data = [
             ("assistant", "Olá João! Bem-vindo."),
@@ -713,7 +729,7 @@ class FallbackConversationalFlowTest(TestCase):
 
         # Mock LLM service
         mock_llm_service_instance = Mock()
-        mock_llm_service_instance.generate_fallback_response.return_value = [
+        mock_llm_service_instance.generate_intent_response.return_value = [
             "Vejo que você está ansioso. Vamos conversar sobre isso?"
         ]
         mock_llm_service.return_value = mock_llm_service_instance
@@ -743,9 +759,9 @@ class FallbackConversationalFlowTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
-        # Verify generate_fallback_response was called with conversation_context
-        mock_llm_service_instance.generate_fallback_response.assert_called_once()
-        call_args = mock_llm_service_instance.generate_fallback_response.call_args
+        # Verify generate_intent_response was called with conversation_context
+        mock_llm_service_instance.generate_intent_response.assert_called_once()
+        call_args = mock_llm_service_instance.generate_intent_response.call_args
 
         # Check that conversation_context was passed
         self.assertIn("conversation_context", call_args[1])
