@@ -50,7 +50,7 @@ class RagChunkAdmin(admin.ModelAdmin):
     list_display = ["id", "source", "page", "chunk_index", "type", "created_at"]
     list_filter = ["type", "source", "created_at"]
     search_fields = ["id", "source", "raw_text", "text"]
-    readonly_fields = ["created_at"]
+    readonly_fields = ["id", "created_at"]
     ordering = ["source", "page", "chunk_index"]
 
     # Exclude vector fields from display
