@@ -57,13 +57,7 @@ class RagChunkAdmin(admin.ModelAdmin):
     exclude = ["embedding"]
 
     fieldsets = (
-        ("Identification", {
-            "fields": ("id", "source", "page", "chunk_index", "type")
-        }),
-        ("Content", {
-            "fields": ("raw_text", "conversations", "text")
-        }),
-        ("Metadata", {
-            "fields": ("created_at",)
-        }),
+        ("Identification", {"fields": ("id", "source", "page", "chunk_index", "type")}),
+        ("Content", {"fields": ("raw_text", "conversations", "text")}),
+        ("Metadata", {"fields": ("created_at",)}),
     )
