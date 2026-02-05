@@ -5,7 +5,6 @@ Tests for the core admin configurations.
 from django.contrib import admin
 from django.test import TestCase
 
-from core.admin import RagChunkAdmin
 from core.models import RagChunk
 
 
