@@ -2,9 +2,12 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import timedelta
 
 from django.http import JsonResponse
+from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
@@ -312,7 +315,7 @@ class TelegramWebhookView(View):
 
         For 'drogas' theme:
         - No longer supported
-        
+
         For other themes:
         - Uses the existing single-LLM simulation approach
         - Creates a new simulation profile with the specified theme
@@ -337,7 +340,7 @@ class TelegramWebhookView(View):
                 error_msg = "❌ A simulação de dependência química não está mais disponível."
                 telegram_service.send_message(chat_id, error_msg)
                 return JsonResponse({"status": "ok"}, status=200)
-            
+
             # Original simulation logic for other themes
             logger.info(
                 f"Starting /simulate command for chat {chat_id} with theme: {theme}"
@@ -430,7 +433,7 @@ class TelegramWebhookView(View):
                 # If we can't send the error message, log and continue
                 logger.error("Failed to send error message to user")
             return JsonResponse({"status": "error"}, status=500)
-    
+
 
     def _handle_reset_confirmation(
         self,
@@ -679,6 +682,211 @@ class TelegramWebhookView(View):
         context = []
         for msg in reversed(recent_messages):
             context.append({"role": msg.role, "content": msg.content})
+
+        logger.info(f"Retrieved {len(context)} messages for conversation context")
+        return context
+
+
+class ChatView(View):
+    """
+    Single-page chat simulation UI for WhatsApp/Telegram-style conversations.
+
+    Handles:
+    - GET: Display chat interface with messages from selected profile
+    - POST: Send message, create new profile, or run simulation
+    """
+
+    def get(self, request):
+        """Render chat interface with messages for selected profile."""
+        # Get selected profile ID from query params
+        selected_profile_id = request.GET.get('profile_id')
+
+        # Get all profiles for dropdown
+        profiles = Profile.objects.all().order_by('-created_at')
+
+        # Select profile
+        selected_profile = None
+        messages = []
+
+        if selected_profile_id:
+            try:
+                selected_profile = Profile.objects.get(id=selected_profile_id)
+                # Get messages for this profile
+                messages = Message.objects.filter(profile=selected_profile).order_by('created_at')
+            except Profile.DoesNotExist:
+                pass
+        elif profiles.exists():
+            # Select most recent profile by default
+            selected_profile = profiles.first()
+            messages = Message.objects.filter(profile=selected_profile).order_by('created_at')
+
+        context = {
+            'profiles': profiles,
+            'selected_profile': selected_profile,
+            'messages': messages,
+        }
+
+        return render(request, 'chat.html', context)
+
+    def post(self, request):
+        """Handle POST actions: send message, create profile, or simulate."""
+        action = request.POST.get('action')
+
+        if action == 'send_message':
+            return self._handle_send_message(request)
+        elif action == 'new_profile':
+            return self._handle_new_profile(request)
+        elif action == 'simulate':
+            return self._handle_simulate(request)
+
+        # Default: redirect to GET
+        return redirect('chat')
+
+    def _handle_send_message(self, request):
+        """Send user message and get LLM response."""
+        profile_id = request.POST.get('profile_id')
+        message_text = request.POST.get('message_text', '').strip()
+
+        if not profile_id or not message_text:
+            # If we have profile_id, redirect back to it; otherwise to main chat
+            if profile_id:
+                return redirect(f"{reverse('chat')}?profile_id={profile_id}")
+            return redirect(reverse('chat'))
+
+        try:
+            profile = Profile.objects.get(id=profile_id)
+        except Profile.DoesNotExist:
+            return redirect(reverse('chat'))
+
+        # Save user message
+        Message.objects.create(
+            profile=profile,
+            role='user',
+            content=message_text,
+            channel='other'
+        )
+        logger.info(f"User message saved for profile {profile.id}")
+
+        # Get LLM service
+        llm_service = get_llm_service()
+
+        # Check and set theme if needed (reuse logic from _handle_regular_message)
+        message_count = Message.objects.filter(profile=profile).count()
+        should_detect_theme = message_count <= 2
+
+        if should_detect_theme:
+            selection = select_theme_from_intent_and_message(
+                intent=None,
+                message_text=message_text,
+                existing_theme_id=profile.prompt_theme,
+            )
+            if selection.theme_id and selection.theme_id != profile.prompt_theme:
+                profile.prompt_theme = selection.theme_id
+                profile.save(update_fields=['prompt_theme'])
+                logger.info(f"Activated theme '{selection.theme_id}' for profile {profile.id}")
+
+        # Get conversation context
+        context = self._get_conversation_context(profile, limit=10)
+
+        # Generate LLM response
+        response_messages = llm_service.generate_fallback_response(
+            user_message=message_text,
+            conversation_context=context,
+            name=profile.name,
+            inferred_gender=profile.inferred_gender,
+            theme_id=profile.prompt_theme,
+        )
+
+        # Save assistant responses
+        for response_msg in response_messages:
+            Message.objects.create(
+                profile=profile,
+                role='assistant',
+                content=response_msg,
+                channel='other'
+            )
+        logger.info(f"Assistant responses saved for profile {profile.id}")
+
+        # Redirect back to chat with selected profile
+        return redirect(f"{reverse('chat')}?profile_id={profile.id}")
+
+    def _handle_new_profile(self, request):
+        """Create new profile and redirect to it."""
+        # Create a new profile with a generated name
+        profile_name = f"User_{uuid.uuid4().hex[:8]}"
+
+        profile = Profile.objects.create(
+            name=profile_name,
+            inferred_gender='unknown'
+        )
+        logger.info(f"Created new profile: {profile.id}")
+
+        # Redirect to chat with new profile selected
+        return redirect(f"{reverse('chat')}?profile_id={profile.id}")
+
+    def _handle_simulate(self, request):
+        """Run conversation simulation (reuse _handle_simulate_command logic)."""
+        # Get theme from request (optional)
+        theme = request.POST.get('theme', '').strip().lower()
+
+        if not theme:
+            theme = 'desabafar'
+
+        logger.info(f"Starting simulation with theme: {theme}")
+
+        # Initialize services
+        simulation_service = SimulationService()
+        llm_service = get_llm_service()
+
+        # Approximate theme using LLM if provided
+        if theme:
+            approximated_theme = llm_service.approximate_theme(theme)
+            if approximated_theme == "outro":
+                # Use default theme if couldn't approximate
+                theme = "desabafar"
+            else:
+                theme = approximated_theme
+
+        # Create new simulation profile
+        profile = simulation_service.create_simulation_profile(theme)
+        logger.info(f"Created simulation profile {profile.id} with theme: {theme}")
+
+        # Generate simulated conversation
+        num_messages = 8
+        conversation = simulation_service.generate_simulated_conversation(
+            profile, num_messages, theme
+        )
+        logger.info(f"Generated {len(conversation)} simulated messages")
+
+        # Generate critical analysis
+        analysis = simulation_service.analyze_conversation_emotions(conversation)
+        logger.info("Generated critical analysis")
+
+        # Save analysis as a system message
+        Message.objects.create(
+            profile=profile,
+            role='system',
+            content=f"📊 Análise Crítica da Conversa:\n\n{analysis}",
+            channel='other'
+        )
+
+        # Redirect to chat with simulation profile selected
+        return redirect(f"{reverse('chat')}?profile_id={profile.id}")
+
+    def _get_conversation_context(self, profile, limit: int = 10) -> list:
+        """
+        Get recent conversation context for the LLM.
+        (Reused from TelegramWebhookView)
+        """
+        recent_messages = (
+            Message.objects.filter(profile=profile)
+            .exclude(role='system')
+            .order_by('-created_at')[:limit]
+        )
+
+        context = []
+        for msg in reversed(recent_messages):
+            context.append({'role': msg.role, 'content': msg.content})
 
         logger.info(f"Retrieved {len(context)} messages for conversation context")
         return context

@@ -20,9 +20,10 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path
 
-from core.views import TelegramWebhookView
+from core.views import ChatView, TelegramWebhookView
 
 urlpatterns = [
+    path("chat/", ChatView.as_view(), name="chat"),
     path("webhooks/telegram/", TelegramWebhookView.as_view()),
     path("admin/", admin.site.urls),
 ]
