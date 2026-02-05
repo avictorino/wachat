@@ -17,6 +17,9 @@ from services.llm_factory import get_llm_service
 
 logger = logging.getLogger(__name__)
 
+# Initialize Faker once at module level for efficiency
+_faker = Faker('pt_BR')
+
 # Role labels for analysis output
 ROLE_LABEL_SEEKER = "Pessoa"  # Portuguese for "Person"
 ROLE_LABEL_LISTENER = "BOT"  # Bot assistant
@@ -78,17 +81,14 @@ class SimulationService:
         Returns:
             A new Profile instance marked with the theme
         """
-        # Initialize Faker with Brazilian Portuguese locale
-        fake = Faker('pt_BR')
-        
         # Randomly choose a gender for the simulated profile
         gender = random.choice(["male", "female"])
         
         # Generate a realistic name based on the gender using Faker
         if gender == "male":
-            sim_name = fake.first_name_male()
+            sim_name = _faker.first_name_male()
         else:
-            sim_name = fake.first_name_female()
+            sim_name = _faker.first_name_female()
 
         # Use theme, or default to "desabafar"
         theme = theme if theme else "desabafar"
