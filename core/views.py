@@ -791,6 +791,14 @@ class ChatView(View):
             theme_id=profile.prompt_theme,
         )
 
+        # Capture and save Ollama prompt payload for observability
+        if hasattr(llm_service, 'get_last_prompt_payload'):
+            prompt_payload = llm_service.get_last_prompt_payload()
+            if prompt_payload and isinstance(prompt_payload, dict):
+                actual_message.ollama_prompt = prompt_payload
+                actual_message.save(update_fields=['ollama_prompt'])
+                logger.info(f"Saved Ollama prompt payload to message {actual_message.id}")
+
         # Save assistant responses
         for response_msg in response_messages:
             Message.objects.create(
@@ -803,11 +811,13 @@ class ChatView(View):
 
     def _handle_new_profile(self, request):
         """Create new profile and redirect to it."""
-        # Create a new profile with a generated name
-        profile_name = f"User_{uuid.uuid4().hex[:8]}"
+        # Get profile name from POST data, or generate a default one
+        profile_name = request.POST.get("profile_name", "").strip()
+        if not profile_name:
+            profile_name = f"User_{uuid.uuid4().hex[:8]}"
 
         profile = Profile.objects.create(name=profile_name, inferred_gender="unknown")
-        logger.info(f"Created new profile: {profile.id}")
+        logger.info(f"Created new profile: {profile.id} with name: {profile_name}")
 
         # Redirect to chat with new profile selected
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
