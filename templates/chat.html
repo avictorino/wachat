@@ -289,12 +289,12 @@
     <!-- Input area -->
     {% if selected_profile %}
     <div class="input-area">
-        <form method="post" action="/chat/">
+        <form method="post" action="/chat/" id="chatForm">
             {% csrf_token %}
             <input type="hidden" name="action" value="send_message">
             <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
             <input type="text" name="message_text" placeholder="Type a message..." required autofocus>
-            <button type="submit">Send</button>
+            <button type="submit" id="sendButton">Send</button>
         </form>
     </div>
     {% endif %}
@@ -305,6 +305,30 @@
             const chatContainer = document.getElementById('chatContainer');
             chatContainer.scrollTop = chatContainer.scrollHeight;
         });
+
+        // Prevent concurrent submissions
+        (function() {
+            const form = document.getElementById('chatForm');
+            if (!form) return;
+            
+            const sendButton = document.getElementById('sendButton');
+            let isSubmitting = false;
+            
+            form.addEventListener('submit', function(e) {
+                // Prevent concurrent submissions
+                if (isSubmitting) {
+                    e.preventDefault();
+                    return false;
+                }
+                
+                // Mark as submitting and disable button
+                isSubmitting = true;
+                sendButton.disabled = true;
+                sendButton.textContent = 'Sending...';
+                sendButton.style.opacity = '0.6';
+                sendButton.style.cursor = 'not-allowed';
+            });
+        })();
     </script>
 </body>
 </html>
