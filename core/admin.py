@@ -39,21 +39,45 @@ class MessageAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ("Message Info", {"fields": ("profile", "role", "content", "channel")}),
-        ("Ollama Prompt", {"fields": ("ollama_prompt_display",), "classes": ("collapse",)}),
+        (
+            "Ollama Prompt",
+            {"fields": ("ollama_prompt_display",), "classes": ("collapse",)},
+        ),
         ("Metadata", {"fields": ("created_at",)}),
     )
 
     def content_preview(self, obj):
         """Show truncated content in list view."""
         return obj.content[:50] + "..." if len(obj.content) > 50 else obj.content
+
     content_preview.short_description = "Content"
 
     def ollama_prompt_display(self, obj):
         """Display ollama_prompt as formatted JSON."""
         if obj.ollama_prompt:
             formatted_json = json.dumps(obj.ollama_prompt, indent=2, ensure_ascii=False)
-            return format_html('<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto; font-family: monospace;">{}</pre>', formatted_json)
+            return format_html(
+                """
+                <pre style="
+                    background-color: #0f172a;
+                    color: #e5e7eb;
+                    padding: 16px;
+                    border-radius: 8px;
+                    max-height: 600px;
+                    overflow: auto;
+                    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+                    font-size: 13px;
+                    line-height: 1.6;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+                ">
+                {}</pre>
+                """,
+                formatted_json,
+            )
         return "No prompt payload available"
+
     ollama_prompt_display.short_description = "Ollama Prompt Payload"
 
     def has_add_permission(self, request):
@@ -107,6 +131,10 @@ class RagChunkAdmin(admin.ModelAdmin):
         """Display conversations as formatted JSON."""
         if obj.conversations:
             formatted_json = json.dumps(obj.conversations, indent=2, ensure_ascii=False)
-            return format_html('<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto; font-family: monospace;">{}</pre>', formatted_json)
+            return format_html(
+                '<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto; font-family: monospace;">{}</pre>',
+                formatted_json,
+            )
         return "No conversations available"
+
     conversations_display.short_description = "Conversations (Formatted)"
