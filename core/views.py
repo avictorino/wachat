@@ -1,8 +1,8 @@
 import json
 import logging
 import os
+import random
 import time
-import uuid
 from datetime import timedelta
 
 from django.http import JsonResponse
@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
+from faker import Faker
 
 from core.models import Message, Profile
 from services.llm_factory import get_llm_service
@@ -21,6 +22,13 @@ from services.simulation_service import SimulationService
 from services.telegram_service import TelegramService
 
 logger = logging.getLogger(__name__)
+
+# Initialize Faker once at module level for efficiency
+_faker = Faker('pt_BR')
+
+# Gender constants
+GENDER_MALE = "male"
+GENDER_FEMALE = "female"
 
 # Constants for simulation timing
 MESSAGE_DELAY_SECONDS = 0.6  # Delay between conversation messages
@@ -811,13 +819,17 @@ class ChatView(View):
 
     def _handle_new_profile(self, request):
         """Create new profile and redirect to it."""
-        # Get profile name from POST data, or generate a default one
-        profile_name = request.POST.get("profile_name", "").strip()
-        if not profile_name:
-            profile_name = f"User_{uuid.uuid4().hex[:8]}"
+        # Randomly choose a gender for the profile
+        gender = random.choice([GENDER_MALE, GENDER_FEMALE])
 
-        profile = Profile.objects.create(name=profile_name, inferred_gender="unknown")
-        logger.info(f"Created new profile: {profile.id} with name: {profile_name}")
+        # Generate a realistic name based on the gender using Faker
+        if gender == GENDER_MALE:
+            profile_name = _faker.first_name_male()
+        else:
+            profile_name = _faker.first_name_female()
+
+        profile = Profile.objects.create(name=profile_name, inferred_gender=gender)
+        logger.info(f"Created new profile: {profile.id} with name: {profile_name}, gender: {gender}")
 
         # Redirect to chat with new profile selected
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
