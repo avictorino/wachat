@@ -588,25 +588,29 @@ IMPORTANTE:
 
     def _split_response_messages(self, response: str) -> List[str]:
         """
-        Split a response into multiple messages if separator is present.
+        Split a response into multiple chat messages based on paragraphs,
+        simulating natural human message sending (WhatsApp-like).
 
-        Args:
-            response: The generated response, possibly with ||| separators
-
-        Returns:
-            List of message strings
+        Rules:
+        - Split by paragraph breaks (\n\n)
+        - Ignore empty blocks
+        - Preserve original wording
+        - Limit max messages for safety
         """
-        # Split by triple pipe separator
-        messages = [msg.strip() for msg in response.split("|||")]
 
-        # Filter out empty messages
-        messages = [msg for msg in messages if msg]
+        if not response or not response.strip():
+            return []
 
-        # Ensure we have at least one message
+        # Normalize line breaks
+        normalized = response.strip().replace("\r\n", "\n")
+
+        # Split by paragraph (double newline)
+        messages = [
+            block.strip() for block in normalized.split("\n\n") if block.strip()
+        ]
+
+        # Fallback safety
         if not messages:
-            messages = [response]
-
-        # Limit to 3 messages maximum for safety
-        messages = messages[:3]
+            return [response.strip()]
 
         return messages
