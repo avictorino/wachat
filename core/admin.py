@@ -52,10 +52,10 @@ class RagChunkAdmin(admin.ModelAdmin):
     search_fields = ["id", "source", "raw_text", "text"]
     readonly_fields = ["created_at"]
     ordering = ["source", "page", "chunk_index"]
-    
+
     # Exclude vector fields from display
     exclude = ["embedding"]
-    
+
     fieldsets = (
         ("Identification", {
             "fields": ("id", "source", "page", "chunk_index", "type")
