@@ -403,6 +403,18 @@ class Command(BaseCommand):
                     if should_skip_chunk(chunk_text):
                         continue
 
+                    ci = page_chunk_counter[page]
+                    page_chunk_counter[page] += 1
+
+                    chunk_id = f"{source}:p{page}:c{ci}"
+
+                    # Skip if chunk already exists (idempotent processing)
+                    if RagChunk.objects.filter(id=chunk_id).exists():
+                        self.stdout.write(
+                            self.style.WARNING(f"Chunk already exists, skipping: {chunk_id}")
+                        )
+                        continue
+
                     conversations, embedding = ollama_generate_conversations(
                         chunk_text,
                         options["ollama_url"],
@@ -421,12 +433,6 @@ class Command(BaseCommand):
                     if not conversation_text.strip():
                         continue
 
-                    ci = page_chunk_counter[page]
-                    page_chunk_counter[page] += 1
-
-                    chunk_id = f"{source}:p{page}:c{ci}"
-
-                    RagChunk.objects.filter(id=chunk_id).delete()
                     RagChunk(
                         id=chunk_id,
                         text=conversation_text,
