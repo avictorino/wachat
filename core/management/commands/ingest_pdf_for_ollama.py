@@ -22,104 +22,11 @@ DEFAULT_PDF_PATH = "/Users/avictorino/Projects/wachat/model/pdfs"
 EMBEDDING_MODEL = "nomic-embed-text"
 EMBEDDING_DIMENSION = 768
 
-OLLAMA_CHAT_MODEL = "llama3:8b"
+# 🔥 modelo RAG dedicado
+OLLAMA_RAG_CHAT_MODEL = "wachat-rag-v1"
 
 MIN_RAG_CHARS = 100
 MAX_RAG_CHARS = 400
-
-# ==========================
-# CONVERSATION PROMPT
-# ==========================
-
-CONVERSATION_PROMPT = """
-Leia o texto abaixo e identifique APENAS percepções humanas
-que estejam EXPLICITAMENTE presentes ou diretamente implicadas no texto.
-
-IMPORTANTE:
-- NÃO interprete além do texto
-- NÃO preencha lacunas
-- NÃO crie sentido onde não existe
-- Se o texto NÃO descreve experiência humana, NÃO invente uma
-
-Esta conversa é apenas uma ETAPA TÉCNICA para gerar memória semântica (RAG).
-Ela NÃO será exibida ao usuário.
-
-========================
-FORMATO OBRIGATÓRIO
-========================
-Use SOMENTE este formato.
-Uma fala por linha.
-Nada fora do formato.
-
-USUARIO: texto
-CONSELHEIRO: texto
-
-========================
-ESTRUTURA
-========================
-- No máximo 1 par (USUARIO + CONSELHEIRO)
-- Cada fala deve conter UMA única ideia
-- Frases curtas e diretas
-
-========================
-REGRAS PARA O USUARIO
-========================
-O USUARIO:
-- Só pode expressar algo que esteja claramente ancorado no texto
-- Não pode teorizar
-- Não pode generalizar
-- Não pode criar exemplos
-- Não pode fazer perguntas abstratas
-- Linguagem simples, factual
-
-Exemplos válidos:
-- O texto mostra que diferentes pessoas reagem de formas distintas
-- Há contraste entre grupos descritos
-- Nem todos respondem da mesma maneira
-
-========================
-REGRAS PARA O CONSELHEIRO
-========================
-O CONSELHEIRO:
-- NÃO ensina
-- NÃO orienta
-- NÃO aconselha
-- NÃO espiritualiza
-- NÃO amplia
-- NÃO conclui
-
-O CONSELHEIRO deve:
-- Reescrever a ideia do usuário de forma ainda MAIS neutra
-- Eliminar qualquer abstração desnecessária
-- Soar como uma nota técnica silenciosa
-- Não usar "você", "nós" ou primeira pessoa
-- Não usar verbos modais (pode, poderia, tende a)
-
-Exemplos válidos:
-- O texto descreve respostas diferentes entre indivíduos
-- Há variação observável no comportamento relatado
-- O conteúdo aponta diferenças de reação
-
-========================
-PROIBIÇÕES ABSOLUTAS
-========================
-NÃO use:
-- Perguntas
-- Metáforas
-- Linguagem emocional
-- Interpretação psicológica
-- Termos vagos como: sentido, confiança, confusão, percepção
-
-========================
-IMPORTANTE
-========================
-- Se o texto for apenas técnico, bibliográfico ou estrutural,
-  responda com UMA fala curta e neutra, sem humanização excessiva.
-- Se não houver percepção humana clara, gere o mínimo possível.
-
-Texto:
-"""
-
 
 # ==========================
 # TEXT CLEANUP
@@ -138,6 +45,11 @@ def repair_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+# ==========================
+# PDF EXTRACTION
+# ==========================
+
+
 def extract_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
     doc = fitz.open(pdf_path)
     for page_number, page in enumerate(doc, start=1):
@@ -149,22 +61,37 @@ def extract_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
                     yield page_number, cleaned
 
 
+# ==========================
+# PARSING MODEL OUTPUT
+# ==========================
+
+
 def parse_conversation(text: str) -> List[List[dict]]:
     conversations, current = [], []
+
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
+
         if line.startswith("USUARIO:"):
             if current:
                 conversations.append(current)
                 current = []
             current.append({"role": "usuario", "text": line[8:].strip()})
+
         elif line.startswith("CONSELHEIRO:"):
             current.append({"role": "conselheiro", "text": line[12:].strip()})
+
     if current:
         conversations.append(current)
+
     return conversations
+
+
+# ==========================
+# FILTERS
+# ==========================
 
 
 def is_reference_like(text: str) -> bool:
@@ -173,27 +100,6 @@ def is_reference_like(text: str) -> bool:
         and re.search(r"\b(19|20)\d{2}\b", text)
         and "," in text
     )
-
-
-# ==========================
-# NORMALIZATION (Q/A → RAG)
-# ==========================
-
-
-def normalize_qa(user_text: str, counselor_text: str) -> str:
-    text = f"{user_text}. {counselor_text}"
-
-    text = re.sub(r"\?", ".", text)
-    text = re.sub(r"\b(você|vc|te|seu|sua)\b", "", text, flags=re.IGNORECASE)
-    text = re.sub(
-        r"\b(ah|né|então|eu sinto que|parece que|soa como se)\b",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
 
 
 TITLE_OR_INDEX_PATTERN = re.compile(
@@ -217,16 +123,40 @@ def is_title_or_index(text: str) -> bool:
 
 
 # ==========================
+# NORMALIZATION (Q/A → RAG)
+# ==========================
+
+
+def normalize_qa(user_text: str, counselor_text: str) -> str:
+    text = f"{user_text}. {counselor_text}"
+
+    text = re.sub(r"\?", ".", text)
+    text = re.sub(r"\b(você|vc|te|seu|sua)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b(ah|né|então|eu sinto que|parece que|soa como se)\b",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# ==========================
 # OLLAMA CALLS
 # ==========================
 
 
 def generate_conversation(text: str, ollama_url: str) -> List[List[dict]]:
+    """
+    Envia SOMENTE o texto cru.
+    Todo o comportamento vem do Modelfile (wachat-rag-v1).
+    """
     resp = requests.post(
         f"{ollama_url.rstrip('/')}/api/generate",
         json={
-            "model": OLLAMA_CHAT_MODEL,
-            "prompt": CONVERSATION_PROMPT + text,
+            "model": OLLAMA_RAG_CHAT_MODEL,
+            "prompt": text,
             "stream": False,
         },
         timeout=120,
@@ -258,7 +188,7 @@ def embed_text(text: str, ollama_url: str) -> List[float]:
 
 
 class Command(BaseCommand):
-    help = "Granular RAG ingestion with semantic hash IDs"
+    help = "Granular RAG ingestion using dedicated RAG model (semantic hash IDs)"
 
     def add_arguments(self, parser):
         parser.add_argument("--ollama-url", default="http://localhost:11434")
