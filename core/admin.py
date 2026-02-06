@@ -86,7 +86,7 @@ class MessageAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         """Disable deleting messages from admin."""
-        return False
+        return True
 
 
 @admin.register(Profile)
