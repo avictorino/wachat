@@ -6,14 +6,15 @@ and manages emotional analysis of the conversation.
 """
 
 import logging
+import os
 import random
 import uuid
 from typing import List, Tuple
 
+import requests
 from faker import Faker
 
 from core.models import Message, Profile
-from services.llm_factory import get_llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +42,18 @@ class SimulationService:
         Initialize the simulation service.
 
         Args:
-            api_key: API key (kept for compatibility, uses configured LLM provider)
+            api_key: API key (kept for compatibility, not used)
         """
-        self.llm_service = get_llm_service()
+        # Direct Ollama configuration for USER simulation
+        self.base_url = os.environ.get("SIMULATION_OLLAMA_BASE_URL", os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
+        self.model = os.environ.get("SIMULATION_OLLAMA_MODEL", os.environ.get("OLLAMA_MODEL", "llama3.1"))
+        self.api_url = f"{self.base_url}/api/chat"
+        
+        logger.info(f"Initialized SimulationService with model={self.model}, base_url={self.base_url}")
 
     def _call_llm(self, messages: List[dict], temperature: float = 0.85, max_tokens: int = 250) -> str:
         """
-        Call LLM service with messages.
+        Call Ollama API directly with messages (USER simulator).
 
         Args:
             messages: List of message dicts with role and content
@@ -57,26 +63,43 @@ class SimulationService:
         Returns:
             Generated text response
         """
-        # Use OllamaService's client directly
-        if hasattr(self.llm_service, 'client'):
-            response = self.llm_service.client.chat(
-                model=self.llm_service.model,
-                messages=messages,
-                options={
-                    "temperature": temperature,
-                    "num_predict": max_tokens,
-                }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+        
+        try:
+            response = requests.post(
+                self.api_url,
+                json=payload,
+                timeout=60,
             )
-            return response['message']['content'].strip()
-        else:
-            raise AttributeError("LLM service client not available")
+            response.raise_for_status()
+            
+            response_data = response.json()
+            content = response_data.get("message", {}).get("content", "").strip()
+            
+            if not content:
+                logger.warning("Ollama returned empty content")
+                raise ValueError("Empty response from Ollama")
+            
+            return content
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling Ollama API: {str(e)}", exc_info=True)
+            raise
 
     def create_simulation_profile(self, theme: str = None) -> Profile:
         """
         Create a new profile for simulation.
 
         Args:
-            theme: The theme for the conversation (e.g., "doenca", "ansiedade")
+            theme: The theme for the conversation (e.g., "drogas", "alcool", "ansiedade")
         
         Returns:
             A new Profile instance marked with the theme
@@ -93,10 +116,11 @@ class SimulationService:
         # Use theme, or default to "desabafar"
         theme = theme if theme else "desabafar"
 
-        # Create profile without telegram_user_id (to avoid conflicts)
+        # Create profile with prompt_theme persisted
         profile = Profile.objects.create(
             name=sim_name,
             inferred_gender=gender,
+            prompt_theme=theme,  # Persist theme on profile
         )
 
         logger.info(f"Created simulation profile: {profile.id} with name: {sim_name}, gender: {gender}, theme: {theme}")
@@ -158,72 +182,47 @@ class SimulationService:
         self, conversation_history: List[dict], turn: int, theme: str = None
     ) -> str:
         """
-        Generate a message from ROLE_A (seeker).
+        Generate a message from ROLE_A (seeker) - simulating a REAL USER.
 
         Args:
             conversation_history: Previous messages in the conversation
             turn: Turn number for this role (1-indexed)
-            theme: Theme/intent for the conversation (e.g., "doenca", "ansiedade")
+            theme: Theme/intent for the conversation (e.g., "drogas", "alcool", "ansiedade")
 
         Returns:
             Generated message text
         """
         try:
-            # Build theme context
-            theme_context = ""
-            if theme:
-                theme_descriptions = {
-                    "doenca": "Você ou alguém próximo está enfrentando uma doença ou problema de saúde. Isso te preocupa e te deixa com incertezas sobre o corpo, o futuro, a fragilidade.",
-                    "ansiedade": "Você está se sentindo ansioso, estressado ou com medo de algo. Há uma preocupação constante que te deixa inquieto.",
-                    "ato_criminoso_pecado": "Você fez algo que considera errado ou pecaminoso. Há um peso de culpa ou arrependimento que você carrega.",
-                    "problemas_financeiros": "Você está enfrentando dificuldades financeiras, desemprego ou dívidas. A situação financeira te preocupa e te deixa inseguro.",
-                    "distante_religiao": "Você se sente distante da religião, espiritualidade ou fé. Há um questionamento ou afastamento espiritual que te deixa perdido.",
-                    "desabafar": "Você precisa conversar com alguém, desabafar. Há algo te incomodando mas você não tem com quem falar sobre isso.",
-                    "redes_sociais": "Você viu esse número nas redes sociais e ficou curioso para conversar com alguém.",
-                    "outro": "Você está buscando conversar sobre algo que te incomoda e não te deixa em paz.",
-                }
-                theme_context = f"\n\nCONTEXTO TEMÁTICO:\n{theme_descriptions.get(theme, theme_descriptions['outro'])}\n\nIMPORTANTE: Este tema DEVE estar presente desde a PRIMEIRA mensagem, mas de forma vaga e indireta:\n- Primeira mensagem: Introduza o tema através de desconforto físico, emocional ou situacional relacionado ao tema\n  * Para \"doenca\": mencione cansaço, corpo estranho, não estar bem, fraqueza\n  * Para \"ansiedade\": mencione inquietação, preocupação, medo difuso\n  * Para \"ato_criminoso_pecado\": mencione peso, algo que fez, arrependimento\n  * Para \"problemas_financeiros\": mencione dificuldades, pressão, situação complicada\n  * Para \"distante_religiao\": mencione distância, falta de conexão, vazio espiritual\n  * Para \"desabafar\": mencione necessidade de falar, solidão, sem saída\n- NUNCA use termos médicos, diagnósticos ou nomes explícitos do problema\n- Seja vago MAS temático, NUNCA genérico ou neutro\n- Use frases como: \"não tô bem\", \"tô sentindo umas coisas\", \"tem algo me incomodando\", \"tá difícil ultimamente\"\n- Permita que o tema se aprofunde gradualmente nas mensagens seguintes"
+            # Build theme-driven prompt
+            theme_instruction = self._build_theme_instruction(theme)
             
-            system_prompt = f"""Você é ROLE_A: "Pessoa introspectiva e reservada"
+            system_prompt = f"""Você está simulando um usuário humano real.
+Você NÃO é um assistente.
+Você escreve mensagens curtas e honestas.
+Você não se explica.
 
-Você é uma pessoa brasileira comum que está começando a conversar com alguém novo.
-Você NÃO está totalmente aberto no início. Você está cauteloso, mas PRECISA introduzir o motivo pelo qual está buscando conversa.
-{theme_context}
+Tema: {theme or 'desabafar'}
 
-RESTRIÇÕES COMPORTAMENTAIS:
-- NÃO faça monólogos emocionais longos
-- NÃO nomeie explicitamente diagnósticos, termos técnicos ou emoções profundas (ex: depressão, trauma, vazio existencial)
-- Expresse incerteza, hesitação, pensamentos parciais
-- Use frequentemente:
-  * "não sei explicar direito"
-  * "talvez"
-  * "acho que"
-  * "não sei se faz sentido"
-  * "tô meio..."
-  * "anda..."
-- Frequentemente pare antes de explicações completas
-- Revele sentimentos mais profundos APENAS após confiança ser estabelecida
+{theme_instruction}
 
-PROGRESSÃO DA CONVERSA:
-- PRIMEIRA MENSAGEM: DEVE introduzir o tema de forma vaga mas concreta
-  * Mencione desconforto físico, emocional ou situacional relacionado ao tema
-  * Seja breve mas ancore a conversa desde o início
-  * Exemplos temáticos: "Não tô me sentindo bem", "Tá pesado ultimamente", "Tô meio perdido com umas coisas"
-- Mensagens do meio: mantenha-se no tema, ainda guardado
-  * "É que... não sei, é complicado explicar"
-  * "Tem a ver com... sei lá"
-- Mensagens finais: aprofunde cautelosamente, mas nunca resolva tudo
-  * "Às vezes penso que... não sei"
+REGRAS GERAIS:
+- Linguagem em primeira pessoa ("eu", "estou", "me sinto")
+- Mensagens curtas e imperfeitas (1-3 frases)
+- Sem análise, sem explicações
+- Sem consciência de estar sendo simulado
+- Sem meta-linguagem ("como um usuário", "simulação", etc.)
+- Você fala casualmente, com dúvidas e hesitação
+- Você não usa linguagem formal
+- Você nunca menciona religião explicitamente a menos que o assistente a introduza primeiro
 
-DIRETRIZES:
-- Mensagens CURTAS (1-3 frases)
-- Português brasileiro natural e conversacional
-- Seja humano, cauteloso e emocionalmente realista
-- NÃO seja eloquente ou filosófico demais
-- Evolua lentamente, não de uma vez
-- SEMPRE mantenha conexão com o tema emocional/situacional desde a primeira mensagem
+COMPORTAMENTO:
+- Hesitante e real
+- Expresse incerteza naturalmente
+- Respostas curtas que parecem autênticas
+- Reaja ao que o bot diz, não apenas continue seu próprio raciocínio
+- Construa a conversa progressivamente
 
-Responda APENAS com a mensagem, sem explicações ou rótulos."""
+Responda APENAS com a mensagem do usuário, sem explicações."""
 
             # Build context from conversation history
             context_messages = [{"role": "system", "content": system_prompt}]
@@ -237,29 +236,174 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
                     )
 
             if turn == 1:
-                # First message - initiate conversation with theme anchor
-                user_prompt = "Envie sua PRIMEIRA mensagem. Esta é sua chance de introduzir o motivo da conversa de forma VAGA mas CONCRETA. Mencione o desconforto, inquietação ou situação relacionada ao tema, mas sem nomear diretamente. Seja breve (1-2 frases), hesitante, humano. DEVE ter conexão clara com o contexto temático fornecido."
+                # First message - must introduce theme naturally
+                # Check if theme needs special first message handling
+                substance_themes = ["drogas", "alcool", "cigarro", "sexo"]
+                if theme in substance_themes:
+                    theme_examples = {
+                        "drogas": "tenho usado', 'voltei a usar', 'não consigo controlar",
+                        "alcool": "tô bebendo demais', 'não consigo parar de beber', 'bebida tá me prejudicando",
+                        "cigarro": "tô fumando muito', 'não consigo largar o cigarro', 'vício em cigarro",
+                        "sexo": "compulsão sexual', 'não consigo controlar', 'comportamento sexual",
+                    }
+                    examples = theme_examples.get(theme, "")
+                    user_prompt = f"Envie sua PRIMEIRA mensagem. Você deve mencionar sua luta com {theme} de forma hesitante e pessoal. Seja breve (1-2 frases), use palavras como '{examples}'. Fale como alguém real que está abrindo-se pela primeira vez."
+                else:
+                    user_prompt = "Envie sua PRIMEIRA mensagem. Introduza o tema de forma natural e hesitante. Seja breve (1-2 frases)."
             elif turn <= 2:
-                user_prompt = f"Continue a conversa respondendo à mensagem anterior. Ainda esteja cauteloso e um pouco guardado. Use frases como 'não sei explicar direito' ou 'talvez'."
+                user_prompt = f"Continue a conversa respondendo à mensagem anterior. Ainda esteja cauteloso. Use frases curtas."
             else:
-                user_prompt = f"Continue a conversa respondendo à mensagem anterior. Este é o turno {turn}. Você pode se abrir um pouco mais, mas ainda com hesitação. Não resolva tudo - apenas sugira que há mais por baixo da superfície."
+                user_prompt = f"Continue a conversa respondendo à mensagem anterior. Este é o turno {turn}. Você pode se abrir um pouco mais, mas ainda com hesitação. Mantenha coerência com o tema."
 
             context_messages.append({"role": "user", "content": user_prompt})
 
+            # Use higher temperature for more natural variation
             response_text = self._call_llm(context_messages, temperature=0.9, max_tokens=250)
 
             return response_text
 
         except Exception as e:
             logger.error(f"Error generating seeker message: {str(e)}", exc_info=True)
-            # Fallback messages
-            fallbacks = [
-                "Não sei bem... tô me sentindo meio estranho ultimamente",
-                "É difícil explicar sabe",
-                "Talvez seja só impressão minha",
-                "Tem dias que é complicado",
-            ]
+            # Fallback messages based on theme
+            fallbacks = self._get_theme_fallbacks(theme)
             return fallbacks[turn % len(fallbacks)]
+
+    def _build_theme_instruction(self, theme: str) -> str:
+        """
+        Build theme-specific instruction for user simulation.
+
+        Args:
+            theme: The conversation theme
+
+        Returns:
+            Theme-specific instruction text
+        """
+        theme_instructions = {
+            "drogas": """
+REGRAS ESPECÍFICAS DO TEMA (drogas):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar explicitamente sua luta com drogas ou uso de substâncias
+- Soar hesitante, real e pessoal
+- Usar padrões como:
+  * "tenho usado drogas e isso está me incomodando"
+  * "parei um tempo, mas voltei a usar"
+  * "não sei mais controlar isso"
+  * "tô usando de novo"
+
+NÃO use frases exatas - varie naturalmente.
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Intensifique ou suavize baseado no fluxo da conversa
+- Mantenha coerência com o tema de dependência
+""",
+            "alcool": """
+REGRAS ESPECÍFICAS DO TEMA (alcool):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar explicitamente sua luta com álcool
+- Soar hesitante, real e pessoal
+- Usar padrões como "tô bebendo demais", "não consigo parar de beber"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de álcool
+""",
+            "cigarro": """
+REGRAS ESPECÍFICAS DO TEMA (cigarro):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar explicitamente sua luta com cigarro/fumo
+- Soar hesitante, real e pessoal
+- Usar padrões como "tô fumando muito", "não consigo largar o cigarro"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de tabagismo
+""",
+            "sexo": """
+REGRAS ESPECÍFICAS DO TEMA (sexo):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar sua luta com compulsão ou comportamento sexual
+- Soar hesitante, real e pessoal
+- Usar padrões como "compulsão", "não consigo controlar"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema
+""",
+            "ansiedade": """
+REGRAS ESPECÍFICAS DO TEMA (ansiedade):
+Sua PRIMEIRA mensagem deve:
+- Expressar ansiedade, estresse ou preocupação
+- Usar padrões como "tô muito ansioso", "não consigo parar de me preocupar"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de ansiedade
+""",
+            "solidao": """
+REGRAS ESPECÍFICAS DO TEMA (solidao):
+Sua PRIMEIRA mensagem deve:
+- Expressar sentimentos de solidão ou isolamento
+- Usar padrões como "me sinto sozinho", "não tenho com quem conversar"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de solidão
+""",
+        }
+        
+        default_instruction = """
+REGRAS ESPECÍFICAS DO TEMA (geral):
+Sua PRIMEIRA mensagem deve introduzir sua preocupação de forma natural e hesitante.
+Mensagens subsequentes devem reagir ao bot e manter coerência com o tema.
+"""
+        
+        return theme_instructions.get(theme, default_instruction)
+
+    def _get_theme_fallbacks(self, theme: str) -> List[str]:
+        """
+        Get theme-specific fallback messages.
+
+        Args:
+            theme: The conversation theme
+
+        Returns:
+            List of fallback messages
+        """
+        theme_fallbacks = {
+            "drogas": [
+                "Tenho usado drogas e não sei como parar",
+                "É complicado falar sobre isso",
+                "Não sei se consigo controlar",
+                "Já tentei parar antes",
+            ],
+            "alcool": [
+                "Tô bebendo demais ultimamente",
+                "É difícil falar sobre isso",
+                "Não consigo controlar a bebida",
+                "Já tentei parar",
+            ],
+            "cigarro": [
+                "Tô fumando muito",
+                "Não consigo largar o cigarro",
+                "É difícil falar sobre isso",
+                "Já tentei parar várias vezes",
+            ],
+            "sexo": [
+                "Tenho uma compulsão que não consigo controlar",
+                "É difícil falar sobre isso",
+                "Não sei como lidar com isso",
+                "Tá me prejudicando",
+            ],
+        }
+        
+        default_fallbacks = [
+            "Não sei bem como explicar",
+            "É difícil falar sobre isso",
+            "Talvez seja só impressão minha",
+            "Tem dias que é complicado",
+        ]
+        
+        return theme_fallbacks.get(theme, default_fallbacks)
 
     def _generate_listener_message(
         self, conversation_history: List[dict], turn: int, theme: str = None
