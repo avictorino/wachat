@@ -45,7 +45,7 @@ class SimulationService:
             api_key: API key (kept for compatibility, not used)
         """
         # Direct Ollama configuration for USER simulation
-        self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        self.base_url = os.environ.get("SIMULATION_OLLAMA_BASE_URL", os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
         self.model = os.environ.get("SIMULATION_OLLAMA_MODEL", os.environ.get("OLLAMA_MODEL", "llama3.1"))
         self.api_url = f"{self.base_url}/api/chat"
         
@@ -196,31 +196,31 @@ class SimulationService:
             # Build theme-driven prompt
             theme_instruction = self._build_theme_instruction(theme)
             
-            system_prompt = f"""You are simulating a real human user.
-You are NOT an assistant.
-You write short, honest messages.
-You do not explain yourself.
+            system_prompt = f"""Você está simulando um usuário humano real.
+Você NÃO é um assistente.
+Você escreve mensagens curtas e honestas.
+Você não se explica.
 
-Theme: {theme or 'desabafar'}
+Tema: {theme or 'desabafar'}
 
 {theme_instruction}
 
-GENERAL RULES:
-- First-person language ("eu", "estou", "me sinto")
-- Short, imperfect, human messages (1-3 sentences)
-- No analysis, no explanations
-- No awareness of being simulated
-- No meta language ("como um usuário", "simulação", etc.)
-- You speak casually, with doubts and hesitation
-- You do not use formal language
-- You never mention religion explicitly unless the assistant introduces it first
+REGRAS GERAIS:
+- Linguagem em primeira pessoa ("eu", "estou", "me sinto")
+- Mensagens curtas e imperfeitas (1-3 frases)
+- Sem análise, sem explicações
+- Sem consciência de estar sendo simulado
+- Sem meta-linguagem ("como um usuário", "simulação", etc.)
+- Você fala casualmente, com dúvidas e hesitação
+- Você não usa linguagem formal
+- Você nunca menciona religião explicitamente a menos que o assistente a introduza primeiro
 
-BEHAVIOR:
-- Hesitant and real
-- Express uncertainty naturally
-- Short responses that feel authentic
-- React to what the bot says, don't just continue your own thread
-- Build conversation progressively
+COMPORTAMENTO:
+- Hesitante e real
+- Expresse incerteza naturalmente
+- Respostas curtas que parecem autênticas
+- Reaja ao que o bot diz, não apenas continue seu próprio raciocínio
+- Construa a conversa progressivamente
 
 Responda APENAS com a mensagem do usuário, sem explicações."""
 
@@ -237,8 +237,17 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
 
             if turn == 1:
                 # First message - must introduce theme naturally
-                if theme == "drogas":
-                    user_prompt = "Envie sua PRIMEIRA mensagem. Você deve mencionar sua luta com drogas de forma hesitante e pessoal. Seja breve (1-2 frases), use palavras como 'tenho usado', 'voltei a usar', 'não consigo controlar'. Fale como alguém real que está abrindo-se pela primeira vez."
+                # Check if theme needs special first message handling
+                substance_themes = ["drogas", "alcool", "cigarro", "sexo"]
+                if theme in substance_themes:
+                    theme_examples = {
+                        "drogas": "tenho usado', 'voltei a usar', 'não consigo controlar",
+                        "alcool": "tô bebendo demais', 'não consigo parar de beber', 'bebida tá me prejudicando",
+                        "cigarro": "tô fumando muito', 'não consigo largar o cigarro', 'vício em cigarro",
+                        "sexo": "compulsão sexual', 'não consigo controlar', 'comportamento sexual",
+                    }
+                    examples = theme_examples.get(theme, "")
+                    user_prompt = f"Envie sua PRIMEIRA mensagem. Você deve mencionar sua luta com {theme} de forma hesitante e pessoal. Seja breve (1-2 frases), use palavras como '{examples}'. Fale como alguém real que está abrindo-se pela primeira vez."
                 else:
                     user_prompt = "Envie sua PRIMEIRA mensagem. Introduza o tema de forma natural e hesitante. Seja breve (1-2 frases)."
             elif turn <= 2:
@@ -271,59 +280,81 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
         """
         theme_instructions = {
             "drogas": """
-THEME-SPECIFIC RULES (drogas):
-Your FIRST message MUST:
-- Explicitly mention your struggle with drugs or substance use
-- Sound hesitant, real, and personal
-- Use patterns like:
+REGRAS ESPECÍFICAS DO TEMA (drogas):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar explicitamente sua luta com drogas ou uso de substâncias
+- Soar hesitante, real e pessoal
+- Usar padrões como:
   * "tenho usado drogas e isso está me incomodando"
   * "parei um tempo, mas voltei a usar"
   * "não sei mais controlar isso"
   * "tô usando de novo"
 
-DO NOT use exact phrases - vary naturally.
-Subsequent messages:
-- React naturally to bot responses
-- Escalate or soften based on conversation flow
-- Maintain coherence with addiction theme
+NÃO use frases exatas - varie naturalmente.
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Intensifique ou suavize baseado no fluxo da conversa
+- Mantenha coerência com o tema de dependência
 """,
             "alcool": """
-THEME-SPECIFIC RULES (alcool):
-Your FIRST message MUST:
-- Explicitly mention your struggle with alcohol
-- Sound hesitant, real, and personal
-- Use patterns like "tô bebendo demais", "não consigo parar de beber"
+REGRAS ESPECÍFICAS DO TEMA (alcool):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar explicitamente sua luta com álcool
+- Soar hesitante, real e pessoal
+- Usar padrões como "tô bebendo demais", "não consigo parar de beber"
 
-Subsequent messages:
-- React naturally to bot responses
-- Maintain coherence with alcohol theme
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de álcool
+""",
+            "cigarro": """
+REGRAS ESPECÍFICAS DO TEMA (cigarro):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar explicitamente sua luta com cigarro/fumo
+- Soar hesitante, real e pessoal
+- Usar padrões como "tô fumando muito", "não consigo largar o cigarro"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de tabagismo
+""",
+            "sexo": """
+REGRAS ESPECÍFICAS DO TEMA (sexo):
+Sua PRIMEIRA mensagem DEVE:
+- Mencionar sua luta com compulsão ou comportamento sexual
+- Soar hesitante, real e pessoal
+- Usar padrões como "compulsão", "não consigo controlar"
+
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema
 """,
             "ansiedade": """
-THEME-SPECIFIC RULES (ansiedade):
-Your FIRST message should:
-- Express anxiety, stress, or worry
-- Use patterns like "tô muito ansioso", "não consigo parar de me preocupar"
+REGRAS ESPECÍFICAS DO TEMA (ansiedade):
+Sua PRIMEIRA mensagem deve:
+- Expressar ansiedade, estresse ou preocupação
+- Usar padrões como "tô muito ansioso", "não consigo parar de me preocupar"
 
-Subsequent messages:
-- React naturally to bot responses
-- Maintain coherence with anxiety theme
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de ansiedade
 """,
             "solidao": """
-THEME-SPECIFIC RULES (solidao):
-Your FIRST message should:
-- Express feelings of loneliness or isolation
-- Use patterns like "me sinto sozinho", "não tenho com quem conversar"
+REGRAS ESPECÍFICAS DO TEMA (solidao):
+Sua PRIMEIRA mensagem deve:
+- Expressar sentimentos de solidão ou isolamento
+- Usar padrões como "me sinto sozinho", "não tenho com quem conversar"
 
-Subsequent messages:
-- React naturally to bot responses
-- Maintain coherence with loneliness theme
+Mensagens subsequentes:
+- Reaja naturalmente às respostas do bot
+- Mantenha coerência com o tema de solidão
 """,
         }
         
         default_instruction = """
-THEME-SPECIFIC RULES (general):
-Your FIRST message should introduce your concern naturally and hesitantly.
-Subsequent messages should react to the bot and maintain theme coherence.
+REGRAS ESPECÍFICAS DO TEMA (geral):
+Sua PRIMEIRA mensagem deve introduzir sua preocupação de forma natural e hesitante.
+Mensagens subsequentes devem reagir ao bot e manter coerência com o tema.
 """
         
         return theme_instructions.get(theme, default_instruction)
@@ -350,6 +381,18 @@ Subsequent messages should react to the bot and maintain theme coherence.
                 "É difícil falar sobre isso",
                 "Não consigo controlar a bebida",
                 "Já tentei parar",
+            ],
+            "cigarro": [
+                "Tô fumando muito",
+                "Não consigo largar o cigarro",
+                "É difícil falar sobre isso",
+                "Já tentei parar várias vezes",
+            ],
+            "sexo": [
+                "Tenho uma compulsão que não consigo controlar",
+                "É difícil falar sobre isso",
+                "Não sei como lidar com isso",
+                "Tá me prejudicando",
             ],
         }
         
