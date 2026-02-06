@@ -452,8 +452,6 @@ IMPORTANTE:
             system_parts = []
 
             # Add user context
-            system_parts.append(f"Nome da pessoa: {name}")
-
             if inferred_gender and inferred_gender != "unknown":
                 system_parts.append(
                     GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender)
@@ -481,8 +479,22 @@ IMPORTANTE:
             # Add the current user message
             messages.append({"role": "user", "content": sanitized_message})
 
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": f"Contexto silencioso: Nome da pessoa: {name}.",
+                }
+            )
+
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": "Nota interna: responder com presença, sem sugerir técnicas, exercícios, atividades, planos ou estratégias.",
+                }
+            )
+
             response_text = self._make_chat_request(
-                messages, temperature=0.65, max_tokens=350
+                messages, temperature=0.65, max_tokens=150
             )
 
             # Split response into multiple messages if separator is used

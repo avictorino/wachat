@@ -110,7 +110,7 @@ class ChatView(View):
 
         # Get conversation context
         context = self._get_conversation_context(
-            profile, actual_message_id=actual_message.id, limit=10
+            profile, actual_message_id=actual_message.id, limit=5
         )
 
         # Generate LLM response
@@ -213,7 +213,7 @@ class ChatView(View):
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
     def _get_conversation_context(
-        self, profile, actual_message_id, limit: int = 10
+        self, profile, actual_message_id, limit: int = 5
     ) -> list:
         """
         Get recent conversation context for the LLM.
