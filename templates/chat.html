@@ -130,6 +130,17 @@
             position: relative;
         }
         
+        .message-sender {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            color: #667781;
+        }
+        
+        .message.user .message-sender {
+            color: #075e54;
+        }
+        
         .message.user .message-bubble {
             background-color: #dcf8c6;
             border-bottom-right-radius: 0;
@@ -278,6 +289,11 @@
             {% for message in messages %}
                 <div class="message {{ message.role }}">
                     <div class="message-bubble">
+                        {% if message.role == "user" %}
+                            <div class="message-sender">{{ message.profile.name }}</div>
+                        {% elif message.role == "assistant" %}
+                            <div class="message-sender">Bot</div>
+                        {% endif %}
                         <div class="message-content">{{ message.content }}</div>
                         <div class="message-time">
                             {{ message.created_at|date:"H:i" }}
