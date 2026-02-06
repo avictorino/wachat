@@ -1,4 +1,4 @@
-import json
+import hashlib
 import os
 import re
 from typing import Iterator, List, Tuple
@@ -18,224 +18,214 @@ from core.models import RagChunk
 dotenv.read_dotenv(BASE_DIR)
 
 DEFAULT_PDF_PATH = "/Users/avictorino/Projects/wachat/model/pdfs"
-DEFAULT_OUT_DIR = "/Users/avictorino/Projects/wachat/model/rag"
 
-EMBEDDING_DIMENSION = 768  # nomic-embed-text
+EMBEDDING_MODEL = "nomic-embed-text"
+EMBEDDING_DIMENSION = 768
+
+OLLAMA_CHAT_MODEL = "llama3:8b"
+
+MIN_RAG_CHARS = 100
+MAX_RAG_CHARS = 400
 
 # ==========================
-# CONVERSATIONAL PROMPT
+# CONVERSATION PROMPT
 # ==========================
 
 CONVERSATION_PROMPT = """
-Transforme o texto abaixo em uma conversa natural, humana e imperfeita entre duas pessoas reais.
+Leia o texto abaixo e identifique APENAS percepções humanas
+que estejam EXPLICITAMENTE presentes ou diretamente implicadas no texto.
 
-O OBJETIVO DESTA CONVERSA
-- Esta conversa NÃO é uma resposta final ao usuário
-- Ela será usada como material de indexação para RAG
-- Portanto, ela DEVE preservar as IDEIAS CENTRAIS do texto
-- Use linguagem humana, mas mantenha pistas claras do conteúdo original
+IMPORTANTE:
+- NÃO interprete além do texto
+- NÃO preencha lacunas
+- NÃO crie sentido onde não existe
+- Se o texto NÃO descreve experiência humana, NÃO invente uma
+
+Esta conversa é apenas uma ETAPA TÉCNICA para gerar memória semântica (RAG).
+Ela NÃO será exibida ao usuário.
 
 ========================
 FORMATO OBRIGATÓRIO
 ========================
-- Use SOMENTE este formato
-- Uma fala por linha
-- Não escreva nada fora do formato
+Use SOMENTE este formato.
+Uma fala por linha.
+Nada fora do formato.
 
-FORMATO EXATO:
 USUARIO: texto
 CONSELHEIRO: texto
 
-Exemplo (apenas formato):
-USUARIO: …
-CONSELHEIRO: …
-USUARIO: …
-CONSELHEIRO: …
-
 ========================
-REGRAS DE LINGUAGEM
+ESTRUTURA
 ========================
-- linguagem falada, cotidiana e simples
-- frases imperfeitas, com hesitação
-- respostas parciais
-- uma única ideia por fala
-- evite abstrações vagas demais
-- prefira imagens simples e concretas
-
-Exemplos de imagens permitidas:
-- tudo foi ficando estreito
-- sobrou só isso
-- o resto foi ficando de lado
-- sempre igual, dia após dia
-- parece que só gira nisso
+- No máximo 1 par (USUARIO + CONSELHEIRO)
+- Cada fala deve conter UMA única ideia
+- Frases curtas e diretas
 
 ========================
 REGRAS PARA O USUARIO
 ========================
-O usuário:
-- NÃO faz perguntas analíticas ou gerais
-- NÃO pergunta "como", "por que", "o que fazer"
-- NÃO pede explicações
-- NÃO teoriza
-- fala a partir da vivência e da percepção
-- expressa sensação, confusão, desgaste, repetição, perda de espaço
-- usa imagens simples ligadas ao texto
-- pode repetir palavras
-- pode mencionar fé apenas como sentimento pessoal
+O USUARIO:
+- Só pode expressar algo que esteja claramente ancorado no texto
+- Não pode teorizar
+- Não pode generalizar
+- Não pode criar exemplos
+- Não pode fazer perguntas abstratas
+- Linguagem simples, factual
+
+Exemplos válidos:
+- O texto mostra que diferentes pessoas reagem de formas distintas
+- Há contraste entre grupos descritos
+- Nem todos respondem da mesma maneira
 
 ========================
 REGRAS PARA O CONSELHEIRO
 ========================
-O conselheiro:
-- representa presença, escuta e eco emocional
+O CONSELHEIRO:
+- NÃO ensina
 - NÃO orienta
 - NÃO aconselha
-- NÃO explica
-- NÃO ensina
+- NÃO espiritualiza
+- NÃO amplia
 - NÃO conclui
-- NÃO fecha a conversa
-- NÃO promete ajuda
-- NÃO diz o que deve ser feito
-- NÃO faz perguntas
-- NÃO organiza o pensamento do usuário
 
-O conselheiro DEVE:
-- reagir apenas ao que foi dito
-- ecoar as MESMAS imagens e palavras do usuário
-- manter o foco nas ideias trazidas
-- refletir sentimento E percepção, sem explicar
-- usar expressões de leveza e incerteza, como:
-  parece, soa, dá a impressão, fica a sensação
+O CONSELHEIRO deve:
+- Reescrever a ideia do usuário de forma ainda MAIS neutra
+- Eliminar qualquer abstração desnecessária
+- Soar como uma nota técnica silenciosa
+- Não usar "você", "nós" ou primeira pessoa
+- Não usar verbos modais (pode, poderia, tende a)
 
-O conselheiro pode falar um pouco mais que o usuário,
-mas nunca para explicar ou interpretar causas.
+Exemplos válidos:
+- O texto descreve respostas diferentes entre indivíduos
+- Há variação observável no comportamento relatado
+- O conteúdo aponta diferenças de reação
 
 ========================
 PROIBIÇÕES ABSOLUTAS
 ========================
 NÃO use:
-- termos técnicos, acadêmicos ou institucionais
-- linguagem clínica, terapêutica ou moral
-- explicações causais
-- conclusões
-- abstrações genéricas como apenas:
-  tristeza, desespero, dor profunda
-
-NÃO use as palavras:
-importante, precisa, deve, ajuda, tratar, superar,
-caminho, esperança, processo, jornada, solução
+- Perguntas
+- Metáforas
+- Linguagem emocional
+- Interpretação psicológica
+- Termos vagos como: sentido, confiança, confusão, percepção
 
 ========================
 IMPORTANTE
 ========================
-- Esta conversa deve continuar aberta
-- Não resolva nada
-- Não explique o texto original
-- Não se afaste das ideias centrais do texto
-- Se quebrar qualquer regra, a resposta será descartada
-- Não use listas
-- Não use aspas
-- Não use markdown
+- Se o texto for apenas técnico, bibliográfico ou estrutural,
+  responda com UMA fala curta e neutra, sem humanização excessiva.
+- Se não houver percepção humana clara, gere o mínimo possível.
 
-========================
 Texto:
 """
+
 
 # ==========================
 # TEXT CLEANUP
 # ==========================
 
 
-def repair_text_artifacts(text: str) -> str:
+def generate_rag_id(source: str, page: int, rag_text: str) -> str:
+    base = f"{source}|p{page}|{rag_text.strip().lower()}"
+    digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:16]
+    return f"{source}:p{page}:{digest}"
+
+
+def repair_text(text: str) -> str:
     text = text.replace("\u00ad", "").replace("\u200b", "")
     text = re.sub(r"(\w+)-?\n(\w+)", r"\1\2", text)
-    text = re.sub(r"\n+", " ", text)
-    text = re.sub(r"[ \t]+", " ", text)
-    return text.strip()
+    return re.sub(r"\s+", " ", text).strip()
 
 
-# ==========================
-# SEMANTIC EXTRACTION
-# ==========================
-
-
-def extract_semantic_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
+def extract_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
     doc = fitz.open(pdf_path)
-
     for page_number, page in enumerate(doc, start=1):
         for block in page.get_text("blocks"):
             raw = block[4]
-            if not raw or not raw.strip():
-                continue
-
-            cleaned = repair_text_artifacts(raw)
-            if cleaned:
-                yield page_number, cleaned
+            if raw and raw.strip():
+                cleaned = repair_text(raw)
+                if cleaned:
+                    yield page_number, cleaned
 
 
-# ==========================
-# SENTENCE-BASED CHUNKING
-# ==========================
-
-
-def sentence_chunk(text: str, max_chars: int) -> List[str]:
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-
-    chunks: List[str] = []
-    buffer: List[str] = []
-
-    for s in sentences:
-        if not s.strip():
+def parse_conversation(text: str) -> List[List[dict]]:
+    conversations, current = [], []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
             continue
-
-        current_len = sum(len(x) for x in buffer)
-
-        if current_len + len(s) <= max_chars:
-            buffer.append(s)
-        else:
-            chunk = " ".join(buffer).strip()
-            if chunk:
-                chunks.append(chunk)
-            buffer = [s]
-
-    if buffer:
-        chunks.append(" ".join(buffer).strip())
-
-    return chunks
+        if line.startswith("USUARIO:"):
+            if current:
+                conversations.append(current)
+                current = []
+            current.append({"role": "usuario", "text": line[8:].strip()})
+        elif line.startswith("CONSELHEIRO:"):
+            current.append({"role": "conselheiro", "text": line[12:].strip()})
+    if current:
+        conversations.append(current)
+    return conversations
 
 
-# ==========================
-# STRUCTURAL FILTERING
-# ==========================
-
-
-def should_skip_chunk(text: str) -> bool:
-    upper = text.upper()
+def is_reference_like(text: str) -> bool:
     return (
-        len(text) < 100
-        or "ISBN" in upper
-        or "©" in text
-        or "ÍNDICE" in upper
-        or "AUTORES" in upper
-        or text.isupper()
-        or re.match(r"^[A-ZÁÉÍÓÚÂÊÔÃÕÇ ]+$", text)
+        len(text) < MIN_RAG_CHARS
+        and re.search(r"\b(19|20)\d{2}\b", text)
+        and "," in text
     )
 
 
 # ==========================
-# OLLAMA – CONVERSATION
+# NORMALIZATION (Q/A → RAG)
 # ==========================
 
 
-def ollama_generate_conversations(
-    text: str,
-    ollama_url: str,
-) -> Tuple[list[list[dict]], List[float]]:
+def normalize_qa(user_text: str, counselor_text: str) -> str:
+    text = f"{user_text}. {counselor_text}"
 
+    text = re.sub(r"\?", ".", text)
+    text = re.sub(r"\b(você|vc|te|seu|sua)\b", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\b(ah|né|então|eu sinto que|parece que|soa como se)\b",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+TITLE_OR_INDEX_PATTERN = re.compile(
+    r"""
+    (
+        ^[IVXLCDM]{1,5}\.\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ] |
+        ^\d{1,3}\.\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ] |
+        ^[A-Z][a-z]{1,20}\s[A-Z][a-z]?,\s |
+        ^[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-Za-zÁÉÍÓÚÂÊÔÃÕÇ\s/]{3,60}$
+    )
+    """,
+    re.VERBOSE,
+)
+
+
+def is_title_or_index(text: str) -> bool:
+    t = text.strip()
+    if len(t) < 10 or len(t) > 80:
+        return False
+    return bool(TITLE_OR_INDEX_PATTERN.match(t))
+
+
+# ==========================
+# OLLAMA CALLS
+# ==========================
+
+
+def generate_conversation(text: str, ollama_url: str) -> List[List[dict]]:
     resp = requests.post(
         f"{ollama_url.rstrip('/')}/api/generate",
         json={
-            "model": "llama3:8b",
+            "model": OLLAMA_CHAT_MODEL,
             "prompt": CONVERSATION_PROMPT + text,
             "stream": False,
         },
@@ -244,99 +234,22 @@ def ollama_generate_conversations(
     resp.raise_for_status()
 
     raw = resp.json().get("response", "")
+    return parse_conversation(raw)
 
-    conversations = parse_conversation_lines(raw)
 
-    if not isinstance(conversations, list):
-        raise RuntimeError(f"Missing conversations array: {raw}")
-
-    for convo in conversations:
-        if not isinstance(convo, list):
-            raise RuntimeError(f"Conversation is not a list: {convo}")
-
-        for turn in convo:
-            if not isinstance(turn, dict) or "role" not in turn or "text" not in turn:
-                raise RuntimeError(f"Invalid turn format: {turn}")
-
-    embed_input = " ".join(turn["text"] for convo in conversations for turn in convo)
+def embed_text(text: str, ollama_url: str) -> List[float]:
     resp = requests.post(
         f"{ollama_url.rstrip('/')}/api/embeddings",
         json={
-            "model": "nomic-embed-text",
-            "prompt": embed_input,
+            "model": EMBEDDING_MODEL,
+            "prompt": text,
             "stream": False,
         },
         timeout=60,
     )
     resp.raise_for_status()
 
-    data = resp.json()
-    embedding = data.get("embedding")
-
-    if not isinstance(embedding, list):
-        raise RuntimeError(f"Invalid embedding response: {data}")
-
-    return conversations, embedding
-
-
-def parse_conversation_lines(text: str) -> list[list[dict]]:
-    conversations = []
-    current = []
-
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-
-        if line.startswith("USUARIO:"):
-            if current:
-                conversations.append(current)
-                current = []
-            current.append(
-                {"role": "usuario", "text": line[len("USUARIO:") :].strip()}  # noqa
-            )
-
-        elif line.startswith("CONSELHEIRO:"):
-            current.append(
-                {
-                    "role": "conselheiro",
-                    "text": line[len("CONSELHEIRO:") :].strip(),  # noqa
-                }
-            )
-
-    if current:
-        conversations.append(current)
-
-    return conversations
-
-
-# ==========================
-# JSONL OUTPUT
-# ==========================
-
-
-def write_jsonl(chunks: List[RagChunk], out_path: str) -> None:
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-
-    with open(out_path, "w", encoding="utf-8") as f:
-        for chunk in chunks:
-            f.write(
-                json.dumps(
-                    {
-                        "id": chunk.id,
-                        "conversation": chunk.conversations,
-                        "raw_text": chunk.raw_text,
-                        "metadata": {
-                            "source": chunk.source,
-                            "page": chunk.page,
-                            "chunk_index": chunk.chunk_index,
-                            "type": chunk.type,
-                        },
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+    return resp.json().get("embedding")
 
 
 # ==========================
@@ -345,86 +258,66 @@ def write_jsonl(chunks: List[RagChunk], out_path: str) -> None:
 
 
 class Command(BaseCommand):
-    help = "Batch conversational PDF ingestion for RAG (Ollama + Mistral)"
+    help = "Granular RAG ingestion with semantic hash IDs"
 
     def add_arguments(self, parser):
-        parser.add_argument("--chunk-size", type=int, default=900)
         parser.add_argument("--ollama-url", default="http://localhost:11434")
 
     def handle(self, *args, **options):
+        ollama_url = options["ollama_url"]
+
         if not os.path.isdir(DEFAULT_PDF_PATH):
             raise CommandError("DEFAULT_PDF_PATH must be a directory")
 
-        pdf_files = [
-            f for f in os.listdir(DEFAULT_PDF_PATH) if f.lower().endswith(".pdf")
-        ]
+        for pdf_file in os.listdir(DEFAULT_PDF_PATH):
+            if not pdf_file.lower().endswith(".pdf"):
+                continue
 
-        if not pdf_files:
-            raise CommandError("No PDF files found")
-
-        for pdf_file in pdf_files:
-            pdf_path = os.path.join(DEFAULT_PDF_PATH, pdf_file)
             source = os.path.splitext(pdf_file)[0]
+            pdf_path = os.path.join(DEFAULT_PDF_PATH, pdf_file)
 
-            self.stdout.write(self.style.NOTICE(f"Processing: {pdf_file}"))
+            self.stdout.write(self.style.NOTICE(f"Processing {pdf_file}"))
 
-            page_chunk_counter: dict[int, int] = {}
-
-            for page, block in extract_semantic_blocks(pdf_path):
-                if page <= 10:
+            for page, block in extract_blocks(pdf_path):
+                if (
+                    page <= 10
+                    or is_reference_like(block)
+                    or is_title_or_index(block)
+                    or len(block) < MIN_RAG_CHARS
+                ):
                     continue
 
-                if page not in page_chunk_counter:
-                    page_chunk_counter[page] = 0
+                conversations = generate_conversation(block, ollama_url)
 
-                for chunk_text in sentence_chunk(block, options["chunk_size"]):
-                    if should_skip_chunk(chunk_text):
+                for convo in conversations:
+                    if len(convo) != 2:
                         continue
 
-                    ci = page_chunk_counter[page]
-                    page_chunk_counter[page] += 1
+                    u, c = convo
+                    rag_text = normalize_qa(u["text"], c["text"])
 
-                    chunk_id = f"{source}:p{page}:c{ci}"
-
-                    # Skip if chunk already exists (idempotent processing)
-                    if RagChunk.objects.filter(id=chunk_id).exists():
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"Chunk already exists, skipping: {chunk_id}"
-                            )
-                        )
+                    if not (MIN_RAG_CHARS <= len(rag_text) <= MAX_RAG_CHARS):
                         continue
 
-                    conversations, embedding = ollama_generate_conversations(
-                        chunk_text,
-                        options["ollama_url"],
-                    )
+                    rag_id = generate_rag_id(source, page, rag_text)
 
-                    if not conversations:
+                    if RagChunk.objects.filter(id=rag_id).exists():
                         continue
 
-                    conversation_text = " ".join(
-                        turn["text"]
-                        for convo in conversations
-                        for turn in convo
-                        if turn.get("text")
-                    )
+                    embedding = embed_text(rag_text, ollama_url)
 
-                    if not conversation_text.strip():
-                        continue
-
-                    RagChunk(
-                        id=chunk_id,
-                        text=conversation_text,
-                        raw_text=chunk_text,
-                        conversations=conversations,
+                    RagChunk.objects.create(
+                        id=rag_id,
+                        text=rag_text,
+                        raw_text=block,
+                        conversations=convo,
                         source=source,
                         page=page,
-                        chunk_index=ci,
-                        type="conversations",
+                        chunk_index=0,
+                        type="conversation_pair",
                         embedding=embedding,
-                    ).save()
+                    )
 
-                    self.stdout.write(self.style.SUCCESS("Chunk saved: " + chunk_id))
+                    self.stdout.write(self.style.SUCCESS(f"Saved {rag_id}"))
 
-        self.stdout.write(self.style.SUCCESS("All PDFs processed successfully"))
+        self.stdout.write(self.style.SUCCESS("RAG ingestion completed"))
