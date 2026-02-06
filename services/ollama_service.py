@@ -446,7 +446,7 @@ IMPORTANTE:
             sanitized_message = sanitize_input(user_message)
 
             # Get RAG context (reduced and focused)
-            rag_texts = get_rag_context(sanitized_message, limit=2)
+            rag_texts = get_rag_context(sanitized_message, limit=1)
 
             # Build system message with user context only
             system_parts = []

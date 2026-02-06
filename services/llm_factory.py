@@ -34,13 +34,12 @@ def get_llm_service() -> LLMServiceInterface:
     if provider == "ollama":
         from services.ollama_service import OllamaService
 
-        logger.info("Using OllamaService as LLM provider")
+        # logger.info("Using OllamaService as LLM provider")
         return OllamaService()
 
     else:
         error_msg = (
-            f"Unknown LLM_PROVIDER: '{provider}'. "
-            f"Supported providers are: 'ollama'"
+            f"Unknown LLM_PROVIDER: '{provider}'. " f"Supported providers are: 'ollama'"
         )
         logger.error(error_msg)
         raise ValueError(error_msg)
