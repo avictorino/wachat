@@ -417,26 +417,25 @@ IMPORTANTE:
     def generate_intent_response(
         self,
         user_message: str,
-        conversation_context: List[dict],
+        intent: str,
         name: str,
         inferred_gender: Optional[str] = None,
-        intent: Optional[str] = None,
         theme_id: Optional[str] = None,
+        conversation_context: Optional[List[dict]] = None,
     ) -> List[str]:
         """
-        Generate an empathetic, spiritually-aware conversational response.
+        Generate an empathetic, spiritually-aware response based on detected intent.
 
-        This is the single unified method for generating all conversational responses.
         The system prompt is assumed to be defined in the Ollama Modelfile.
         RAG context is injected as silent background context.
 
         Args:
             user_message: The user's original message
-            conversation_context: List of recent messages (dicts with 'role' and 'content')
+            intent: The detected intent category
             name: The user's name
             inferred_gender: Inferred gender (male/female/unknown or None)
-            intent: Optional detected intent (used only for logging/analytics)
-            theme_id: Optional theme identifier (used only for logging/analytics)
+            theme_id: Optional theme identifier
+            conversation_context: Optional list of recent messages (dicts with 'role' and 'content')
 
         Returns:
             List of message strings to send sequentially
@@ -449,15 +448,14 @@ IMPORTANTE:
             rag_texts = get_rag_context(sanitized_message, limit=1)
 
             # Build system message with user context only
-            system_parts = []
+            system_parts = [f"Nome da pessoa: {name}"]
 
             # Add user context
+
             if inferred_gender and inferred_gender != "unknown":
                 system_parts.append(
                     GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender)
                 )
-
-            system_parts.append("Esta é uma continuação natural da conversa.")
 
             system_prompt = "\n".join(system_parts)
 
@@ -472,43 +470,113 @@ IMPORTANTE:
                 rag_content += "\n\n".join(rag_texts)
                 messages.append({"role": "assistant", "content": rag_content})
 
-            # Add conversation context
-            for msg in conversation_context:
-                messages.append({"role": msg["role"], "content": msg["content"]})
+            # Add conversation context if provided
+            if conversation_context:
+                for msg in conversation_context:
+                    messages.append({"role": msg["role"], "content": msg["content"]})
 
             # Add the current user message
             messages.append({"role": "user", "content": sanitized_message})
 
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": f"Contexto silencioso: Nome da pessoa: {name}.",
-                }
-            )
-
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": "Nota interna: responder com presença, sem sugerir técnicas, exercícios, atividades, planos ou estratégias.",
-                }
-            )
-
             response_text = self._make_chat_request(
-                messages, temperature=0.65, max_tokens=150
+                messages, temperature=0.65, max_tokens=250
             )
 
             # Split response into multiple messages if separator is used
             messages = self._split_response_messages(response_text)
 
-            intent_log = f" (intent: {intent})" if intent else ""
             logger.info(
-                f"Generated response with {len(messages)} message(s){intent_log} "
+                f"Generated intent-based response with {len(messages)} message(s) "
+                f"for intent: {intent} (RAG chunks: {len(rag_texts)})"
+            )
+            return messages
+
+        except Exception as e:
+            logger.error(f"Error generating intent response: {str(e)}", exc_info=True)
+            # Fallback to a simple empathetic message with a follow-up question
+            return [
+                "Obrigado por compartilhar isso comigo. O que mais te incomoda agora?"
+            ]
+
+    def generate_fallback_response(
+        self,
+        user_message: str,
+        conversation_context: List[dict],
+        name: str,
+        inferred_gender: Optional[str] = None,
+        theme_id: Optional[str] = None,
+    ) -> List[str]:
+        """
+        Generate a context-aware fallback response when intent is unclear.
+
+        The system prompt is assumed to be defined in the Ollama Modelfile.
+        RAG context is injected as silent background context.
+
+        Args:
+            user_message: The user's current message
+            conversation_context: List of recent messages (dicts with 'role' and 'content')
+            name: The user's name
+            inferred_gender: Inferred gender (male/female/unknown or None)
+            theme_id: Optional theme identifier
+
+        Returns:
+            List of message strings to send sequentially
+        """
+        try:
+            # Sanitize input before sending to LLM
+            sanitized_message = sanitize_input(user_message)
+
+            # Get RAG context (reduced and focused)
+            rag_texts = get_rag_context(sanitized_message, limit=2)
+
+            # Build system message with user context only
+            system_parts = []
+
+            # Add user context
+            system_parts.append(f"Nome da pessoa: {name}")
+
+            if inferred_gender and inferred_gender != "unknown":
+                system_parts.append(
+                    GENDER_CONTEXT_INSTRUCTION.format(gender=inferred_gender)
+                )
+
+            system_parts.append("Esta é uma continuação natural da conversa.")
+
+            system_prompt = "\n".join(system_parts)
+
+            # Build conversation context starting with system message
+            all_messages = [{"role": "system", "content": system_prompt}]
+
+            # Inject RAG as implicit memory (assistant role) if available
+            if rag_texts:
+                # Inject RAG context as assistant message with clear prefix
+                # Portuguese instruction because it's for the LLM context
+                rag_content = "Contexto para referência apenas. Não cite ou repita.\n\n"
+                rag_content += "\n\n".join(rag_texts)
+                all_messages.append({"role": "assistant", "content": rag_content})
+
+            # Add conversation context
+            for msg in conversation_context:
+                all_messages.append({"role": msg["role"], "content": msg["content"]})
+
+            # Add the current user message
+            all_messages.append({"role": "user", "content": sanitized_message})
+
+            response_text = self._make_chat_request(
+                all_messages, temperature=0.65, max_tokens=350
+            )
+
+            # Split response into multiple messages if separator is used
+            messages = self._split_response_messages(response_text)
+
+            logger.info(
+                f"Generated fallback response with {len(messages)} message(s) "
                 f"(RAG chunks: {len(rag_texts)})"
             )
             return messages
 
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}", exc_info=True)
+            logger.error(f"Error generating fallback response: {str(e)}", exc_info=True)
             # Fallback to a simple empathetic message with a follow-up question
             return [
                 "Obrigado por compartilhar isso comigo. Como você está se sentindo agora?"
