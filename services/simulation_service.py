@@ -8,8 +8,7 @@ and manages emotional analysis of the conversation.
 import logging
 import os
 import random
-import uuid
-from typing import List, Tuple
+from typing import List
 
 import requests
 from faker import Faker
@@ -19,7 +18,7 @@ from core.models import Message, Profile
 logger = logging.getLogger(__name__)
 
 # Initialize Faker once at module level for efficiency
-_faker = Faker('pt_BR')
+_faker = Faker("pt_BR")
 
 # Role labels for analysis output
 ROLE_LABEL_SEEKER = "Pessoa"  # Portuguese for "Person"
@@ -33,7 +32,7 @@ class SimulationService:
     Simulates realistic, gradual dialogue between:
     - ROLE_A: Introspective and reserved seeker (cautious, building trust slowly)
     - ROLE_B: Patient and relational listener (present, companionable)
-    
+
     The conversation simulates the beginning of a friendship, not a therapy session.
     """
 
@@ -45,13 +44,17 @@ class SimulationService:
             api_key: API key (kept for compatibility, not used)
         """
         # Direct Ollama configuration for USER simulation
-        self.base_url = os.environ.get("SIMULATION_OLLAMA_BASE_URL", os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434"))
-        self.model = os.environ.get("SIMULATION_OLLAMA_MODEL", os.environ.get("OLLAMA_MODEL", "llama3.1"))
+        self.base_url = os.environ.get("OLLAMA_BASE_URL")
+        self.model = os.environ.get("OLLAMA_MODEL_EMBEDDING")
         self.api_url = f"{self.base_url}/api/chat"
-        
-        logger.info(f"Initialized SimulationService with model={self.model}, base_url={self.base_url}")
 
-    def _call_llm(self, messages: List[dict], temperature: float = 0.85, max_tokens: int = 250) -> str:
+        logger.info(
+            f"Initialized SimulationService with model={self.model}, base_url={self.base_url}"
+        )
+
+    def _call_llm(
+        self, messages: List[dict], temperature: float = 0.85, max_tokens: int = 250
+    ) -> str:
         """
         Call Ollama API directly with messages (USER simulator).
 
@@ -72,7 +75,7 @@ class SimulationService:
                 "num_predict": max_tokens,
             },
         }
-        
+
         try:
             response = requests.post(
                 self.api_url,
@@ -80,16 +83,16 @@ class SimulationService:
                 timeout=60,
             )
             response.raise_for_status()
-            
+
             response_data = response.json()
             content = response_data.get("message", {}).get("content", "").strip()
-            
+
             if not content:
                 logger.warning("Ollama returned empty content")
                 raise ValueError("Empty response from Ollama")
-            
+
             return content
-            
+
         except requests.exceptions.RequestException as e:
             logger.error(f"Error calling Ollama API: {str(e)}", exc_info=True)
             raise
@@ -100,13 +103,13 @@ class SimulationService:
 
         Args:
             theme: The theme for the conversation (e.g., "drogas", "alcool", "ansiedade")
-        
+
         Returns:
             A new Profile instance marked with the theme
         """
         # Randomly choose a gender for the simulated profile
         gender = random.choice(["male", "female"])
-        
+
         # Generate a realistic name based on the gender using Faker
         if gender == "male":
             sim_name = _faker.first_name_male()
@@ -123,7 +126,9 @@ class SimulationService:
             prompt_theme=theme,  # Persist theme on profile
         )
 
-        logger.info(f"Created simulation profile: {profile.id} with name: {sim_name}, gender: {gender}, theme: {theme}")
+        logger.info(
+            f"Created simulation profile: {profile.id} with name: {sim_name}, gender: {gender}, theme: {theme}"
+        )
         return profile
 
     def generate_simulated_conversation(
@@ -145,7 +150,9 @@ class SimulationService:
         if num_messages % 2 != 0:
             num_messages += 1  # Make it even for alternating roles
 
-        logger.info(f"Generating {num_messages} simulated messages for profile {profile.id} with theme: {theme}")
+        logger.info(
+            f"Generating {num_messages} simulated messages for profile {profile.id} with theme: {theme}"
+        )
 
         conversation = []
         conversation_history = []
@@ -155,11 +162,15 @@ class SimulationService:
             if i % 2 == 0:
                 # ROLE_A: Seeker
                 role = "ROLE_A"
-                message = self._generate_seeker_message(conversation_history, i // 2 + 1, theme)
+                message = self._generate_seeker_message(
+                    conversation_history, i // 2 + 1, theme
+                )
             else:
                 # ROLE_B: Listener
                 role = "ROLE_B"
-                message = self._generate_listener_message(conversation_history, i // 2 + 1, theme)
+                message = self._generate_listener_message(
+                    conversation_history, i // 2 + 1, theme
+                )
 
             # Persist the message
             db_role = "user" if role == "ROLE_A" else "assistant"
@@ -195,7 +206,7 @@ class SimulationService:
         try:
             # Build theme-driven prompt
             theme_instruction = self._build_theme_instruction(theme)
-            
+
             system_prompt = f"""Você está simulando um usuário humano real.
 Você NÃO é um assistente.
 Você escreve mensagens curtas e honestas.
@@ -251,14 +262,16 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
                 else:
                     user_prompt = "Envie sua PRIMEIRA mensagem. Introduza o tema de forma natural e hesitante. Seja breve (1-2 frases)."
             elif turn <= 2:
-                user_prompt = f"Continue a conversa respondendo à mensagem anterior. Ainda esteja cauteloso. Use frases curtas."
+                user_prompt = "Continue a conversa respondendo à mensagem anterior. Ainda esteja cauteloso. Use frases curtas."
             else:
                 user_prompt = f"Continue a conversa respondendo à mensagem anterior. Este é o turno {turn}. Você pode se abrir um pouco mais, mas ainda com hesitação. Mantenha coerência com o tema."
 
             context_messages.append({"role": "user", "content": user_prompt})
 
             # Use higher temperature for more natural variation
-            response_text = self._call_llm(context_messages, temperature=0.9, max_tokens=250)
+            response_text = self._call_llm(
+                context_messages, temperature=0.9, max_tokens=250
+            )
 
             return response_text
 
@@ -350,13 +363,13 @@ Mensagens subsequentes:
 - Mantenha coerência com o tema de solidão
 """,
         }
-        
+
         default_instruction = """
 REGRAS ESPECÍFICAS DO TEMA (geral):
 Sua PRIMEIRA mensagem deve introduzir sua preocupação de forma natural e hesitante.
 Mensagens subsequentes devem reagir ao bot e manter coerência com o tema.
 """
-        
+
         return theme_instructions.get(theme, default_instruction)
 
     def _get_theme_fallbacks(self, theme: str) -> List[str]:
@@ -395,14 +408,14 @@ Mensagens subsequentes devem reagir ao bot e manter coerência com o tema.
                 "Tá me prejudicando",
             ],
         }
-        
+
         default_fallbacks = [
             "Não sei bem como explicar",
             "É difícil falar sobre isso",
             "Talvez seja só impressão minha",
             "Tem dias que é complicado",
         ]
-        
+
         return theme_fallbacks.get(theme, default_fallbacks)
 
     def _generate_listener_message(
@@ -434,7 +447,7 @@ Mensagens subsequentes devem reagir ao bot e manter coerência com o tema.
                     "outro": "A pessoa está lidando com algo que a incomoda. Esteja atento aos sinais emocionais implícitos.",
                 }
                 theme_awareness = f"\n\nCONSCIÊNCIA TEMÁTICA (IMPLÍCITA - NÃO MENCIONE DIRETAMENTE):\n{theme_awareness_map.get(theme, theme_awareness_map['outro'])}\n\nVocê NÃO deve nomear o tema explicitamente, mas deve estar sensível a esses sinais nas palavras da pessoa. Use perguntas abertas que validem o que ela expressa e criem espaço seguro para ela explorar esses sentimentos no próprio ritmo."
-            
+
             system_prompt = f"""Você é ROLE_B: "BOT paciente e relacional"
 
 Você é uma presença calma que está começando a conhecer alguém.
@@ -575,7 +588,9 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             user_prompt = f"Responda à mensagem anterior. Este é o turno {turn}. PRIORIDADE ABSOLUTA: Resposta MUITO CURTA (1-2 frases máximo, prefira 1). REFLITA o sentimento ou essência com PALAVRAS DIFERENTES - NUNCA repita as frases exatas da Pessoa. Valide o que ela sentiu, não apenas copie o que ela disse. NÃO interprete profundamente. NÃO introduza abstrações ou metáforas. NÃO adicione significados que ela não expressou. NÃO tente resolver. Use linguagem direta e simples. Perguntas são OPCIONAIS e devem ser simples. Use a consciência temática para estar atento, mas NÃO nomeie o tema explicitamente."
             context_messages.append({"role": "user", "content": user_prompt})
 
-            response_text = self._call_llm(context_messages, temperature=0.85, max_tokens=100)
+            response_text = self._call_llm(
+                context_messages, temperature=0.85, max_tokens=100
+            )
 
             return response_text
 
@@ -590,9 +605,7 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             ]
             return fallbacks[turn % len(fallbacks)]
 
-    def analyze_conversation_emotions(
-        self, conversation: List[dict]
-    ) -> str:
+    def analyze_conversation_emotions(self, conversation: List[dict]) -> str:
         """
         Perform critical analysis of a conversation.
 
@@ -600,7 +613,7 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
         critical analysis of conversational quality, not emotional analysis.
 
         This method analyzes the conversation for interpretation errors, missed opportunities,
-        pacing issues, verbosity issues, and over-assumptions. It provides a reflective, 
+        pacing issues, verbosity issues, and over-assumptions. It provides a reflective,
         analytical review of conversational quality rather than an emotional recap.
 
         Args:
@@ -613,7 +626,11 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             # Build transcript for analysis
             transcript_text = ""
             for msg in conversation:
-                role_label = ROLE_LABEL_SEEKER if msg["role"] == "ROLE_A" else ROLE_LABEL_LISTENER
+                role_label = (
+                    ROLE_LABEL_SEEKER
+                    if msg["role"] == "ROLE_A"
+                    else ROLE_LABEL_LISTENER
+                )
                 transcript_text += f"{role_label}: {msg['content']}\n\n"
 
             system_prompt = """Você é um analista crítico e revisor de conversas especializado em qualidade de diálogo humano-IA.
@@ -755,7 +772,7 @@ Foque especialmente em:
                     {"role": "user", "content": user_prompt},
                 ],
                 temperature=0.7,
-                max_tokens=1200
+                max_tokens=1200,
             )
 
             analysis = response_text

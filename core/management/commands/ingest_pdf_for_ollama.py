@@ -1,12 +1,16 @@
 import hashlib
 import os
 import re
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from typing import Iterator, List, Tuple
 
 import dotenv
 import fitz  # PyMuPDF
 import requests
 from django.core.management.base import BaseCommand, CommandError
+from django.db import IntegrityError, close_old_connections, transaction
 
 from config.settings import BASE_DIR
 from core.models import RagChunk
@@ -20,13 +24,41 @@ dotenv.read_dotenv(BASE_DIR)
 DEFAULT_PDF_PATH = "/Users/avictorino/Projects/wachat/model/pdfs"
 
 EMBEDDING_MODEL = "nomic-embed-text"
-EMBEDDING_DIMENSION = 768
+EMBEDDING_DIMENSION = 768  # Keep for reference
 
-# 🔥 modelo RAG dedicado
+# Dedicated RAG chat model
 OLLAMA_RAG_CHAT_MODEL = "wachat-rag-v1"
 
 MIN_RAG_CHARS = 100
 MAX_RAG_CHARS = 400
+
+DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_WORKERS = 2
+
+# Per-thread HTTP session (avoid sharing sessions across threads)
+_thread_local = threading.local()
+
+
+def get_session() -> requests.Session:
+    sess = getattr(_thread_local, "session", None)
+    if sess is None:
+        sess = requests.Session()
+        _thread_local.session = sess
+    return sess
+
+
+# ==========================
+# DATA STRUCTURES
+# ==========================
+
+
+@dataclass(frozen=True)
+class BlockTask:
+    source: str
+    pdf_file: str
+    page: int
+    block: str
+
 
 # ==========================
 # TEXT CLEANUP
@@ -52,13 +84,16 @@ def repair_text(text: str) -> str:
 
 def extract_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
     doc = fitz.open(pdf_path)
-    for page_number, page in enumerate(doc, start=1):
-        for block in page.get_text("blocks"):
-            raw = block[4]
-            if raw and raw.strip():
-                cleaned = repair_text(raw)
-                if cleaned:
-                    yield page_number, cleaned
+    try:
+        for page_number, page in enumerate(doc, start=1):
+            for block in page.get_text("blocks"):
+                raw = block[4]
+                if raw and raw.strip():
+                    cleaned = repair_text(raw)
+                    if cleaned:
+                        yield page_number, cleaned
+    finally:
+        doc.close()
 
 
 # ==========================
@@ -67,7 +102,8 @@ def extract_blocks(pdf_path: str) -> Iterator[Tuple[int, str]]:
 
 
 def parse_conversation(text: str) -> List[List[dict]]:
-    conversations, current = [], []
+    conversations: List[List[dict]] = []
+    current: List[dict] = []
 
     for line in text.splitlines():
         line = line.strip()
@@ -123,7 +159,7 @@ def is_title_or_index(text: str) -> bool:
 
 
 # ==========================
-# NORMALIZATION (Q/A → RAG)
+# NORMALIZATION (Q/A -> RAG)
 # ==========================
 
 
@@ -147,16 +183,17 @@ def normalize_qa(user_text: str, counselor_text: str) -> str:
 # ==========================
 
 
-def generate_conversation(text: str, ollama_url: str) -> List[List[dict]]:
+def generate_conversation(raw_text: str, ollama_url: str) -> List[List[dict]]:
     """
-    Envia SOMENTE o texto cru.
-    Todo o comportamento vem do Modelfile (wachat-rag-v1).
+    Sends ONLY raw text.
+    All behavior comes from the Modelfile (wachat-rag-v1).
     """
-    resp = requests.post(
+    session = get_session()
+    resp = session.post(
         f"{ollama_url.rstrip('/')}/api/generate",
         json={
             "model": OLLAMA_RAG_CHAT_MODEL,
-            "prompt": text,
+            "prompt": raw_text,
             "stream": False,
         },
         timeout=120,
@@ -168,7 +205,8 @@ def generate_conversation(text: str, ollama_url: str) -> List[List[dict]]:
 
 
 def embed_text(text: str, ollama_url: str) -> List[float]:
-    resp = requests.post(
+    session = get_session()
+    resp = session.post(
         f"{ollama_url.rstrip('/')}/api/embeddings",
         json={
             "model": EMBEDDING_MODEL,
@@ -179,7 +217,65 @@ def embed_text(text: str, ollama_url: str) -> List[float]:
     )
     resp.raise_for_status()
 
-    return resp.json().get("embedding")
+    embedding = resp.json().get("embedding")
+    if not isinstance(embedding, list):
+        raise RuntimeError("Invalid embedding response from Ollama")
+    return embedding
+
+
+# ==========================
+# WORKER
+# ==========================
+
+
+def process_block_task(task: BlockTask, ollama_url: str) -> int:
+    """
+    Returns number of chunks saved for this block.
+    Thread-safe: manages DB connections per thread and handles duplicates via IntegrityError.
+    """
+    close_old_connections()
+    saved = 0
+
+    try:
+        conversations = generate_conversation(task.block, ollama_url)
+
+        for convo in conversations:
+            if len(convo) != 2:
+                continue
+
+            u, c = convo
+            rag_text = normalize_qa(u.get("text", ""), c.get("text", ""))
+
+            if not (MIN_RAG_CHARS <= len(rag_text) <= MAX_RAG_CHARS):
+                continue
+
+            rag_id = generate_rag_id(task.source, task.page, rag_text)
+
+            # Compute embedding before DB write to reduce open transaction time.
+            embedding = embed_text(rag_text, ollama_url)
+
+            try:
+                with transaction.atomic():
+                    RagChunk.objects.create(
+                        id=rag_id,
+                        text=rag_text,
+                        raw_text=task.block,
+                        conversations=convo,
+                        source=task.source,
+                        page=task.page,
+                        chunk_index=0,
+                        type="conversation_pair",
+                        embedding=embedding,
+                    )
+                saved += 1
+            except IntegrityError:
+                # Duplicate id, safe to ignore in parallel runs
+                continue
+
+        return saved
+
+    finally:
+        close_old_connections()
 
 
 # ==========================
@@ -188,66 +284,95 @@ def embed_text(text: str, ollama_url: str) -> List[float]:
 
 
 class Command(BaseCommand):
-    help = "Granular RAG ingestion using dedicated RAG model (semantic hash IDs)"
+    help = "Granular RAG ingestion using dedicated RAG model (thread-safe, semantic hash IDs)"
 
     def add_arguments(self, parser):
-        parser.add_argument("--ollama-url", default="http://localhost:11434")
+        parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL)
+        parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+        parser.add_argument("--max-pages", type=int, default=0, help="0 = no limit")
+        parser.add_argument("--skip-pages", type=int, default=10)
 
     def handle(self, *args, **options):
-        ollama_url = options["ollama_url"]
+        ollama_url: str = options["ollama_url"]
+        workers: int = max(1, int(options["workers"]))
+        max_pages: int = int(options["max_pages"])
+        skip_pages: int = int(options["skip_pages"])
 
         if not os.path.isdir(DEFAULT_PDF_PATH):
             raise CommandError("DEFAULT_PDF_PATH must be a directory")
 
-        for pdf_file in os.listdir(DEFAULT_PDF_PATH):
-            if not pdf_file.lower().endswith(".pdf"):
-                continue
+        pdf_files = [
+            f for f in os.listdir(DEFAULT_PDF_PATH) if f.lower().endswith(".pdf")
+        ]
+        if not pdf_files:
+            raise CommandError("No PDF files found")
 
+        total_saved = 0
+        total_tasks = 0
+
+        for pdf_file in sorted(pdf_files):
             source = os.path.splitext(pdf_file)[0]
             pdf_path = os.path.join(DEFAULT_PDF_PATH, pdf_file)
 
             self.stdout.write(self.style.NOTICE(f"Processing {pdf_file}"))
 
+            # Build tasks in main thread (safe)
+            tasks: List[BlockTask] = []
+            pages_seen = 0
+
             for page, block in extract_blocks(pdf_path):
-                if (
-                    page <= 10
-                    or is_reference_like(block)
-                    or is_title_or_index(block)
-                    or len(block) < MIN_RAG_CHARS
-                ):
+                if page <= skip_pages:
                     continue
 
-                conversations = generate_conversation(block, ollama_url)
+                pages_seen += 1
+                if max_pages and pages_seen > max_pages:
+                    break
 
-                for convo in conversations:
-                    if len(convo) != 2:
-                        continue
+                if len(block) < MIN_RAG_CHARS:
+                    continue
+                if is_reference_like(block):
+                    continue
+                if is_title_or_index(block):
+                    continue
 
-                    u, c = convo
-                    rag_text = normalize_qa(u["text"], c["text"])
+                tasks.append(
+                    BlockTask(source=source, pdf_file=pdf_file, page=page, block=block)
+                )
 
-                    if not (MIN_RAG_CHARS <= len(rag_text) <= MAX_RAG_CHARS):
-                        continue
+            if not tasks:
+                self.stdout.write(self.style.WARNING(f"No tasks for {pdf_file}"))
+                continue
 
-                    rag_id = generate_rag_id(source, page, rag_text)
+            self.stdout.write(
+                self.style.NOTICE(
+                    f"Queued {len(tasks)} blocks for {pdf_file} (workers={workers})"
+                )
+            )
+            total_tasks += len(tasks)
 
-                    if RagChunk.objects.filter(id=rag_id).exists():
-                        continue
+            # Process tasks in parallel
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                futures = [
+                    executor.submit(process_block_task, t, ollama_url) for t in tasks
+                ]
 
-                    embedding = embed_text(rag_text, ollama_url)
+                for fut in as_completed(futures):
+                    try:
+                        saved = fut.result()
+                        if saved:
+                            total_saved += saved
+                    except Exception as e:
+                        # Hard block behavior: fail fast if desired
+                        raise CommandError(f"Worker failed: {e}") from e
 
-                    RagChunk.objects.create(
-                        id=rag_id,
-                        text=rag_text,
-                        raw_text=block,
-                        conversations=convo,
-                        source=source,
-                        page=page,
-                        chunk_index=0,
-                        type="conversation_pair",
-                        embedding=embedding,
-                    )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Finished {pdf_file}. Total saved so far: {total_saved}"
+                )
+            )
 
-                    self.stdout.write(self.style.SUCCESS(f"Saved {rag_id}"))
-
-        self.stdout.write(self.style.SUCCESS("RAG ingestion completed"))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"RAG ingestion completed. Blocks processed: {total_tasks}, chunks saved: {total_saved}"
+            )
+        )
