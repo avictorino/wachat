@@ -118,3 +118,117 @@ O que te trouxe até este lugar hoje?"""
         # Question should be the reflective question
         self.assertIn("caminhada", question)
         self.assertTrue(question.endswith("?"))
+
+
+class ResponseMessageSplitterTest(TestCase):
+    """Tests for split_response_messages function."""
+
+    def test_split_simple_two_paragraphs(self):
+        """Test splitting a simple message with two paragraphs."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Olá João! Entendo sua preocupação.\n\nComo posso ajudar você hoje?"
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0], "Olá João! Entendo sua preocupação.")
+        self.assertEqual(messages[1], "Como posso ajudar você hoje?")
+
+    def test_split_three_paragraphs(self):
+        """Test splitting a message with three paragraphs."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Entendo.\n\nEstou aqui para ouvir.\n\nO que você gostaria de compartilhar?"
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 3)
+        self.assertEqual(messages[0], "Entendo.")
+        self.assertEqual(messages[1], "Estou aqui para ouvir.")
+        self.assertEqual(messages[2], "O que você gostaria de compartilhar?")
+
+    def test_discard_orphan_word(self):
+        """Test that orphan words are discarded."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Entendo sua situação.\n\nVocê"
+        messages = split_response_messages(response)
+        
+        # "Você" should be discarded as it's an incomplete fragment
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0], "Entendo sua situação.")
+
+    def test_merge_incomplete_last_fragment(self):
+        """Test that orphan word at the end is discarded."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Olá Maria.\n\nBem-vinda.\n\nestá"
+        messages = split_response_messages(response)
+        
+        # "está" should be discarded as it's a single orphan word
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0], "Olá Maria.")
+        self.assertEqual(messages[1], "Bem-vinda.")
+
+    def test_single_paragraph_no_split(self):
+        """Test that single paragraph returns as-is."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Olá João! Como você está se sentindo hoje?"
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 1)
+        self.assertEqual(messages[0], "Olá João! Como você está se sentindo hoje?")
+
+    def test_trim_whitespace(self):
+        """Test that whitespace is trimmed from parts."""
+        from services.message_splitter import split_response_messages
+        
+        response = "  Olá!  \n\n  Como está?  "
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0], "Olá!")
+        self.assertEqual(messages[1], "Como está?")
+
+    def test_empty_response(self):
+        """Test that empty response returns empty list."""
+        from services.message_splitter import split_response_messages
+        
+        response = ""
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 0)
+
+    def test_multiple_newlines_treated_as_one_break(self):
+        """Test that multiple newlines are treated as one paragraph break."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Olá!\n\n\n\nComo está?"
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0], "Olá!")
+        self.assertEqual(messages[1], "Como está?")
+
+    def test_complete_sentence_check(self):
+        """Test that complete sentences are identified correctly."""
+        from services.message_splitter import split_response_messages
+        
+        # This has a complete final sentence
+        response = "Entendo.\n\nEstou aqui para ajudar você."
+        messages = split_response_messages(response)
+        
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1], "Estou aqui para ajudar você.")
+
+    def test_discard_middle_incomplete_fragment(self):
+        """Test that incomplete fragments in the middle are discarded."""
+        from services.message_splitter import split_response_messages
+        
+        response = "Olá Maria.\n\nVocê\n\nComo posso ajudar?"
+        messages = split_response_messages(response)
+        
+        # "Você" in the middle should be discarded
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0], "Olá Maria.")
+        self.assertEqual(messages[1], "Como posso ajudar?")

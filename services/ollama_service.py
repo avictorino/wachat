@@ -15,6 +15,7 @@ import requests
 
 from services.input_sanitizer import sanitize_input
 from services.llm_service_interface import LLMServiceInterface
+from services.message_splitter import split_response_messages
 from services.rag_service import get_rag_context
 
 logger = logging.getLogger(__name__)
@@ -420,8 +421,8 @@ IMPORTANTE:
         The system prompt is assumed to be defined in the Ollama Modelfile.
         RAG context is injected as silent background context.
 
-        Returns a single unified message - no splitting into multiple messages.
-        This ensures consistency between real chat and simulator modes.
+        Returns multiple messages split by logical paragraphs for sequential delivery.
+        Each message is a complete sentence with orphan words/fragments filtered out.
 
         Args:
             user_message: The user's original message
@@ -432,7 +433,7 @@ IMPORTANTE:
             conversation_context: Optional list of recent messages (dicts with 'role' and 'content')
 
         Returns:
-            List containing a single message string (for backward compatibility)
+            List of message strings to be sent sequentially
         """
         try:
             # Sanitize input before sending to LLM
@@ -474,12 +475,14 @@ IMPORTANTE:
                 messages, temperature=0.65, max_tokens=250
             )
 
-            # Return response as single unified message (no splitting)
-            # This ensures consistency between real chat and simulator modes
+            # Split response into multiple sequential messages
+            # This creates a more natural conversational flow
+            response_messages = split_response_messages(response_text)
+            
             logger.info(
-                f"Generated intent-based response for intent: {intent} (RAG chunks: {len(rag_texts)})"
+                f"Generated intent-based response for intent: {intent} (RAG chunks: {len(rag_texts)}, messages: {len(response_messages)})"
             )
-            return [response_text.strip()]
+            return response_messages
 
         except Exception as e:
             logger.error(f"Error generating intent response: {str(e)}", exc_info=True)
