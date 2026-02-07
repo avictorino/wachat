@@ -274,13 +274,13 @@ Responda APENAS com a mensagem curta (1-3 frases), sem aspas ou explicações.""
                 substance_themes = ["drogas", "alcool", "cigarro", "sexo"]
                 if theme in substance_themes:
                     theme_examples = {
-                        "drogas": "voltei a usar e não devia', 'quando vem a vontade eu vou', 'depois eu me odeio mas na hora...",
-                        "alcool": "tô bebendo todo dia de novo', 'jurei que ia parar mas chega fim de semana...', 'sei que tá errado mas é o que me acalma",
-                        "cigarro": "larguei e voltei pior', 'falo que vou parar faz um ano', 'tô me matando aos poucos mas...",
-                        "sexo": "é compulsivo e eu sei', 'depois me odeio mas na hora...', 'não consigo controlar",
+                        "drogas": "voltei a usar e não devia, quando vem a vontade eu vou, depois eu me odeio mas na hora...",
+                        "alcool": "tô bebendo todo dia de novo, jurei que ia parar mas chega fim de semana..., sei que tá errado mas é o que me acalma",
+                        "cigarro": "larguei e voltei pior, falo que vou parar faz um ano, tô me matando aos poucos mas...",
+                        "sexo": "é compulsivo e eu sei, depois me odeio mas na hora..., não consigo controlar",
                     }
                     examples = theme_examples.get(theme, "")
-                    user_prompt = f"PRIMEIRA mensagem. Você JÁ ESTÁ no problema (usando/fazendo). Seja direto. Mostre culpa E desejo juntos. 1-3 frases máximo. Exemplos de tom: '{examples}'. NUNCA use 'É como se', 'Parece que', 'Estou lutando com'."
+                    user_prompt = f"PRIMEIRA mensagem. Você JÁ ESTÁ no problema (usando/fazendo). Seja direto. Mostre culpa E desejo juntos. 1-3 frases máximo. Exemplos de tom: {examples}. NUNCA use 'É como se', 'Parece que', 'Estou lutando com'."
                 else:
                     user_prompt = "PRIMEIRA mensagem. Introduza o tema com contradição interna. 1-3 frases máximo. Sem frases terapêuticas."
             elif turn == 2:
