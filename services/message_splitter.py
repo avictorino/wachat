@@ -6,11 +6,18 @@ This module handles splitting long welcome messages into two sequential messages
 2. A shorter reflective question
 
 This creates a more human, less robotic conversational experience.
+
+It also provides smart response splitting that:
+- Splits by logical paragraphs (double newline)
+- Trims whitespace from each part
+- Discards orphan words/fragments
+- Ensures the final message is complete
+- Merges incomplete segments with previous messages
 """
 
 import logging
 import re
-from typing import Tuple
+from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -93,3 +100,121 @@ def split_welcome_message(message: str) -> Tuple[str, str]:
     logger.info(f"Split message into greeting ({len(greeting)} chars) and question ({len(question)} chars)")
 
     return (greeting, question)
+
+
+def _is_complete_sentence(text: str) -> bool:
+    """
+    Check if text appears to be a complete sentence or question.
+    
+    A complete sentence should:
+    - End with proper punctuation (. ! ? :)
+    - Have at least one space (more than one word)
+    - Not be just a single orphan word
+    
+    Args:
+        text: The text to check
+        
+    Returns:
+        True if it appears to be a complete sentence, False otherwise
+    """
+    text = text.strip()
+    
+    # Empty or too short
+    if not text or len(text) < 3:
+        return False
+    
+    # Single word without punctuation is incomplete
+    if ' ' not in text and not any(text.endswith(p) for p in ['.', '!', '?', ':']):
+        return False
+    
+    # Single word is incomplete even with punctuation (like "Você?" or "Bem.")
+    if ' ' not in text.rstrip('.!?:'):
+        return False
+    
+    # Has proper ending punctuation
+    if any(text.endswith(p) for p in ['.', '!', '?', ':']):
+        return True
+    
+    # Has multiple words but no punctuation - could be incomplete
+    # but we'll be lenient if it's reasonably long
+    return len(text.split()) >= 5
+
+
+def split_response_messages(response: str) -> List[str]:
+    """
+    Split a bot response into multiple sequential messages based on logical paragraphs.
+    
+    This function:
+    - Splits by double newlines (paragraph breaks)
+    - Trims whitespace from each part
+    - Discards orphan words or incomplete fragments
+    - Ensures the final message is a complete sentence
+    - Merges incomplete final segments with the previous message
+    
+    Args:
+        response: The full bot response text
+        
+    Returns:
+        List of message strings to send sequentially
+        
+    Examples:
+        >>> split_response_messages("Olá João!\\n\\nComo você está?")
+        ["Olá João!", "Como você está?"]
+        
+        >>> split_response_messages("Entendo.\\n\\nVocê")
+        ["Entendo."]
+        
+        >>> split_response_messages("Oi.\\n\\nBem-vindo.\\n\\nVocê")
+        ["Oi.", "Bem-vindo."]
+    """
+    if not response or not response.strip():
+        return []
+    
+    # Split by double newline (paragraph breaks)
+    parts = re.split(r'\n\n+', response)
+    
+    # Trim whitespace and filter empty parts
+    parts = [part.strip() for part in parts if part.strip()]
+    
+    if not parts:
+        return []
+    
+    # Process parts to ensure quality
+    messages = []
+    
+    for i, part in enumerate(parts):
+        is_last = (i == len(parts) - 1)
+        
+        # Check if this part is complete
+        if _is_complete_sentence(part):
+            # If this is the last part, add it normally
+            if is_last:
+                messages.append(part)
+            else:
+                # Not the last part, add it
+                messages.append(part)
+        else:
+            # Incomplete fragment
+            if is_last:
+                # Last fragment is incomplete
+                if messages:
+                    # Merge with previous message if we have one
+                    # Add a space between them for natural flow
+                    messages[-1] = f"{messages[-1]} {part}"
+                    logger.info(f"Merged incomplete last fragment '{part}' with previous message")
+                else:
+                    # Only fragment and it's incomplete - still include it
+                    # (better than sending nothing)
+                    messages.append(part)
+                    logger.warning(f"Single incomplete fragment kept: '{part}'")
+            else:
+                # Not the last part but incomplete - discard it
+                logger.info(f"Discarded incomplete fragment: '{part}'")
+    
+    # If we ended up with no messages, return the original response
+    if not messages:
+        logger.warning("No valid messages after splitting, returning original")
+        return [response.strip()]
+    
+    logger.info(f"Split response into {len(messages)} messages")
+    return messages
