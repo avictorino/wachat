@@ -63,7 +63,7 @@ return [response_text.strip()]  # Always returns single message
 - Real chat now produces single, consolidated responses
 - Simulator already used first message only, now receives single message
 - Both modes now produce identical response structure
-- Message splitting function `_split_response_messages()` is now unused but kept for potential future use
+- Removed unused `_split_response_messages()` function to reduce code maintenance burden
 
 ### 2. Conversation Context Alignment ✅
 

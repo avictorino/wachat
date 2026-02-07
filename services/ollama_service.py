@@ -475,7 +475,7 @@ IMPORTANTE:
             )
 
             # Return response as single unified message (no splitting)
-            # Multiple consecutive bot messages should only occur in simulation mode
+            # This ensures consistency between real chat and simulator modes
             logger.info(
                 f"Generated intent-based response for intent: {intent} (RAG chunks: {len(rag_texts)})"
             )
@@ -487,35 +487,6 @@ IMPORTANTE:
             return [
                 "Obrigado por compartilhar isso comigo. O que mais te incomoda agora?"
             ]
-
-    def _split_response_messages(self, response: str) -> List[str]:
-        """
-        Split a response into multiple chat messages based on paragraphs,
-        simulating natural human message sending (WhatsApp-like).
-
-        Rules:
-        - Split by paragraph breaks (\n\n)
-        - Ignore empty blocks
-        - Preserve original wording
-        - Limit max messages for safety
-        """
-
-        if not response or not response.strip():
-            return []
-
-        # Normalize line breaks
-        normalized = response.strip().replace("\r\n", "\n")
-
-        # Split by paragraph (double newline)
-        messages = [
-            block.strip() for block in normalized.split("\n\n") if block.strip()
-        ]
-
-        # Fallback safety
-        if not messages:
-            return [response.strip()]
-
-        return messages
 
     def get_last_prompt_payload(self) -> Optional[Dict[str, Any]]:
         """
