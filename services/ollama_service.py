@@ -420,6 +420,9 @@ IMPORTANTE:
         The system prompt is assumed to be defined in the Ollama Modelfile.
         RAG context is injected as silent background context.
 
+        Returns a single unified message - no splitting into multiple messages.
+        This ensures consistency between real chat and simulator modes.
+
         Args:
             user_message: The user's original message
             intent: The detected intent category
@@ -429,7 +432,7 @@ IMPORTANTE:
             conversation_context: Optional list of recent messages (dicts with 'role' and 'content')
 
         Returns:
-            List of message strings to send sequentially
+            List containing a single message string (for backward compatibility)
         """
         try:
             # Sanitize input before sending to LLM
@@ -471,14 +474,12 @@ IMPORTANTE:
                 messages, temperature=0.65, max_tokens=250
             )
 
-            # Split response into multiple messages if separator is used
-            messages = self._split_response_messages(response_text)
-
+            # Return response as single unified message (no splitting)
+            # This ensures consistency between real chat and simulator modes
             logger.info(
-                f"Generated intent-based response with {len(messages)} message(s) "
-                f"for intent: {intent} (RAG chunks: {len(rag_texts)})"
+                f"Generated intent-based response for intent: {intent} (RAG chunks: {len(rag_texts)})"
             )
-            return messages
+            return [response_text.strip()]
 
         except Exception as e:
             logger.error(f"Error generating intent response: {str(e)}", exc_info=True)
@@ -486,35 +487,6 @@ IMPORTANTE:
             return [
                 "Obrigado por compartilhar isso comigo. O que mais te incomoda agora?"
             ]
-
-    def _split_response_messages(self, response: str) -> List[str]:
-        """
-        Split a response into multiple chat messages based on paragraphs,
-        simulating natural human message sending (WhatsApp-like).
-
-        Rules:
-        - Split by paragraph breaks (\n\n)
-        - Ignore empty blocks
-        - Preserve original wording
-        - Limit max messages for safety
-        """
-
-        if not response or not response.strip():
-            return []
-
-        # Normalize line breaks
-        normalized = response.strip().replace("\r\n", "\n")
-
-        # Split by paragraph (double newline)
-        messages = [
-            block.strip() for block in normalized.split("\n\n") if block.strip()
-        ]
-
-        # Fallback safety
-        if not messages:
-            return [response.strip()]
-
-        return messages
 
     def get_last_prompt_payload(self) -> Optional[Dict[str, Any]]:
         """
