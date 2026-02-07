@@ -14,6 +14,7 @@ import requests
 from faker import Faker
 
 from core.models import Message, Profile
+from services.llm_factory import get_llm_service
 
 logger = logging.getLogger(__name__)
 
@@ -155,36 +156,114 @@ class SimulationService:
 
         logger.info(f"Generating {num_messages} simulated messages for profile {profile.id} with theme: {theme}")
 
+        # Get LLM service for bot responses (using production chat pipeline)
+        llm_service = get_llm_service()
+
         conversation = []
         conversation_history = []
+        last_user_message_obj = None  # Track the most recent user message for bot response
 
         for i in range(num_messages):
             # Alternate between roles
             if i % 2 == 0:
-                # ROLE_A: Seeker
+                # ROLE_A: Seeker - Generate user message using simulator logic
                 role = "ROLE_A"
                 message = self._generate_seeker_message(conversation_history, i // 2 + 1, theme)
+                
+                # Save user message to database
+                last_user_message_obj = Message.objects.create(
+                    profile=profile,
+                    role="user",
+                    content=message,
+                    channel="telegram",
+                )
+                logger.info(f"Saved simulated user message {last_user_message_obj.id} for profile {profile.id}")
+                
+                # Add to conversation history
+                conversation.append({"role": role, "content": message})
+                conversation_history.append({"role": role, "content": message})
+                
             else:
-                # ROLE_B: Listener
+                # ROLE_B: Listener - Use production chat pipeline
                 role = "ROLE_B"
-                message = self._generate_listener_message(conversation_history, i // 2 + 1, theme)
-
-            # Persist the message
-            db_role = "user" if role == "ROLE_A" else "assistant"
-            Message.objects.create(
-                profile=profile,
-                role=db_role,
-                content=message,
-                channel="telegram",
-            )
-
-            # Add to transcript
-            conversation.append({"role": role, "content": message})
-            conversation_history.append({"role": role, "content": message})
+                
+                if not last_user_message_obj:
+                    logger.error(f"No user message available for bot response in profile {profile.id}")
+                    raise ValueError("Cannot generate bot response without a user message")
+                
+                # Get conversation context (last 5 messages, excluding the current one we're generating)
+                context = self._get_conversation_context(profile, limit=5)
+                
+                # Generate bot response using production pipeline
+                response_messages = llm_service.generate_intent_response(
+                    user_message=last_user_message_obj.content,
+                    conversation_context=context,
+                    name=profile.name,
+                    inferred_gender=profile.inferred_gender,
+                    intent=None,
+                    theme_id=profile.prompt_theme,
+                )
+                
+                # Validate response
+                if not response_messages:
+                    logger.error(f"LLM service returned empty response for profile {profile.id}")
+                    raise ValueError("LLM service failed to generate a response")
+                
+                # Take the first response message (production pipeline may return multiple)
+                message = response_messages[0]
+                
+                # Save assistant response to database
+                assistant_message_obj = Message.objects.create(
+                    profile=profile,
+                    role="assistant",
+                    content=message,
+                    channel="telegram",
+                )
+                
+                # Capture and save Ollama prompt payload for observability (same as production)
+                # The prompt payload represents what was sent to generate the bot's response,
+                # so it should be saved to the user message that triggered this response
+                if hasattr(llm_service, "get_last_prompt_payload"):
+                    prompt_payload = llm_service.get_last_prompt_payload()
+                    if prompt_payload and isinstance(prompt_payload, dict):
+                        last_user_message_obj.ollama_prompt = prompt_payload
+                        last_user_message_obj.save(update_fields=["ollama_prompt"])
+                        logger.info(f"Saved Ollama prompt payload to simulated user message {last_user_message_obj.id}")
+                
+                logger.info(f"Saved simulated bot response {assistant_message_obj.id} for profile {profile.id}")
+                
+                # Add to conversation history
+                conversation.append({"role": role, "content": message})
+                conversation_history.append({"role": role, "content": message})
 
             logger.info(f"Generated {role} message {i + 1}/{num_messages}")
 
         return conversation
+    
+    def _get_conversation_context(self, profile: Profile, limit: int = 5) -> list:
+        """
+        Get recent conversation context for the LLM.
+        Excludes system messages to focus on user-assistant dialogue.
+        
+        Args:
+            profile: Profile to get messages for
+            limit: Maximum number of recent messages to include
+            
+        Returns:
+            List of message dicts with 'role' and 'content' keys
+        """
+        recent_messages = (
+            Message.objects.filter(profile=profile)
+            .exclude(role="system")
+            .order_by("-created_at")[:limit]
+        )
+
+        context = []
+        for msg in reversed(recent_messages):
+            context.append({"role": msg.role, "content": msg.content})
+
+        logger.info(f"Retrieved {len(context)} messages for conversation context")
+        return context
 
     def _generate_seeker_message(self, conversation_history: List[dict], turn: int, theme: str = None) -> str:
         """
@@ -533,187 +612,6 @@ MÁXIMO 3 FRASES sempre.
         ]
 
         return theme_fallbacks.get(theme, default_fallbacks)
-
-    def _generate_listener_message(self, conversation_history: List[dict], turn: int, theme: str = None) -> str:
-        """
-        Generate a message from ROLE_B (listener).
-
-        Args:
-            conversation_history: Previous messages in the conversation
-            turn: Turn number for this role (1-indexed)
-            theme: Theme/intent for the conversation (e.g., "doenca", "ansiedade")
-
-        Returns:
-            Generated message text
-        """
-        try:
-            # Build theme awareness for listener
-            theme_awareness = ""
-            if theme:
-                theme_awareness_map = {
-                    "doenca": "A pessoa pode estar lidando com preocupações de saúde, desconforto físico, ou medo sobre o corpo. Esteja atento a menções de cansaço, mal-estar, fraqueza ou preocupações sobre si mesmo ou alguém próximo.",
-                    "ansiedade": "A pessoa pode estar lidando com ansiedade, preocupação constante, ou medo difuso. Esteja atento a inquietações, tensões, ou sensação de que algo está errado.",
-                    "ato_criminoso_pecado": "A pessoa pode estar carregando culpa, arrependimento ou peso por algo que fez. Esteja atento a menções de peso, algo que aconteceu, ou sensação de ter errado.",
-                    "problemas_financeiros": "A pessoa pode estar enfrentando dificuldades financeiras, pressão econômica ou insegurança material. Esteja atento a menções de dificuldades, pressão ou situação complicada.",
-                    "distante_religiao": "A pessoa pode estar se sentindo distante da fé, espiritualidade ou religião. Esteja atento a menções de distância, falta de conexão ou vazio espiritual.",
-                    "desabafar": "A pessoa precisa ser ouvida e desabafar sobre algo que o incomoda. Esteja atento a necessidade de falar, solidão ou falta de espaço para compartilhar.",
-                    "redes_sociais": "A pessoa encontrou este espaço nas redes sociais e está curiosa. Esteja atento a curiosidade e abertura inicial.",
-                    "outro": "A pessoa está lidando com algo que a incomoda. Esteja atento aos sinais emocionais implícitos.",
-                }
-                theme_awareness = f"\n\nCONSCIÊNCIA TEMÁTICA (IMPLÍCITA - NÃO MENCIONE DIRETAMENTE):\n{theme_awareness_map.get(theme, theme_awareness_map['outro'])}\n\nVocê NÃO deve nomear o tema explicitamente, mas deve estar sensível a esses sinais nas palavras da pessoa. Use perguntas abertas que validem o que ela expressa e criem espaço seguro para ela explorar esses sentimentos no próprio ritmo."
-
-            system_prompt = f"""Você é ROLE_B: "BOT paciente e relacional"
-
-Você é uma presença calma que está começando a conhecer alguém.
-Você NÃO é um terapeuta. Você é alguém que oferece companhia e escuta genuína.
-{theme_awareness}
-
-PRINCÍPIO FUNDAMENTAL: REFLETIR EMOÇÕES, NÃO REPETIR PALAVRAS
-- NÃO repita as frases exatas da Pessoa literalmente
-- Reflita o SENTIMENTO ou a ESSÊNCIA, não o texto verbatim
-- Valide o que FOI SENTIDO, não apenas o que foi dito
-- Use palavras diferentes para mostrar que você ouviu e compreendeu
-- NÃO adicione interpretações profundas que a pessoa não sugeriu
-
-RESTRIÇÕES COMPORTAMENTAIS:
-- NÃO pressione por profundidade
-- NÃO interprete emoções de forma profunda prematuramente
-- NÃO nomeie o tema explicitamente (deixe a pessoa conduzir)
-- NÃO assuma que há algo específico a ser discutido
-- NÃO tente resolver problemas
-- NÃO use metáforas ou linguagem simbólica (ex: "o chão está menos firme", "carregar um peso")
-- NÃO adicione camadas de significado que a pessoa não expressou
-- NÃO infira estados internos não verbalizados
-- NÃO reformule sentimentos vagos em interpretações mais específicas
-- Priorize:
-  * Reflexão emocional simples (NÃO espelhamento verbatim)
-  * Validação do sentimento expresso
-  * Presença calma e acolhedora
-  * Espaço seguro sem pressão
-- Perguntas abertas são OPCIONAIS e devem ser simples e relacionadas ao que foi dito
-- Permita silêncio e ambiguidade
-- Aceite a brevidade como válida
-
-TOM:
-- Quente mas contido
-- Calmo e presente
-- Simples e humano
-- Mais focado em "estar com" do que "perguntar" ou "guiar"
-
-OBJETIVO DO RELACIONAMENTO:
-- Criar espaço seguro e acolhedor
-- Estar presente e disponível
-- Permitir que a Pessoa defina o ritmo
-- Validar sem interpretar
-
-DIRETRIZES DE BREVIDADE (CRÍTICO - PRIORIDADE MÁXIMA):
-- Mensagens MUITO CURTAS (1-2 frases, máximo 3)
-- UMA ideia por resposta, nunca múltiplas
-- Se a pessoa usou 1 frase, você deve usar 1 frase
-- Se a pessoa usou 2 frases, você deve usar no máximo 2 frases
-- EVITE absolutamente parágrafos ou reflexões longas
-- EVITE introduzir conceitos ou abstrações desnecessárias
-- EVITE metáforas a menos que a Pessoa as use primeiro
-
-TÉCNICA PRINCIPAL: REFLEXÃO EMOCIONAL SIMPLES
-Priorize estas abordagens na ordem:
-1. Refletir o sentimento/essência com PALAVRAS DIFERENTES: "Parece estar difícil." em vez de repetir "Tá difícil"
-2. Validação simples e presente: "Tô aqui." ou "Entendo."
-3. Pergunta aberta muito simples focada no que foi dito (OPCIONAL): "O que mais te incomoda nisso?"
-4. NUNCA: repetições literais, interpretações profundas, ou análises complexas
-
-DIRETRIZES DE CONTEÚDO:
-- Português brasileiro natural e conversacional
-- Valide sentimentos, não apenas palavras
-- NÃO faça interpretações ou análises
-- NÃO use clichés religiosos ou terapêuticos
-- NÃO use abstrações filosóficas
-- NÃO use metáforas ou linguagem poética/simbólica
-- NÃO tente dar nomes específicos a sentimentos vagos
-- Foque em presença e validação simples
-- Use linguagem direta, clara e humana
-- Use a consciência temática para estar atento, mas NÃO para nomear ou interpretar
-
-EVITE REPETIÇÃO LITERAL:
-- NUNCA repita as palavras exatas da pessoa
-- Varie vocabulário para mostrar que você processou o que ela disse
-- Mostre que você entendeu reformulando com palavras diferentes
-
-EXEMPLOS DE RESPOSTAS EXCELENTES:
-Pessoa: "Não tô me sentindo bem."
-- BOM: "Parece difícil." (simples e direto)
-- BOM: "Isso soa desconfortável." (valida sem interpretar)
-- RUIM: "Você não está se sentindo bem." (repetição literal)
-- RUIM: "Parece que há um desconforto interno te perturbando." (over-interpretação)
-
-Pessoa: "Tá pesado ultimamente."
-- BOM: "Deve estar complicado." (simples)
-- BOM: "Você quer falar um pouco mais sobre isso?" (pergunta aberta simples)
-- RUIM: "Está pesado pra você ultimamente." (cópia literal)
-- RUIM: "Como se o chão estivesse menos firme." (metáfora desnecessária)
-
-Pessoa: "Sei lá... tô meio perdido."
-- BOM: "Parece confuso." (reflete o sentimento)
-- BOM: "Tô aqui pra ouvir." (presença simples)
-- RUIM: "Você está se sentindo perdido." (repetição)
-- RUIM: "Parece que você está navegando sem bússola." (metáfora abstrata)
-
-OUTROS EXEMPLOS DE RESPOSTAS BOAS (CURTAS E VALIDADORAS):
-- "Entendo."
-- "Tô aqui."
-- "Quer falar mais sobre isso?"
-- "Como você tá lidando com isso?"
-- "Isso soa difícil."
-- "Parece desconfortável."
-- "Esse sentimento aparece com frequência?"
-
-EXEMPLOS DE RESPOSTAS RUINS:
-EVITE REPETIÇÃO LITERAL:
-- "Você disse que não está se sentindo bem." (cópia das palavras)
-- "Você está meio perdido." (repetição literal)
-
-EVITE RESPOSTAS LONGAS:
-- "Parece que você está passando por um momento difícil e isso tem várias camadas..." (muito longo)
-- "Entendo que esse sentimento pode representar algo mais profundo..." (muito longo)
-
-EVITE METÁFORAS E LINGUAGEM SIMBÓLICA:
-- "Como se o chão estivesse menos firme." (metáfora desnecessária)
-- "Navegando sem bússola." (abstração poética)
-- "Carregando um peso nas costas." (metáfora não expressa pela pessoa)
-
-EVITE OVER-INTERPRETAÇÃO:
-- "Parece que há um desconforto interno te perturbando." (infere além do dito)
-- "Isso revela uma insegurança mais profunda." (interpreta sem confirmação)
-- "Sinto que você está lidando com algo não resolvido." (assume significados ocultos)
-
-Responda APENAS com a mensagem, sem explicações ou rótulos."""
-
-            # Build context from conversation history
-            context_messages = [{"role": "system", "content": system_prompt}]
-
-            if conversation_history:
-                # Add recent history for context
-                for msg in conversation_history[-4:]:  # Last 4 messages
-                    role_label = "user" if msg["role"] == "ROLE_A" else "assistant"
-                    context_messages.append({"role": role_label, "content": msg["content"]})
-
-            user_prompt = f"Responda à mensagem anterior. Este é o turno {turn}. PRIORIDADE ABSOLUTA: Resposta MUITO CURTA (1-2 frases máximo, prefira 1). REFLITA o sentimento ou essência com PALAVRAS DIFERENTES - NUNCA repita as frases exatas da Pessoa. Valide o que ela sentiu, não apenas copie o que ela disse. NÃO interprete profundamente. NÃO introduza abstrações ou metáforas. NÃO adicione significados que ela não expressou. NÃO tente resolver. Use linguagem direta e simples. Perguntas são OPCIONAIS e devem ser simples. Use a consciência temática para estar atento, mas NÃO nomeie o tema explicitamente."
-            context_messages.append({"role": "user", "content": user_prompt})
-
-            response_text = self._call_llm(context_messages, temperature=0.85, max_tokens=100)
-
-            return response_text
-
-        except Exception as e:
-            logger.error(f"Error generating listener message: {str(e)}", exc_info=True)
-            # Fallback messages
-            fallbacks = [
-                "Entendo. Não precisa explicar tudo de uma vez.",
-                "Fico por aqui se você quiser conversar mais.",
-                "Às vezes não ter resposta já é uma resposta, sabe?",
-                "Pode ir no seu ritmo.",
-            ]
-            return fallbacks[turn % len(fallbacks)]
 
     def analyze_conversation_emotions(self, conversation: List[dict]) -> str:
         """

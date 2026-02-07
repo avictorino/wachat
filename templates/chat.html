@@ -264,11 +264,20 @@
             <button type="submit">➕ New Profile</button>
         </form>
         
-        <!-- Simulate button with theme input -->
+        <!-- Simulate button with theme selector -->
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
             {% csrf_token %}
             <input type="hidden" name="action" value="simulate">
-            <input type="text" name="theme" placeholder="Theme (optional, default: desabafar)" value="">
+            <select name="theme">
+                <option value="desabafar" selected>Desabafar</option>
+                <option value="doenca">Doença</option>
+                <option value="ansiedade">Ansiedade</option>
+                <option value="ato_criminoso_pecado">Ato Criminoso/Pecado</option>
+                <option value="problemas_financeiros">Problemas Financeiros</option>
+                <option value="distante_religiao">Distante da Religião</option>
+                <option value="redes_sociais">Redes Sociais</option>
+                <option value="outro">Outro</option>
+            </select>
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
     </div>
