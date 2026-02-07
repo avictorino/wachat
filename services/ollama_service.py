@@ -21,6 +21,11 @@ from services.rag_service import get_rag_context
 logger = logging.getLogger(__name__)
 
 
+# Anti-loop tracking configuration
+MAX_TRACKED_QUESTIONS = 3  # Maximum number of recent questions to track
+MAX_TRACKED_EMPATHY_PHRASES = 2  # Maximum number of recent empathy phrases to track
+
+
 # Helper constant for gender context in Portuguese
 # This instruction is in Portuguese because it's part of the system prompt
 # sent to the LLM, which operates in Brazilian Portuguese
@@ -491,14 +496,14 @@ IMPORTANTE:
             parts.append(
                 "\nPerguntas já feitas (NÃO REPETIR perguntas equivalentes):"
             )
-            for q in questions_asked[-3:]:  # Last 3 questions
+            for q in questions_asked[-MAX_TRACKED_QUESTIONS:]:
                 parts.append(f"- {q}")
 
         if empathy_phrases:
             parts.append(
                 "\nFrases de empatia já usadas (VARIAR a abertura):"
             )
-            for p in empathy_phrases[-2:]:  # Last 2 empathy phrases
+            for p in empathy_phrases[-MAX_TRACKED_EMPATHY_PHRASES:]:
                 parts.append(f"- {p}")
 
         # Define next objective
@@ -509,7 +514,7 @@ IMPORTANTE:
 
         return "\n".join(parts)
 
-    def _build_rag_layer(self, user_message: str) -> str:
+    def _build_rag_layer(self, user_message: str) -> tuple[str, int]:
         """
         Build RAG layer containing external or thematic knowledge.
 
@@ -523,18 +528,18 @@ IMPORTANTE:
             user_message: Current user message to retrieve relevant RAG context
 
         Returns:
-            Formatted RAG content or empty string if no relevant context
+            Tuple of (formatted RAG content or empty string, count of RAG texts)
         """
         rag_texts = get_rag_context(user_message, limit=1)
 
         if not rag_texts:
-            return ""
+            return "", 0
 
         parts = ["Conhecimento externo relevante (aplicar se pertinente):"]
         for text in rag_texts:
             parts.append(f"- {text}")
 
-        return "\n".join(parts)
+        return "\n".join(parts), len(rag_texts)
 
     def _build_system_layer(self) -> str:
         """
@@ -612,7 +617,7 @@ IMPORTANTE:
             )
 
             # Layer 4: rag
-            rag_content = self._build_rag_layer(sanitized_message)
+            rag_content, rag_count = self._build_rag_layer(sanitized_message)
             if rag_content:
                 messages.append({"role": "system", "content": f"[RAG]\n{rag_content}"})
 
@@ -627,9 +632,8 @@ IMPORTANTE:
             # This creates a more natural conversational flow
             response_messages = split_response_messages(response_text)
 
-            rag_chunk_count = 1 if rag_content else 0
             logger.info(
-                f"Generated intent-based response for intent: {intent} (RAG chunks: {rag_chunk_count}, messages: {len(response_messages)})"
+                f"Generated intent-based response for intent: {intent} (RAG chunks: {rag_count}, messages: {len(response_messages)})"
             )
             return response_messages
 
