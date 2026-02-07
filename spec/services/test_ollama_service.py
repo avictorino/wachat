@@ -65,7 +65,7 @@ class OllamaServiceTest(TestCase):
         
         # Check payload structure
         payload = call_args[1]["json"]
-        self.assertEqual(payload["model"], "llama3.1")
+        self.assertEqual(payload["model"], "wachat-v9")  # Model from .env
         self.assertEqual(payload["stream"], False)
         self.assertIn("messages", payload)
         self.assertEqual(len(payload["messages"]), 2)
@@ -199,7 +199,7 @@ class OllamaServiceTest(TestCase):
     @patch("services.ollama_service.requests.post")
     @patch("services.ollama_service.sanitize_input")
     def test_generate_intent_response_with_multiple_messages(self, mock_sanitize, mock_post):
-        """Test that generate_intent_response returns single unified message."""
+        """Test that generate_intent_response splits messages by paragraph."""
         mock_sanitize.return_value = "Preciso de ajuda"
         
         mock_response = Mock()
@@ -217,9 +217,11 @@ class OllamaServiceTest(TestCase):
             intent="ansiedade"
         )
 
-        # Should return single unified message (no splitting)
-        self.assertEqual(len(messages), 1)
-        self.assertEqual(messages[0], "Entendo sua preocupação.\n\nComo posso ajudar?\n\nEstou aqui para ouvir.")
+        # Should split into 3 separate messages by paragraph breaks
+        self.assertEqual(len(messages), 3)
+        self.assertEqual(messages[0], "Entendo sua preocupação.")
+        self.assertEqual(messages[1], "Como posso ajudar?")
+        self.assertEqual(messages[2], "Estou aqui para ouvir.")
 
     @patch("services.ollama_service.requests.post")
     @patch("services.ollama_service.sanitize_input")
@@ -243,7 +245,8 @@ class OllamaServiceTest(TestCase):
         messages = service.generate_intent_response(
             user_message="Obrigado",
             conversation_context=context,
-            name="Maria"
+            name="Maria",
+            intent="desabafar"
         )
 
         # Verify context was included in the payload

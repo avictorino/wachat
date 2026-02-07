@@ -209,16 +209,15 @@ class SimulationService:
                     logger.error(f"LLM service returned empty response for profile {profile.id}")
                     raise ValueError("LLM service failed to generate a response")
                 
-                # Take the first response message (production pipeline may return multiple)
-                message = response_messages[0]
-                
-                # Save assistant response to database
-                assistant_message_obj = Message.objects.create(
-                    profile=profile,
-                    role="assistant",
-                    content=message,
-                    channel="telegram",
-                )
+                # Save all assistant response messages to database (sequential delivery)
+                for message in response_messages:
+                    assistant_message_obj = Message.objects.create(
+                        profile=profile,
+                        role="assistant",
+                        content=message,
+                        channel="telegram",
+                    )
+                    logger.info(f"Saved simulated bot response {assistant_message_obj.id} for profile {profile.id}")
                 
                 # Capture and save Ollama prompt payload for observability (same as production)
                 # The prompt payload represents what was sent to generate the bot's response,
@@ -230,11 +229,10 @@ class SimulationService:
                         last_user_message_obj.save(update_fields=["ollama_prompt"])
                         logger.info(f"Saved Ollama prompt payload to simulated user message {last_user_message_obj.id}")
                 
-                logger.info(f"Saved simulated bot response {assistant_message_obj.id} for profile {profile.id}")
-                
-                # Add to conversation history
-                conversation.append({"role": role, "content": message})
-                conversation_history.append({"role": role, "content": message})
+                # Add all response messages to conversation history
+                for message in response_messages:
+                    conversation.append({"role": role, "content": message})
+                    conversation_history.append({"role": role, "content": message})
 
             logger.info(f"Generated {role} message {i + 1}/{num_messages}")
 
