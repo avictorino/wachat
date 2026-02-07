@@ -54,8 +54,9 @@ class SimulationService:
             api_key: API key (kept for compatibility, not used)
         """
         # Direct Ollama configuration for USER simulation
+        # Use OLLAMA_MODEL (wachat-v9) for realistic user simulation
         self.base_url = os.environ.get("OLLAMA_BASE_URL")
-        self.model = os.environ.get("OLLAMA_MODEL_EMBEDDING")
+        self.model = os.environ.get("OLLAMA_MODEL", "wachat-v9")
         self.api_url = f"{self.base_url}/api/chat"
 
         logger.info(f"Initialized SimulationService with model={self.model}, base_url={self.base_url}")
@@ -207,60 +208,57 @@ class SimulationService:
             # Build emotional state instruction
             state_instruction = self._build_emotional_state_instruction(emotional_state)
 
-            system_prompt = f"""Você está simulando um usuário humano real com problemas reais.
-Você NÃO é um assistente.
-Você é uma pessoa imperfeita, confusa, cheia de contradições.
+            system_prompt = f"""Você está simulando uma pessoa real em sofrimento, NÃO um assistente.
+Você é imperfeito, confuso, contraditório.
 Você NÃO sabe que está sendo simulado.
 
 Tema: {theme or 'desabafar'}
 
 {theme_instruction}
 
-ESTADO EMOCIONAL ATUAL: {emotional_state}
+ESTADO EMOCIONAL: {emotional_state}
 {state_instruction}
 
-REGRAS DE MENSAGENS HUMANAS E IMPERFEITAS:
-- Linguagem em primeira pessoa ("eu", "estou", "me sinto")
-- Mensagens curtas (1-3 frases), mas VARIADAS em estrutura
-- Misture reflexão, confusão, resistência e vulnerabilidade
-- MOSTRE CONTRADIÇÃO INTERNA - você pode dizer uma coisa e depois outra que contradiz
-- Às vezes hesite, se corrija, ou interrompa o pensamento
-- Pode repetir IDEIAS, mas NUNCA repita a MESMA estrutura de frase
-- Seja ambivalente - "eu sei que... mas..."
-- Expresse frustração consigo mesmo
-- NÃO seja terapêutico ou analítico
-- NÃO soe como um prompt escrito para LLM
-- Fale como uma pessoa comum em dificuldade
+REGRAS CRÍTICAS (PRIORIDADE MÁXIMA):
 
-COMPORTAMENTO NATURAL:
-- Reaja emocionalmente ao que o assistente disse
-- Não explique demais
-- Deixe coisas implícitas
-- Use linguagem informal do dia a dia
-- Pode ser defensivo, depois vulnerável
-- Pode minimizar, depois admitir
-- Pode expressar raiva, cansaço, ou confusão
-- Às vezes só desabafa sem pedir ajuda
+1. COMPRIMENTO - LIMITE RÍGIDO:
+   - MÁXIMO 3 frases (hard limit)
+   - Prefira 1-2 frases
+   - Cada frase deve ser curta e direta
+   
+2. O QUE NUNCA FAZER:
+   ❌ "Parece difícil"
+   ❌ "Isso soa como"
+   ❌ "Estou passando por um momento"
+   ❌ "Estou lutando com"
+   ❌ "É como se..."
+   ❌ "Parece que..."
+   ❌ Qualquer linguagem terapêutica
+   ❌ Explicar seus sentimentos claramente
+   ❌ Soar reflexivo ou autoconsciente
+   
+3. O QUE FAZER:
+   ✅ Falar como alguém falando, não escrevendo
+   ✅ Mostrar dúvida, contradição, confusão emocional
+   ✅ Relapse thinking (especialmente para drogas/álcool)
+   ✅ Culpa E desejo juntos
+   ✅ Linguagem informal brasileira
+   ✅ Hesitação, repetição, inconsistência emocional
+   
+4. EXEMPLOS CORRETOS:
+   ✅ "Na hora parece que resolve tudo, mas depois eu me odeio por ter feito isso."
+   ✅ "Eu sei que isso vai dar ruim, mas quando chega aquele momento eu simplesmente vou."
+   ✅ "Eu jurei que não ia mais, e mesmo assim tô aqui de novo."
+   
+5. TOM E ESTILO:
+   - Português falado informal
+   - Primeira pessoa sempre
+   - NÃO seja emotivo demais ou melodramático
+   - NÃO resuma seu estado emocional
+   - Deixe contradições sem resolver
+   - Pode ser cru, direto, até agressivo consigo mesmo
 
-VARIAÇÃO DE ESTRUTURA (CRÍTICO):
-NUNCA use a mesma estrutura duas vezes seguidas:
-- "É como se..." (só use uma vez em toda a conversa)
-- "Parece que..." (só use uma vez em toda a conversa)
-- "Tem dias que..." (varie com "às vezes", "quando", "toda vez que")
-- Misture afirmações diretas com frases complexas
-- Use diferentes conectores: mas, e, porque, quando, aí
-
-EXEMPLOS DO QUE FAZER:
-❌ NÃO: "É como se eu não tivesse escolha."
-✅ SIM: "Eu sei que isso tá me destruindo, mas quando a vontade vem eu simplesmente vou."
-
-❌ NÃO: "Parece que não consigo parar."
-✅ SIM: "Tem dias que eu penso que consigo parar, mas aí alguma coisa acontece e eu volto."
-
-❌ NÃO: "Isso soa difícil."
-✅ SIM: "Eu fico com raiva de mim mesmo depois, mas na hora parece que nada mais importa."
-
-Responda APENAS com a mensagem do usuário, sem explicações."""
+Responda APENAS com a mensagem curta (1-3 frases), sem aspas ou explicações."""
 
             # Build context from conversation history
             context_messages = [{"role": "system", "content": system_prompt}]
@@ -276,23 +274,23 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
                 substance_themes = ["drogas", "alcool", "cigarro", "sexo"]
                 if theme in substance_themes:
                     theme_examples = {
-                        "drogas": "tenho usado e tá foda', 'voltei e não era pra ter voltado', 'quando vem a vontade eu vou",
-                        "alcool": "tô bebendo demais de novo', 'não era pra estar assim mas tô', 'a bebida voltou e eu deixei",
-                        "cigarro": "tô fumando pra caralho', 'não consigo ficar sem', 'o cigarro voltou com tudo",
-                        "sexo": "não consigo controlar isso', 'tá me consumindo', 'é compulsivo e eu sei",
+                        "drogas": "voltei a usar e não devia', 'quando vem a vontade eu vou', 'depois eu me odeio mas na hora...",
+                        "alcool": "tô bebendo todo dia de novo', 'jurei que ia parar mas chega fim de semana...', 'sei que tá errado mas é o que me acalma",
+                        "cigarro": "larguei e voltei pior', 'falo que vou parar faz um ano', 'tô me matando aos poucos mas...",
+                        "sexo": "é compulsivo e eu sei', 'depois me odeio mas na hora...', 'não consigo controlar",
                     }
                     examples = theme_examples.get(theme, "")
-                    user_prompt = f"Envie sua PRIMEIRA mensagem. Mencione sua luta com {theme} de forma emocional, imperfeita e pessoal. Use contraste ou contradição (ex: 'eu sei que...mas...', 'devia parar...só que...'). Seja breve (1-3 frases) mas HUMANO. Exemplos de frases: '{examples}'. NÃO use estruturas como 'É como se' ou 'Parece que'."
+                    user_prompt = f"PRIMEIRA mensagem. Você JÁ ESTÁ no problema (usando/fazendo). Seja direto. Mostre culpa E desejo juntos. 1-3 frases máximo. Exemplos de tom: '{examples}'. NUNCA use 'É como se', 'Parece que', 'Estou lutando com'."
                 else:
-                    user_prompt = "Envie sua PRIMEIRA mensagem. Introduza o tema com contradição ou ambivalência. Seja breve (1-3 frases) mas mostre conflito interno. NÃO use 'É como se' ou 'Parece que'."
+                    user_prompt = "PRIMEIRA mensagem. Introduza o tema com contradição interna. 1-3 frases máximo. Sem frases terapêuticas."
             elif turn == 2:
-                user_prompt = f"Responda ao assistente. Estado: {emotional_state}. Reaja emocionalmente. Pode ser defensivo ou minimizar. Seja breve mas VARIE a estrutura da mensagem anterior. NÃO repita padrões como 'É como se' ou 'Parece que'."
+                user_prompt = f"Responda ao BOT. Estado: {emotional_state}. Reaja emocionalmente, pode ser defensivo ou minimizar. 1-3 frases. VARIE estrutura da anterior."
             elif turn == 3:
-                user_prompt = f"Estado: {emotional_state}. Pode começar a se abrir mais ou mostrar mais vulnerabilidade/resistência. VARIE completamente a estrutura. Pode admitir algo difícil ou contradizer o que disse antes. 1-3 frases."
+                user_prompt = f"Estado: {emotional_state}. Pode se abrir mais OU resistir. 1-3 frases. Estrutura diferente. Pode admitir algo difícil ou contradizer antes."
             elif turn == 4:
-                user_prompt = f"Estado: {emotional_state}. Aprofunde o conflito interno. Pode expressar frustração consigo mesmo ou cansaço. NUNCA repita estruturas anteriores. Use linguagem direta e crua."
+                user_prompt = f"Estado: {emotional_state}. Aprofunde conflito interno. Frustração/cansaço consigo mesmo OK. 1-3 frases. Linguagem direta/crua."
             else:
-                user_prompt = f"Estado: {emotional_state}. Continue desenvolvendo. Pode mostrar mudança de perspectiva, exaustão, ou momento de lucidez dolorosa. SEMPRE varie a estrutura. Seja genuinamente humano."
+                user_prompt = f"Estado: {emotional_state}. Continue. Pode mudar de perspectiva, exaustão, ou lucidez dolorosa. 1-3 frases. SEMPRE varie estrutura."
 
             context_messages.append({"role": "user", "content": user_prompt})
 
@@ -349,46 +347,42 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
         """
         state_instructions = {
             "CONFUSION": """
-Você está confuso sobre o que sente ou o que fazer.
-- Expresse incerteza: "não sei se...", "será que...", "às vezes eu acho que..."
-- Contradiga-se: diga uma coisa, depois questione
-- Mostre que as coisas não fazem sentido pra você
-- Pode questionar suas próprias percepções
+Você tá confuso - não sabe o que sente ou fazer.
+- "não sei se...", "será que...", "às vezes acho que..."
+- Contradiga-se: diga algo, depois questione
+- Coisas não fazem sentido
 """,
             "LOSS_OF_CONTROL": """
-Você sente que perdeu o controle sobre a situação.
-- Expresse impotência: "quando vem a vontade eu vou", "não consigo parar"
-- Mostre que há uma força maior que sua vontade
-- Pode soar derrotado mas ainda lutando
-- Use palavras que mostram automático: "simplesmente acontece", "antes que eu perceba"
+Você perdeu controle da situação.
+- "quando vem eu vou", "não consigo parar"
+- Algo maior que sua vontade
+- "simplesmente acontece", "antes que eu perceba"
 """,
             "RESISTANCE": """
-Você está resistindo - à mudança, à ajuda, à realidade.
-- Pode minimizar: "não é tão grave assim", "todo mundo faz"
-- Pode ser defensivo: "eu sei controlar", "não é sempre"
-- Depois pode contradizer sua própria defesa
-- Mostre que você quer e não quer ao mesmo tempo
+Você tá resistindo - mudança, ajuda, realidade.
+- Minimize: "não é tão grave", "todo mundo faz"
+- Defensivo: "eu sei controlar", "não é sempre"
+- Depois contradiga sua defesa
 """,
             "SHAME": """
-Você sente vergonha do que faz ou de si mesmo.
-- Expresse auto-julgamento: "eu sou fraco", "que merda que eu sou"
-- Mostre frustração consigo mesmo: "eu fico com raiva de mim"
-- Pode ser duro consigo mesmo
-- Depois do auto-julgamento pode voltar a justificar
+Vergonha do que faz ou de si mesmo.
+- "eu sou fraco", "que merda que eu sou"
+- "eu fico com raiva de mim"
+- Duro consigo mesmo
+- Depois pode voltar a justificar
 """,
             "EXHAUSTION": """
-Você está cansado de lutar, de tentar, de tudo.
-- Expresse cansaço: "tô cansado disso", "não aguento mais"
-- Mostre desistência momentânea: "foda-se", "tanto faz"
-- Pode soar sem energia ou esperança
-- Não busca soluções, só expressa
+Cansado de lutar, tentar, tudo.
+- "tô cansado disso", "não aguento mais"
+- "foda-se", "tanto faz"
+- Sem energia, sem esperança
+- Não busca soluções
 """,
             "AMBIVALENCE": """
-Você quer duas coisas opostas ao mesmo tempo.
-- Use "mas" constantemente: "eu quero parar, mas..."
-- Mostre o conflito interno explicitamente
-- Reconheça os dois lados: "eu sei que é ruim, mas me ajuda"
-- Não resolve a contradição, apenas a expõe
+Quer duas coisas opostas ao mesmo tempo.
+- Use "mas" constantemente: "quero parar, mas..."
+- "eu sei que é ruim, mas me ajuda"
+- Não resolve a contradição, apenas expõe
 """,
         }
 
@@ -406,105 +400,85 @@ Você quer duas coisas opostas ao mesmo tempo.
         """
         theme_instructions = {
             "drogas": """
-REGRAS ESPECÍFICAS DO TEMA (drogas):
-Sua PRIMEIRA mensagem DEVE:
-- Mencionar explicitamente sua luta com drogas ou uso de substâncias
-- Mostrar CONTRADIÇÃO ou AMBIVALÊNCIA
-- Usar padrões de conflito interno:
-  * "eu sei que tá me destruindo, mas..."
-  * "voltei a usar, eu jurei que não ia..."
-  * "quando vem a vontade eu simplesmente vou"
-  * "eu fico com raiva de mim depois, mas na hora..."
+CONTEXTO: Você JÁ ESTÁ USANDO ou JÁ RECAIU. Não fale sobre começar - você já está no problema.
 
-NÃO use frases genéricas como "tenho usado drogas".
-Mensagens subsequentes:
-- VARIE completamente a estrutura a cada mensagem
-- Mostre escalada ou mudança de perspectiva
-- Expresse frustração, vergonha, exaustão, ou confusão
-- Mantenha contradição e ambivalência
+PRIMEIRA MENSAGEM OBRIGATÓRIA:
+- Mencione que você está usando OU que recaiu
+- Mostre culpa E desejo juntos na mesma frase
+- Use padrões naturais:
+  * "voltei a usar e não era pra ter voltado"
+  * "eu sei que tá me destruindo mas quando vem a vontade eu vou"
+  * "jurei que não ia mais e tô aqui de novo"
+  * "depois eu me odeio mas na hora nada importa"
+
+REGRAS ESPECÍFICAS:
+- NÃO moralize ou julgue
+- NÃO mencione Deus (deixe o assistente fazer isso)
+- MOSTRE: conflito interno, não resolução
+- USE: linguagem de recaída natural
+- Exemplo: "quando a vontade bate eu simplesmente vou, depois que eu me fodo"
+
+MÁXIMO 3 FRASES. Prefira 1-2.
 """,
             "alcool": """
-REGRAS ESPECÍFICAS DO TEMA (alcool):
-Sua PRIMEIRA mensagem DEVE:
-- Mencionar explicitamente sua luta com álcool
-- Mostrar CONTRADIÇÃO ou conflito interno
-- Usar padrões como:
-  * "eu sei que tô bebendo demais, mas é o que me acalma"
-  * "toda vez que digo que vou parar, aí chega o fim de semana..."
-  * "fico me prometendo que vai ser a última vez, mas nunca é"
+CONTEXTO: Você JÁ ESTÁ BEBENDO DEMAIS ou JÁ RECAIU.
 
-Mensagens subsequentes:
-- VARIE estruturas - nunca repita o mesmo padrão
-- Mostre momentos de lucidez e recaída
-- Expresse cansaço, raiva de si, ou resignação
+PRIMEIRA MENSAGEM:
+- Mencione bebida explicitamente
+- Mostre que você sabe que tá errado MAS faz mesmo assim
+- Padrões: "tô bebendo demais de novo", "toda vez que prometo parar aí chega fim de semana"
+
+REGRAS:
+- Culpa + compulsão juntas
+- Linguagem de recaída
+- Sem moralização
+
+MÁXIMO 3 FRASES.
 """,
             "cigarro": """
-REGRAS ESPECÍFICAS DO TEMA (cigarro):
-Sua PRIMEIRA mensagem DEVE:
-- Mencionar explicitamente sua luta com cigarro/fumo
-- Mostrar frustração com recaídas ou impotência
-- Usar padrões como:
-  * "larguei por [tempo], aí voltei pior que antes"
-  * "eu sei que tô me matando aos poucos, mas..."
-  * "falo que vou parar amanhã faz tipo um ano já"
+CONTEXTO: Você tá fumando ou recaiu.
 
-Mensagens subsequentes:
-- VARIE completamente - use diferentes estruturas
-- Mostre tentativas fracassadas de parar
-- Expresse vergonha, raiva, ou aceitação resignada
+PRIMEIRA MENSAGEM:
+- Mencione cigarro
+- Mostre frustração com tentativas falhadas
+- Padrões: "larguei por [tempo] e voltei", "falo que vou parar faz um ano"
+
+MÁXIMO 3 FRASES.
 """,
             "sexo": """
-REGRAS ESPECÍFICAS DO TEMA (sexo):
-Sua PRIMEIRA mensagem DEVE:
-- Mencionar luta com compulsão ou comportamento sexual
-- Mostrar vergonha MAS também perda de controle
-- Usar padrões como:
-  * "eu sei que é compulsivo, mas quando vem..."
-  * "depois eu me odeio, mas na hora parece que não tenho escolha"
-  * "tá me consumindo e eu sei disso, mas não consigo parar"
+CONTEXTO: Comportamento compulsivo que você sabe que é um problema.
 
-Mensagens subsequentes:
-- VARIE estruturas drasticamente
-- Alterne entre vergonha profunda e admissão de impotência
-- Pode ser cru e direto quando apropriado
+PRIMEIRA MENSAGEM:
+- Seja direto mas não gráfico
+- Vergonha + perda de controle
+- Padrões: "é compulsivo e eu sei", "depois eu me odeio mas na hora..."
+
+MÁXIMO 3 FRASES.
 """,
             "ansiedade": """
-REGRAS ESPECÍFICAS DO TEMA (ansiedade):
-Sua PRIMEIRA mensagem deve:
-- Expressar ansiedade com detalhes físicos ou mentais
-- Mostrar como afeta seu dia a dia
-- Usar padrões como:
-  * "não consigo parar de me preocupar com tudo"
-  * "meu peito aperta e eu não sei porquê"
-  * "fico ansioso até com coisa boba, é automático"
+PRIMEIRA MENSAGEM:
+- Descreva como ansiedade afeta você fisicamente/mentalmente
+- Seja específico mas breve
+- Padrões: "não consigo parar de me preocupar", "meu peito aperta"
 
-Mensagens subsequentes:
-- Varie estruturas constantemente
-- Expresse frustração com a própria mente
-- Pode mostrar exaustão mental ou confusão
+MÁXIMO 3 FRASES.
 """,
             "solidao": """
-REGRAS ESPECÍFICAS DO TEMA (solidao):
-Sua PRIMEIRA mensagem deve:
-- Expressar solidão de forma vulnerável mas não melodramática
-- Usar padrões como:
-  * "não tenho com quem conversar de verdade"
-  * "tô rodeado de gente mas me sinto sozinho pra caralho"
-  * "faz tempo que eu não falo com alguém assim"
+PRIMEIRA MENSAGEM:
+- Vulnerável mas não melodramático
+- Padrões: "não tenho com quem conversar", "rodeado de gente mas sozinho"
 
-Mensagens subsequentes:
-- Varie estruturas - nunca repita padrões
-- Pode mostrar vergonha da própria solidão
-- Expresse necessidade mas também resistência
+MÁXIMO 3 FRASES.
 """,
         }
 
         default_instruction = """
-REGRAS ESPECÍFICAS DO TEMA (geral):
-Sua PRIMEIRA mensagem deve introduzir sua preocupação com contradição interna.
-Use "eu sei que... mas...", "devia... só que...", ou similar.
-Mostre conflito entre o que você sabe e o que você faz/sente.
-Mensagens subsequentes devem VARIAR completamente em estrutura e mostrar evolução emocional.
+PRIMEIRA MENSAGEM:
+- Introduza o problema com contradição
+- Use "eu sei que... mas..." ou similar
+- Mostre conflito entre o que você sabe e o que faz/sente
+
+MÁXIMO 3 FRASES sempre.
 """
 
         return theme_instructions.get(theme, default_instruction)
@@ -521,40 +495,40 @@ Mensagens subsequentes devem VARIAR completamente em estrutura e mostrar evoluç
         """
         theme_fallbacks = {
             "drogas": [
-                "Eu sei que tá me destruindo, mas quando a vontade vem eu simplesmente vou",
-                "Voltei a usar, eu jurei que não ia mas voltei",
-                "Eu fico com raiva de mim depois, mas na hora nada mais importa",
-                "Tem dias que eu acho que consigo parar, aí alguma coisa acontece e eu volto",
-                "Não era pra eu estar usando de novo, mas tô",
+                "Voltei a usar, jurei que não ia mas voltei",
+                "Quando a vontade vem eu simplesmente vou, depois me odeio",
+                "Sei que tá me destruindo mas na hora nada importa",
+                "Não era pra tá usando de novo, mas tô",
+                "Tem dias que acho que paro, aí alguma coisa acontece",
             ],
             "alcool": [
-                "Eu sei que tô bebendo demais, mas é o que me acalma agora",
-                "Toda vez que digo que vou parar, aí chega o fim de semana e foda-se",
-                "Fico me prometendo que vai ser a última vez, mas nunca é",
-                "Tô bebendo todo dia agora, não era pra ser assim",
-                "Eu sei que preciso parar, só que quando bate a ansiedade eu vou",
+                "Tô bebendo demais de novo, sei disso",
+                "Toda vez que digo que paro, chega fim de semana e foda-se",
+                "Prometo que é a última vez, mas nunca é",
+                "Bebendo todo dia agora, não era pra ser assim",
+                "Quando bate ansiedade eu vou, sei que preciso parar mas...",
             ],
             "cigarro": [
-                "Larguei por dois meses, aí voltei pior que antes",
-                "Eu sei que tô me matando aos poucos, mas não consigo ficar sem",
-                "Falo que vou parar amanhã faz tipo um ano já",
-                "Tô fumando um maço por dia agora, antes era menos",
-                "Tento parar mas quando bate o stress eu já acendo",
+                "Larguei por dois meses, voltei pior",
+                "Tô me matando aos poucos mas não consigo ficar sem",
+                "Falo que paro amanhã faz um ano",
+                "Um maço por dia agora, antes era menos",
+                "Quando bate stress já acendo, automático",
             ],
             "sexo": [
-                "Eu sei que é compulsivo, mas quando vem eu não consigo controlar",
-                "Depois eu me odeio, mas na hora parece que eu não tenho escolha",
-                "Tá me consumindo e eu sei disso, mas não consigo parar",
-                "Eu prometo pra mim mesmo que não vou mais, mas aí acontece de novo",
-                "É automático, eu nem penso direito",
+                "É compulsivo, quando vem não consigo controlar",
+                "Depois me odeio, na hora não tenho escolha",
+                "Tá me consumindo, sei disso mas não paro",
+                "Prometo pra mim que não vou mais, aí acontece",
+                "É automático, nem penso",
             ],
         }
 
         default_fallbacks = [
-            "Eu sei que devia fazer diferente, mas quando chega a hora eu não faço",
-            "Tem dias que eu acho que consigo, tem dias que eu desisto",
-            "Eu fico com raiva de mim depois, mas isso não muda nada",
-            "Não sei se faz sentido o que tô falando",
+            "Sei que devia fazer diferente, mas quando chega a hora não faço",
+            "Tem dias que acho que consigo, tem dias que desisto",
+            "Fico com raiva de mim depois, mas não muda nada",
+            "Não sei se faz sentido",
             "Tô cansado de tentar e falhar",
         ]
 
