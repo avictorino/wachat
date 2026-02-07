@@ -153,13 +153,13 @@ Esta é uma continuação natural da conversa.
 1. ✅ Raw psycopg → Django ORM
 2. ✅ Standalone table → Django model with migrations
 3. ✅ Manual SQL → bulk_create/bulk_update
-4. ✅ BASE_PROMPT_PTBR → Modelfile + RAG
-5. ✅ PromptComposer → Direct system messages
+4. ✅ BASE_PROMPT_PTBR → Modelfile + RAG (removed)
+5. ✅ PromptComposer → Direct system messages (removed)
 
-### Deprecated
+### Removed
 
-- `services/prompts/composer.py::BASE_PROMPT_PTBR` (kept for tests)
-- `services/prompts/composer.py::PromptComposer` (kept for tests)
+- `services/prompts/` directory (PromptComposer, themes, and all related code)
+- `services/theme_selector.py` (theme selection logic)
 - Direct usage of BASE_PROMPT in production code
 
 ### What to Keep
