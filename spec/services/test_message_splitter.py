@@ -158,16 +158,16 @@ class ResponseMessageSplitterTest(TestCase):
         self.assertEqual(messages[0], "Entendo sua situação.")
 
     def test_merge_incomplete_last_fragment(self):
-        """Test that incomplete last fragment is merged with previous."""
+        """Test that orphan word at the end is discarded."""
         from services.message_splitter import split_response_messages
         
         response = "Olá Maria.\n\nBem-vinda.\n\nestá"
         messages = split_response_messages(response)
         
-        # "está" should be merged with "Bem-vinda."
+        # "está" should be discarded as it's a single orphan word
         self.assertEqual(len(messages), 2)
         self.assertEqual(messages[0], "Olá Maria.")
-        self.assertEqual(messages[1], "Bem-vinda. está")
+        self.assertEqual(messages[1], "Bem-vinda.")
 
     def test_single_paragraph_no_split(self):
         """Test that single paragraph returns as-is."""

@@ -107,9 +107,12 @@ def _is_complete_sentence(text: str) -> bool:
     Check if text appears to be a complete sentence or question.
     
     A complete sentence should:
-    - End with proper punctuation (. ! ? :)
-    - Have at least one space (more than one word)
-    - Not be just a single orphan word
+    - Have proper ending punctuation (. ! ? :), OR
+    - Have multiple words (5+) even without punctuation
+    
+    Incomplete fragments are:
+    - Single words without proper punctuation (e.g., "Você", "está", "e")
+    - Very short phrases without punctuation
     
     Args:
         text: The text to check
@@ -120,24 +123,31 @@ def _is_complete_sentence(text: str) -> bool:
     text = text.strip()
     
     # Empty or too short
-    if not text or len(text) < 3:
+    if not text or len(text) < 2:
         return False
     
-    # Single word without punctuation is incomplete
-    if ' ' not in text and not any(text.endswith(p) for p in ['.', '!', '?', ':']):
-        return False
+    # Count words (simple split by space)
+    words = text.split()
+    num_words = len(words)
     
-    # Single word is incomplete even with punctuation (like "Você?" or "Bem.")
-    if ' ' not in text.rstrip('.!?:'):
-        return False
+    # Has sentence-ending punctuation
+    has_punctuation = any(text.endswith(p) for p in ['.', '!', '?', ':'])
     
-    # Has proper ending punctuation
-    if any(text.endswith(p) for p in ['.', '!', '?', ':']):
+    # Single word cases
+    if num_words == 1:
+        # Single word WITH punctuation is considered complete
+        # (e.g., "Entendo.", "Olá!", "Sim.", "Bem.")
+        # These are valid short sentences in Portuguese
+        return has_punctuation
+    
+    # Multiple words - check for proper ending
+    # If it ends with sentence-ending punctuation, it's complete
+    if has_punctuation:
         return True
     
-    # Has multiple words but no punctuation - could be incomplete
-    # but we'll be lenient if it's reasonably long
-    return len(text.split()) >= 5
+    # Multiple words without punctuation - could be incomplete
+    # but we'll be lenient if it's reasonably long (5+ words)
+    return num_words >= 5
 
 
 def split_response_messages(response: str) -> List[str]:
@@ -197,8 +207,12 @@ def split_response_messages(response: str) -> List[str]:
             # Incomplete fragment
             if is_last:
                 # Last fragment is incomplete
-                if messages:
-                    # Merge with previous message if we have one
+                # Check if it's just a single orphan word (no punctuation)
+                if len(part.split()) == 1 and not any(part.endswith(p) for p in ['.', '!', '?', ':']):
+                    # Single orphan word - discard it
+                    logger.info(f"Discarded orphan word at end: '{part}'")
+                elif messages:
+                    # Not a single orphan - merge with previous message if we have one
                     # Add a space between them for natural flow
                     messages[-1] = f"{messages[-1]} {part}"
                     logger.info(f"Merged incomplete last fragment '{part}' with previous message")
