@@ -48,13 +48,9 @@ class SimulationService:
         self.model = os.environ.get("OLLAMA_MODEL_EMBEDDING")
         self.api_url = f"{self.base_url}/api/chat"
 
-        logger.info(
-            f"Initialized SimulationService with model={self.model}, base_url={self.base_url}"
-        )
+        logger.info(f"Initialized SimulationService with model={self.model}, base_url={self.base_url}")
 
-    def _call_llm(
-        self, messages: List[dict], temperature: float = 0.85, max_tokens: int = 250
-    ) -> str:
+    def _call_llm(self, messages: List[dict], temperature: float = 0.85, max_tokens: int = 250) -> str:
         """
         Call Ollama API directly with messages (USER simulator).
 
@@ -126,14 +122,10 @@ class SimulationService:
             prompt_theme=theme,  # Persist theme on profile
         )
 
-        logger.info(
-            f"Created simulation profile: {profile.id} with name: {sim_name}, gender: {gender}, theme: {theme}"
-        )
+        logger.info(f"Created simulation profile: {profile.id} with name: {sim_name}, gender: {gender}, theme: {theme}")
         return profile
 
-    def generate_simulated_conversation(
-        self, profile: Profile, num_messages: int = 8, theme: str = None
-    ) -> List[dict]:
+    def generate_simulated_conversation(self, profile: Profile, num_messages: int = 8, theme: str = None) -> List[dict]:
         """
         Generate a simulated conversation between two AI roles.
 
@@ -150,9 +142,7 @@ class SimulationService:
         if num_messages % 2 != 0:
             num_messages += 1  # Make it even for alternating roles
 
-        logger.info(
-            f"Generating {num_messages} simulated messages for profile {profile.id} with theme: {theme}"
-        )
+        logger.info(f"Generating {num_messages} simulated messages for profile {profile.id} with theme: {theme}")
 
         conversation = []
         conversation_history = []
@@ -162,15 +152,11 @@ class SimulationService:
             if i % 2 == 0:
                 # ROLE_A: Seeker
                 role = "ROLE_A"
-                message = self._generate_seeker_message(
-                    conversation_history, i // 2 + 1, theme
-                )
+                message = self._generate_seeker_message(conversation_history, i // 2 + 1, theme)
             else:
                 # ROLE_B: Listener
                 role = "ROLE_B"
-                message = self._generate_listener_message(
-                    conversation_history, i // 2 + 1, theme
-                )
+                message = self._generate_listener_message(conversation_history, i // 2 + 1, theme)
 
             # Persist the message
             db_role = "user" if role == "ROLE_A" else "assistant"
@@ -189,9 +175,7 @@ class SimulationService:
 
         return conversation
 
-    def _generate_seeker_message(
-        self, conversation_history: List[dict], turn: int, theme: str = None
-    ) -> str:
+    def _generate_seeker_message(self, conversation_history: List[dict], turn: int, theme: str = None) -> str:
         """
         Generate a message from ROLE_A (seeker) - simulating a REAL USER.
 
@@ -206,10 +190,10 @@ class SimulationService:
         try:
             # Determine emotional state based on turn and random variation
             emotional_state = self._get_emotional_state(turn)
-            
+
             # Build theme-driven prompt
             theme_instruction = self._build_theme_instruction(theme)
-            
+
             # Build emotional state instruction
             state_instruction = self._build_emotional_state_instruction(emotional_state)
 
@@ -275,9 +259,7 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
                 # Add recent history for context
                 for msg in conversation_history[-4:]:  # Last 4 messages
                     role_label = "user" if msg["role"] == "ROLE_A" else "assistant"
-                    context_messages.append(
-                        {"role": role_label, "content": msg["content"]}
-                    )
+                    context_messages.append({"role": role_label, "content": msg["content"]})
 
             if turn == 1:
                 # First message - must introduce theme naturally with emotional complexity
@@ -305,9 +287,7 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
             context_messages.append({"role": "user", "content": user_prompt})
 
             # Use higher temperature for more natural variation
-            response_text = self._call_llm(
-                context_messages, temperature=0.95, max_tokens=250
-            )
+            response_text = self._call_llm(context_messages, temperature=0.95, max_tokens=250)
 
             return response_text
 
@@ -316,16 +296,16 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
             # Fallback messages based on theme and emotional state
             fallbacks = self._get_theme_fallbacks(theme)
             return fallbacks[turn % len(fallbacks)]
-    
+
     def _get_emotional_state(self, turn: int) -> str:
         """
         Determine emotional state based on turn number with some randomness.
-        
+
         States: CONFUSION, LOSS_OF_CONTROL, RESISTANCE, SHAME, EXHAUSTION, AMBIVALENCE
-        
+
         Args:
             turn: Current turn number
-            
+
         Returns:
             Emotional state string
         """
@@ -335,26 +315,26 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
             2: ["LOSS_OF_CONTROL", "RESISTANCE", "AMBIVALENCE"],
             3: ["RESISTANCE", "SHAME", "LOSS_OF_CONTROL"],
             4: ["SHAME", "EXHAUSTION", "AMBIVALENCE"],
-            5: ["EXHAUSTION", "CONFUSION", "AMBIVALENCE"]
+            5: ["EXHAUSTION", "CONFUSION", "AMBIVALENCE"],
         }
-        
+
         # Get possible states for this turn, with fallback for turns > 5
         possible_states = base_states.get(turn, ["AMBIVALENCE", "EXHAUSTION", "CONFUSION"])
-        
+
         # Add 30% chance to pick from any state for variety
         if random.random() < 0.3:
             all_states = ["CONFUSION", "LOSS_OF_CONTROL", "RESISTANCE", "SHAME", "EXHAUSTION", "AMBIVALENCE"]
             return random.choice(all_states)
-        
+
         return random.choice(possible_states)
-    
+
     def _build_emotional_state_instruction(self, state: str) -> str:
         """
         Build instruction for specific emotional state.
-        
+
         Args:
             state: Emotional state name
-            
+
         Returns:
             Instruction text for this state
         """
@@ -400,9 +380,9 @@ Você quer duas coisas opostas ao mesmo tempo.
 - Mostre o conflito interno explicitamente
 - Reconheça os dois lados: "eu sei que é ruim, mas me ajuda"
 - Não resolve a contradição, apenas a expõe
-"""
+""",
         }
-        
+
         return state_instructions.get(state, state_instructions["AMBIVALENCE"])
 
     def _build_theme_instruction(self, theme: str) -> str:
@@ -571,9 +551,7 @@ Mensagens subsequentes devem VARIAR completamente em estrutura e mostrar evoluç
 
         return theme_fallbacks.get(theme, default_fallbacks)
 
-    def _generate_listener_message(
-        self, conversation_history: List[dict], turn: int, theme: str = None
-    ) -> str:
+    def _generate_listener_message(self, conversation_history: List[dict], turn: int, theme: str = None) -> str:
         """
         Generate a message from ROLE_B (listener).
 
@@ -734,16 +712,12 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
                 # Add recent history for context
                 for msg in conversation_history[-4:]:  # Last 4 messages
                     role_label = "user" if msg["role"] == "ROLE_A" else "assistant"
-                    context_messages.append(
-                        {"role": role_label, "content": msg["content"]}
-                    )
+                    context_messages.append({"role": role_label, "content": msg["content"]})
 
             user_prompt = f"Responda à mensagem anterior. Este é o turno {turn}. PRIORIDADE ABSOLUTA: Resposta MUITO CURTA (1-2 frases máximo, prefira 1). REFLITA o sentimento ou essência com PALAVRAS DIFERENTES - NUNCA repita as frases exatas da Pessoa. Valide o que ela sentiu, não apenas copie o que ela disse. NÃO interprete profundamente. NÃO introduza abstrações ou metáforas. NÃO adicione significados que ela não expressou. NÃO tente resolver. Use linguagem direta e simples. Perguntas são OPCIONAIS e devem ser simples. Use a consciência temática para estar atento, mas NÃO nomeie o tema explicitamente."
             context_messages.append({"role": "user", "content": user_prompt})
 
-            response_text = self._call_llm(
-                context_messages, temperature=0.85, max_tokens=100
-            )
+            response_text = self._call_llm(context_messages, temperature=0.85, max_tokens=100)
 
             return response_text
 
@@ -779,11 +753,7 @@ Responda APENAS com a mensagem, sem explicações ou rótulos."""
             # Build transcript for analysis
             transcript_text = ""
             for msg in conversation:
-                role_label = (
-                    ROLE_LABEL_SEEKER
-                    if msg["role"] == "ROLE_A"
-                    else ROLE_LABEL_LISTENER
-                )
+                role_label = ROLE_LABEL_SEEKER if msg["role"] == "ROLE_A" else ROLE_LABEL_LISTENER
                 transcript_text += f"{role_label}: {msg['content']}\n\n"
 
             system_prompt = """Você é um analista crítico e revisor de conversas especializado em qualidade de diálogo humano-IA.
