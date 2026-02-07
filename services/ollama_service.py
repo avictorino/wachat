@@ -548,9 +548,12 @@ IMPORTANTE:
         - These rules are ABSOLUTE and always applied
 
         Returns:
-            System identity statement
+            System identity statement with global rules
         """
-        return "Você é um companheiro espiritual de inspiração cristã. Sua presença é calma, acolhedora e serena."
+        # Import BASE_PROMPT_PTBR from composer for the full system prompt
+        from services.prompts.composer import BASE_PROMPT_PTBR
+        
+        return BASE_PROMPT_PTBR.strip()
 
     def generate_intent_response(
         self,

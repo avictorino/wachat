@@ -258,7 +258,7 @@ class OllamaServiceTest(TestCase):
         
         # Layer 1: system
         self.assertEqual(payload["messages"][0]["role"], "system")
-        self.assertIn("companheiro espiritual", payload["messages"][0]["content"].lower())
+        self.assertIn("companheiro virtual", payload["messages"][0]["content"].lower())
         
         # Layer 2: memory_user
         self.assertEqual(payload["messages"][1]["role"], "system")
@@ -322,3 +322,109 @@ class OllamaServiceTest(TestCase):
 
         # Should default to "outro" for invalid theme
         self.assertEqual(result, "outro")
+
+    @patch("services.ollama_service.requests.post")
+    @patch("services.ollama_service.sanitize_input")
+    @patch("services.ollama_service.get_rag_context")
+    def test_five_layer_payload_structure(self, mock_rag, mock_sanitize, mock_post):
+        """Test that generate_intent_response uses strict 5-layer payload structure."""
+        mock_sanitize.return_value = "Preciso de ajuda"
+        mock_rag.return_value = ["RAG context about support"]
+        
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"role": "assistant", "content": "Estou aqui para você."}
+        }
+        mock_post.return_value = mock_response
+
+        service = OllamaService()
+        context = [
+            {"role": "user", "content": "Estou perdido"},
+            {"role": "assistant", "content": "O que você está sentindo?"}
+        ]
+        
+        service.generate_intent_response(
+            user_message="Preciso de ajuda",
+            conversation_context=context,
+            name="João",
+            inferred_gender="male",
+            intent="desabafar"
+        )
+
+        # Verify strict 5-layer structure
+        payload = mock_post.call_args[1]["json"]
+        messages = payload["messages"]
+        
+        # Should have exactly 5 layers: system, memory_user, memory_assistant, rag, user
+        self.assertEqual(len(messages), 5)
+        
+        # Layer 1: SYSTEM - Fixed identity and global rules
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertIn("companheiro virtual", messages[0]["content"].lower())
+        self.assertNotIn("[MEMORY_USER]", messages[0]["content"])
+        self.assertNotIn("[MEMORY_ASSISTANT]", messages[0]["content"])
+        self.assertNotIn("[RAG]", messages[0]["content"])
+        
+        # Layer 2: MEMORY_USER - Persistent user facts only
+        self.assertEqual(messages[1]["role"], "system")
+        self.assertIn("[MEMORY_USER]", messages[1]["content"])
+        self.assertIn("João", messages[1]["content"])
+        self.assertIn("male", messages[1]["content"])
+        self.assertNotIn("Estou perdido", messages[1]["content"])  # No conversation history
+        
+        # Layer 3: MEMORY_ASSISTANT - Internal conversation state
+        self.assertEqual(messages[2]["role"], "system")
+        self.assertIn("[MEMORY_ASSISTANT]", messages[2]["content"])
+        self.assertIn("Estou perdido", messages[2]["content"])  # Has conversation history
+        self.assertIn("O que você está sentindo?", messages[2]["content"])
+        self.assertIn("Próximo objetivo", messages[2]["content"])  # Has next objective
+        
+        # Layer 4: RAG - External knowledge only
+        self.assertEqual(messages[3]["role"], "system")
+        self.assertIn("[RAG]", messages[3]["content"])
+        self.assertIn("RAG context about support", messages[3]["content"])
+        
+        # Layer 5: USER - Current message only
+        self.assertEqual(messages[4]["role"], "user")
+        self.assertEqual(messages[4]["content"], "Preciso de ajuda")
+        self.assertNotIn("[", messages[4]["content"])  # No markers in user message
+
+    @patch("services.ollama_service.requests.post")
+    @patch("services.ollama_service.sanitize_input")
+    @patch("services.ollama_service.get_rag_context")
+    def test_five_layer_structure_without_rag(self, mock_rag, mock_sanitize, mock_post):
+        """Test 5-layer structure when RAG layer is empty."""
+        mock_sanitize.return_value = "Olá"
+        mock_rag.return_value = []  # No RAG context
+        
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "message": {"role": "assistant", "content": "Olá! Como posso ajudar?"}
+        }
+        mock_post.return_value = mock_response
+
+        service = OllamaService()
+        
+        service.generate_intent_response(
+            user_message="Olá",
+            conversation_context=None,
+            name="Maria",
+            intent="desabafar"
+        )
+
+        # Verify structure without RAG
+        payload = mock_post.call_args[1]["json"]
+        messages = payload["messages"]
+        
+        # Should have 4 layers when RAG is empty: system, memory_user, memory_assistant, user
+        self.assertEqual(len(messages), 4)
+        
+        # Verify RAG layer is not present
+        for msg in messages:
+            self.assertNotIn("[RAG]", msg.get("content", ""))
+        
+        # Last message should still be user
+        self.assertEqual(messages[-1]["role"], "user")
+        self.assertEqual(messages[-1]["content"], "Olá")
