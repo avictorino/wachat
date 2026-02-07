@@ -161,6 +161,7 @@ class SimulationService:
 
         conversation = []
         conversation_history = []
+        last_user_message_obj = None  # Track the most recent user message for bot response
 
         for i in range(num_messages):
             # Alternate between roles
@@ -170,13 +171,13 @@ class SimulationService:
                 message = self._generate_seeker_message(conversation_history, i // 2 + 1, theme)
                 
                 # Save user message to database
-                user_message_obj = Message.objects.create(
+                last_user_message_obj = Message.objects.create(
                     profile=profile,
                     role="user",
                     content=message,
                     channel="telegram",
                 )
-                logger.info(f"Saved simulated user message {user_message_obj.id} for profile {profile.id}")
+                logger.info(f"Saved simulated user message {last_user_message_obj.id} for profile {profile.id}")
                 
                 # Add to conversation history
                 conversation.append({"role": role, "content": message})
@@ -186,49 +187,54 @@ class SimulationService:
                 # ROLE_B: Listener - Use production chat pipeline
                 role = "ROLE_B"
                 
+                if not last_user_message_obj:
+                    logger.error(f"No user message available for bot response in profile {profile.id}")
+                    raise ValueError("Cannot generate bot response without a user message")
+                
                 # Get conversation context (last 5 messages, excluding the current one we're generating)
                 context = self._get_conversation_context(profile, limit=5)
                 
-                # Get the last user message (which we just created above)
-                last_user_message = Message.objects.filter(profile=profile, role="user").order_by("-created_at").first()
+                # Generate bot response using production pipeline
+                response_messages = llm_service.generate_intent_response(
+                    user_message=last_user_message_obj.content,
+                    conversation_context=context,
+                    name=profile.name,
+                    inferred_gender=profile.inferred_gender,
+                    intent=None,
+                    theme_id=profile.prompt_theme,
+                )
                 
-                if last_user_message:
-                    # Generate bot response using production pipeline
-                    response_messages = llm_service.generate_intent_response(
-                        user_message=last_user_message.content,
-                        conversation_context=context,
-                        name=profile.name,
-                        inferred_gender=profile.inferred_gender,
-                        intent=None,
-                        theme_id=profile.prompt_theme,
-                    )
-                    
-                    # Capture and save Ollama prompt payload for observability (same as production)
-                    if hasattr(llm_service, "get_last_prompt_payload"):
-                        prompt_payload = llm_service.get_last_prompt_payload()
-                        if prompt_payload and isinstance(prompt_payload, dict):
-                            last_user_message.ollama_prompt = prompt_payload
-                            last_user_message.save(update_fields=["ollama_prompt"])
-                            logger.info(f"Saved Ollama prompt payload to simulated message {last_user_message.id}")
-                    
-                    # Take the first response message (production pipeline may return multiple)
-                    message = response_messages[0] if response_messages else "..."
-                    
-                    # Save assistant response to database
-                    Message.objects.create(
-                        profile=profile,
-                        role="assistant",
-                        content=message,
-                        channel="telegram",
-                    )
-                    logger.info(f"Saved simulated bot response for profile {profile.id}")
-                    
-                    # Add to conversation history
-                    conversation.append({"role": role, "content": message})
-                    conversation_history.append({"role": role, "content": message})
-                else:
-                    logger.error(f"Could not find last user message for profile {profile.id}")
-                    raise ValueError("Missing user message for bot response generation")
+                # Validate response
+                if not response_messages:
+                    logger.error(f"LLM service returned empty response for profile {profile.id}")
+                    raise ValueError("LLM service failed to generate a response")
+                
+                # Take the first response message (production pipeline may return multiple)
+                message = response_messages[0]
+                
+                # Save assistant response to database
+                assistant_message_obj = Message.objects.create(
+                    profile=profile,
+                    role="assistant",
+                    content=message,
+                    channel="telegram",
+                )
+                
+                # Capture and save Ollama prompt payload for observability (same as production)
+                # The prompt payload represents what was sent to generate the bot's response,
+                # so it should be saved to the user message that triggered this response
+                if hasattr(llm_service, "get_last_prompt_payload"):
+                    prompt_payload = llm_service.get_last_prompt_payload()
+                    if prompt_payload and isinstance(prompt_payload, dict):
+                        last_user_message_obj.ollama_prompt = prompt_payload
+                        last_user_message_obj.save(update_fields=["ollama_prompt"])
+                        logger.info(f"Saved Ollama prompt payload to simulated user message {last_user_message_obj.id}")
+                
+                logger.info(f"Saved simulated bot response {assistant_message_obj.id} for profile {profile.id}")
+                
+                # Add to conversation history
+                conversation.append({"role": role, "content": message})
+                conversation_history.append({"role": role, "content": message})
 
             logger.info(f"Generated {role} message {i + 1}/{num_messages}")
 
