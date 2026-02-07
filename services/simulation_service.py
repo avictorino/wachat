@@ -24,6 +24,16 @@ _faker = Faker("pt_BR")
 ROLE_LABEL_SEEKER = "Pessoa"  # Portuguese for "Person"
 ROLE_LABEL_LISTENER = "BOT"  # Bot assistant
 
+# Emotional states for user simulation
+ALL_EMOTIONAL_STATES = ["CONFUSION", "LOSS_OF_CONTROL", "RESISTANCE", "SHAME", "EXHAUSTION", "AMBIVALENCE"]
+
+# State randomness: 30% chance to pick any state for variety
+STATE_RANDOMNESS_THRESHOLD = 0.3
+
+# Higher temperature for user simulation to increase natural variation
+# 0.95 chosen to produce more diverse, human-like contradictions while maintaining coherence
+USER_SIMULATION_TEMPERATURE = 0.95
+
 
 class SimulationService:
     """
@@ -287,7 +297,7 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
             context_messages.append({"role": "user", "content": user_prompt})
 
             # Use higher temperature for more natural variation
-            response_text = self._call_llm(context_messages, temperature=0.95, max_tokens=250)
+            response_text = self._call_llm(context_messages, temperature=USER_SIMULATION_TEMPERATURE, max_tokens=250)
 
             return response_text
 
@@ -321,10 +331,9 @@ Responda APENAS com a mensagem do usuário, sem explicações."""
         # Get possible states for this turn, with fallback for turns > 5
         possible_states = base_states.get(turn, ["AMBIVALENCE", "EXHAUSTION", "CONFUSION"])
 
-        # Add 30% chance to pick from any state for variety
-        if random.random() < 0.3:
-            all_states = ["CONFUSION", "LOSS_OF_CONTROL", "RESISTANCE", "SHAME", "EXHAUSTION", "AMBIVALENCE"]
-            return random.choice(all_states)
+        # Add randomness to avoid predictability
+        if random.random() < STATE_RANDOMNESS_THRESHOLD:
+            return random.choice(ALL_EMOTIONAL_STATES)
 
         return random.choice(possible_states)
 
