@@ -406,6 +406,152 @@ IMPORTANTE:
             # Default to "outro" on error
             return "outro"
 
+    def _build_memory_user_layer(
+        self, name: str, inferred_gender: Optional[str] = None
+    ) -> str:
+        """
+        Build memory_user layer containing persistent facts about the user.
+
+        LAYER: memory_user
+        - Contains persistent facts about the user
+        - Includes declared beliefs, limits, preferences and boundaries
+        - This block is descriptive, never instructional
+
+        Args:
+            name: User's name
+            inferred_gender: Inferred gender (male/female/unknown or None)
+
+        Returns:
+            Formatted memory_user content
+        """
+        parts = [f"Nome do usuário: {name}"]
+
+        if inferred_gender and inferred_gender != "unknown":
+            parts.append(
+                f"Gênero inferido: {inferred_gender} (use APENAS para ajustar o tom sutilmente, NUNCA mencione explicitamente)"
+            )
+
+        return "\n".join(parts)
+
+    def _build_memory_assistant_layer(
+        self, conversation_context: Optional[List[dict]] = None
+    ) -> str:
+        """
+        Build memory_assistant layer containing internal conversation state.
+
+        LAYER: memory_assistant
+        - Contains internal conversation state
+        - Tracks what the assistant already said or asked
+        - Tracks themes already covered
+        - Explicitly lists what must NOT be repeated
+        - Defines the next conversational objective
+
+        Args:
+            conversation_context: Optional list of recent messages
+
+        Returns:
+            Formatted memory_assistant content
+        """
+        if not conversation_context:
+            return "Nova conversa. Primeira interação com o usuário."
+
+        parts = ["Histórico da conversa (use para evitar repetição):"]
+
+        # Track questions and empathy phrases already used
+        questions_asked = []
+        empathy_phrases = []
+
+        for msg in conversation_context:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+
+            # Track assistant messages for anti-loop logic
+            if role == "assistant":
+                # Detect questions
+                if "?" in content:
+                    questions_asked.append(content)
+                # Detect common empathy patterns
+                if any(
+                    phrase in content.lower()
+                    for phrase in [
+                        "isso não te define",
+                        "isso não apaga",
+                        "você é mais do que",
+                        "há mais graça",
+                    ]
+                ):
+                    empathy_phrases.append(content)
+
+        # Add conversation history
+        for msg in conversation_context:
+            parts.append(f"{msg['role']}: {msg['content']}")
+
+        # Add explicit anti-repetition rules
+        if questions_asked:
+            parts.append(
+                "\nPerguntas já feitas (NÃO REPETIR perguntas equivalentes):"
+            )
+            for q in questions_asked[-3:]:  # Last 3 questions
+                parts.append(f"- {q}")
+
+        if empathy_phrases:
+            parts.append(
+                "\nFrases de empatia já usadas (VARIAR a abertura):"
+            )
+            for p in empathy_phrases[-2:]:  # Last 2 empathy phrases
+                parts.append(f"- {p}")
+
+        # Define next objective
+        parts.append(
+            "\nPróximo objetivo: Avançar a conversa com progresso concreto. "
+            "Evitar loops. Manter presença genuína."
+        )
+
+        return "\n".join(parts)
+
+    def _build_rag_layer(self, user_message: str) -> str:
+        """
+        Build RAG layer containing external or thematic knowledge.
+
+        LAYER: rag
+        - Contains only external or thematic knowledge
+        - Never contains assistant opinions or decisions
+        - Never overrides memory_user limits
+        - Must be applied only if relevant to the current user message
+
+        Args:
+            user_message: Current user message to retrieve relevant RAG context
+
+        Returns:
+            Formatted RAG content or empty string if no relevant context
+        """
+        rag_texts = get_rag_context(user_message, limit=1)
+
+        if not rag_texts:
+            return ""
+
+        parts = ["Conhecimento externo relevante (aplicar se pertinente):"]
+        for text in rag_texts:
+            parts.append(f"- {text}")
+
+        return "\n".join(parts)
+
+    def _build_system_layer(self) -> str:
+        """
+        Build system layer containing fixed identity and global rules.
+
+        LAYER: system
+        - Contains ONLY fixed identity, global rules, ethical limits and style
+        - Never contains user facts
+        - Never contains past conversation details
+        - Never contains beliefs, religion, or themes unless global and neutral
+        - These rules are ABSOLUTE and always applied
+
+        Returns:
+            System identity statement
+        """
+        return "Você é um companheiro espiritual de inspiração cristã. Sua presença é calma, acolhedora e serena."
+
     def generate_intent_response(
         self,
         user_message: str,
@@ -418,8 +564,12 @@ IMPORTANTE:
         """
         Generate an empathetic, spiritually-aware response based on detected intent.
 
-        The system prompt is assumed to be defined in the Ollama Modelfile.
-        RAG context is injected as silent background context.
+        The payload is structured in 5 distinct layers:
+        1. system: Fixed identity, global rules, ethical limits
+        2. memory_user: Persistent facts about the user
+        3. memory_assistant: Internal conversation state
+        4. rag: External knowledge
+        5. user: Current user message
 
         Returns multiple messages split by logical paragraphs for sequential delivery.
         Each message is a complete sentence with orphan words/fragments filtered out.
@@ -439,36 +589,31 @@ IMPORTANTE:
             # Sanitize input before sending to LLM
             sanitized_message = sanitize_input(user_message)
 
-            # Build system message with user context only
-            system_parts = [
-                f"O nome do usuário é {name}. Use-o apenas para se dirigir a ele, nunca para se identificar."
-            ]
+            # Build the 5-layer payload structure
+            messages = []
 
-            # Add user context
-            if inferred_gender and inferred_gender != "unknown":
-                system_parts.append(
-                    f"Gênero inferido (use APENAS para ajustar o tom, NUNCA mencione explicitamente): {inferred_gender}"
-                )
+            # Layer 1: system
+            system_content = self._build_system_layer()
+            messages.append({"role": "system", "content": system_content})
 
-            system_prompt = "\n".join(system_parts)
+            # Layer 2: memory_user
+            memory_user_content = self._build_memory_user_layer(name, inferred_gender)
+            messages.append({"role": "system", "content": f"[MEMORY_USER]\n{memory_user_content}"})
 
-            # Build messages list starting with system context
-            messages = [{"role": "system", "content": system_prompt}]
+            # Layer 3: memory_assistant
+            memory_assistant_content = self._build_memory_assistant_layer(
+                conversation_context
+            )
+            messages.append(
+                {"role": "system", "content": f"[MEMORY_ASSISTANT]\n{memory_assistant_content}"}
+            )
 
-            # Inject RAG as implicit memory (assistant role) if available
-            if rag_texts := get_rag_context(sanitized_message, limit=1):
-                # Inject RAG context as assistant message with clear prefix
-                # Portuguese instruction because it's for the LLM context
-                rag_content = "[MEMÓRIA INTERNA – NÃO CITAR]\n-"
-                rag_content += "\n-".join(rag_texts)
-                messages.append({"role": "system", "content": rag_content})
+            # Layer 4: rag
+            rag_content = self._build_rag_layer(sanitized_message)
+            if rag_content:
+                messages.append({"role": "system", "content": f"[RAG]\n{rag_content}"})
 
-            # Add conversation context if provided
-            if conversation_context:
-                for msg in conversation_context:
-                    messages.append({"role": msg["role"], "content": msg["content"]})
-
-            # Add the current user message
+            # Layer 5: user
             messages.append({"role": "user", "content": sanitized_message})
 
             response_text = self._make_chat_request(
@@ -478,9 +623,10 @@ IMPORTANTE:
             # Split response into multiple sequential messages
             # This creates a more natural conversational flow
             response_messages = split_response_messages(response_text)
-            
+
+            rag_chunk_count = 1 if rag_content else 0
             logger.info(
-                f"Generated intent-based response for intent: {intent} (RAG chunks: {len(rag_texts)}, messages: {len(response_messages)})"
+                f"Generated intent-based response for intent: {intent} (RAG chunks: {rag_chunk_count}, messages: {len(response_messages)})"
             )
             return response_messages
 

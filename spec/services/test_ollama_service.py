@@ -226,7 +226,7 @@ class OllamaServiceTest(TestCase):
     @patch("services.ollama_service.requests.post")
     @patch("services.ollama_service.sanitize_input")
     def test_generate_intent_response_with_context(self, mock_sanitize, mock_post):
-        """Test that generate_intent_response includes conversation context."""
+        """Test that generate_intent_response uses new 5-layer payload structure."""
         mock_sanitize.return_value = "Obrigado"
         
         mock_response = Mock()
@@ -249,16 +249,31 @@ class OllamaServiceTest(TestCase):
             intent="desabafar"
         )
 
-        # Verify context was included in the payload
+        # Verify new 5-layer structure: system, memory_user, memory_assistant, (optional rag), user
         payload = mock_post.call_args[1]["json"]
-        self.assertEqual(len(payload["messages"]), 4)  # system + 2 context + current user message
+        
+        # Should have 4 messages minimum: system + memory_user + memory_assistant + user
+        # (rag is optional and not included if no relevant context)
+        self.assertGreaterEqual(len(payload["messages"]), 4)
+        
+        # Layer 1: system
         self.assertEqual(payload["messages"][0]["role"], "system")
-        self.assertEqual(payload["messages"][1]["role"], "user")
-        self.assertEqual(payload["messages"][1]["content"], "Estou triste")
-        self.assertEqual(payload["messages"][2]["role"], "assistant")
-        self.assertEqual(payload["messages"][2]["content"], "Entendo. O que aconteceu?")
-        self.assertEqual(payload["messages"][3]["role"], "user")
-        self.assertEqual(payload["messages"][3]["content"], "Obrigado")
+        self.assertIn("companheiro espiritual", payload["messages"][0]["content"].lower())
+        
+        # Layer 2: memory_user
+        self.assertEqual(payload["messages"][1]["role"], "system")
+        self.assertIn("[MEMORY_USER]", payload["messages"][1]["content"])
+        self.assertIn("Maria", payload["messages"][1]["content"])
+        
+        # Layer 3: memory_assistant
+        self.assertEqual(payload["messages"][2]["role"], "system")
+        self.assertIn("[MEMORY_ASSISTANT]", payload["messages"][2]["content"])
+        self.assertIn("Estou triste", payload["messages"][2]["content"])
+        self.assertIn("Entendo. O que aconteceu?", payload["messages"][2]["content"])
+        
+        # Last layer: user
+        self.assertEqual(payload["messages"][-1]["role"], "user")
+        self.assertEqual(payload["messages"][-1]["content"], "Obrigado")
 
     @patch("services.ollama_service.requests.post")
     def test_make_chat_request_with_custom_kwargs(self, mock_post):
