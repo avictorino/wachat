@@ -107,7 +107,7 @@ def _is_complete_sentence(text: str) -> bool:
     Check if text appears to be a complete sentence or question.
     
     A complete sentence should:
-    - Have proper ending punctuation (. ! ? :), OR
+    - Have proper ending punctuation (. ! ?), OR
     - Have multiple words (5+) even without punctuation
     
     Incomplete fragments are:
@@ -131,7 +131,7 @@ def _is_complete_sentence(text: str) -> bool:
     num_words = len(words)
     
     # Has sentence-ending punctuation
-    has_punctuation = any(text.endswith(p) for p in ['.', '!', '?', ':'])
+    has_punctuation = any(text.endswith(p) for p in ['.', '!', '?'])
     
     # Single word cases
     if num_words == 1:
@@ -197,12 +197,8 @@ def split_response_messages(response: str) -> List[str]:
         
         # Check if this part is complete
         if _is_complete_sentence(part):
-            # If this is the last part, add it normally
-            if is_last:
-                messages.append(part)
-            else:
-                # Not the last part, add it
-                messages.append(part)
+            # Complete sentence - add it
+            messages.append(part)
         else:
             # Incomplete fragment
             if is_last:
