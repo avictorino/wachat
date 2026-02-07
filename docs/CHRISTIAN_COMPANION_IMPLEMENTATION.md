@@ -1,5 +1,7 @@
 # Christian-Inspired Virtual Companion Implementation
 
+> **Note:** This document is historical. The implementation described here was migrated to the Ollama Modelfile approach. The `services/prompts/` directory and related files mentioned here have been removed. See `model/Modelfile` for the current system prompt implementation.
+
 ## Overview
 
 This document describes the implementation of comprehensive conversational guidelines for the WaChat Christian-inspired virtual companion agent. The changes create a more compassionate, empathetic, and spiritually grounded conversational experience that prioritizes the user's emotional well-being.

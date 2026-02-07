@@ -43,8 +43,8 @@ This refactoring completely modernizes the RAG (Retrieval-Augmented Generation) 
 
 ### 4. Response Generation Integration
 ✅ Modified `services/ollama_service.py`:
-- Removed dependency on `PromptComposer`
-- Removed usage of `BASE_PROMPT_PTBR` in production code
+- Removed dependency on `PromptComposer` (deprecated and removed)
+- Removed usage of `BASE_PROMPT_PTBR` in production code (deprecated and removed)
 - Integrated RAG context as silent background information
 
 ✅ System prompt structure:
@@ -68,10 +68,12 @@ Esta é uma continuação natural da conversa.
 - System remains simple and maintainable
 
 ### 5. Cleanup and Deprecation
-✅ Deprecated `BASE_PROMPT_PTBR`:
-- Added deprecation notice in `composer.py`
-- Kept file for backward compatibility with existing tests
-- Documented that new code should not use it
+✅ Removed deprecated prompt composer system:
+- `PromptComposer` class and all related code removed
+- `services/prompts/` directory removed entirely
+- `services/theme_selector.py` removed (not used)
+- Tests for prompt assembly removed
+- System now uses Modelfile exclusively for prompts
 
 ✅ Code quality improvements:
 - Extracted magic numbers to named constants
@@ -98,7 +100,11 @@ Esta é uma continuação natural da conversa.
 2. `core/models.py` - Added RagChunk model
 3. `core/management/commands/ingest_pdf_for_ollama.py` - Full refactor to Django ORM
 4. `services/ollama_service.py` - Integrated RAG, removed PromptComposer
-5. `services/prompts/composer.py` - Added deprecation notice
+
+### Removed Files
+1. `services/prompts/` - Entire directory removed (PromptComposer, themes, etc.)
+2. `services/theme_selector.py` - Theme selection logic removed
+3. `spec/services/test_prompt_assembly.py` - Tests for removed functionality
 
 ## How to Use
 
