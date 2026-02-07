@@ -373,7 +373,7 @@ IMPORTANTE:
                 messages, temperature=0.2, max_tokens=20
             )
 
-            theme = response_text.strip().lower()
+            theme = response_text.strip().lower().replace('"', "")
 
             # Validate and normalize the response
             valid_themes = [
