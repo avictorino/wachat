@@ -191,8 +191,8 @@ class SimulationService:
                     logger.error(f"No user message available for bot response in profile {profile.id}")
                     raise ValueError("Cannot generate bot response without a user message")
                 
-                # Get conversation context (last 5 messages, excluding the current one we're generating)
-                context = self._get_conversation_context(profile, limit=5)
+                # Get conversation context (last 5 messages, excluding the current user message)
+                context = self._get_conversation_context(profile, limit=5, exclude_message_id=last_user_message_obj.id)
                 
                 # Generate bot response using production pipeline
                 response_messages = llm_service.generate_intent_response(
@@ -240,7 +240,7 @@ class SimulationService:
 
         return conversation
     
-    def _get_conversation_context(self, profile: Profile, limit: int = 5) -> list:
+    def _get_conversation_context(self, profile: Profile, limit: int = 5, exclude_message_id: int = None) -> list:
         """
         Get recent conversation context for the LLM.
         Excludes system messages to focus on user-assistant dialogue.
@@ -248,15 +248,18 @@ class SimulationService:
         Args:
             profile: Profile to get messages for
             limit: Maximum number of recent messages to include
+            exclude_message_id: Optional message ID to exclude from context (typically the current user message)
             
         Returns:
             List of message dicts with 'role' and 'content' keys
         """
-        recent_messages = (
-            Message.objects.filter(profile=profile)
-            .exclude(role="system")
-            .order_by("-created_at")[:limit]
-        )
+        query = Message.objects.filter(profile=profile).exclude(role="system")
+        
+        # Exclude specific message if provided (to avoid duplication)
+        if exclude_message_id:
+            query = query.exclude(id=exclude_message_id)
+        
+        recent_messages = query.order_by("-created_at")[:limit]
 
         context = []
         for msg in reversed(recent_messages):
