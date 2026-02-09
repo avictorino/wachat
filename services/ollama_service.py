@@ -24,7 +24,6 @@ from urllib.parse import urljoin
 
 import requests
 
-from core.input_sanitizer import InputSanitizer
 from core.models import Message, Profile
 from services.rag_service import get_rag_context
 
@@ -44,7 +43,6 @@ class OllamaService:
         self.base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
         self.api_url_base = f"{self.base_url}/api/"
         self._last_prompt_payload = None  # Store last payload for observability
-        self._sanitizer = InputSanitizer()
 
     def basic_call(
         self,
