@@ -9,7 +9,7 @@ import logging
 import random
 from typing import List
 
-from services.llm_factory import get_llm_service
+from services.ollama_service import OllamaService
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ class HumanSimulator:
             name: The simulated person's name
             domain: The domain of conversation (e.g., 'spiritual', 'relationship', 'grief')
         """
-        self.llm_service = get_llm_service()
+        self.llm_service = OllamaService()
         self.name = name
         self.domain = domain
         self.conversation_state = {
@@ -40,7 +40,9 @@ class HumanSimulator:
             "topics_mentioned": [],
         }
 
-    def generate_message(self, conversation_history: List[dict], turn_number: int) -> str:
+    def generate_message(
+        self, conversation_history: List[dict], turn_number: int
+    ) -> str:
         """
         Generate a realistic human message based on conversation context.
 
@@ -60,7 +62,7 @@ class HumanSimulator:
 
             # Generate message using configured LLM service
             # Use internal method to call LLM directly
-            if hasattr(self.llm_service, 'client'):
+            if hasattr(self.llm_service, "client"):
                 # OllamaService has client attribute
                 response = self.llm_service.client.chat(
                     model=self.llm_service.model,
@@ -71,9 +73,9 @@ class HumanSimulator:
                     options={
                         "temperature": 0.9,
                         "num_predict": 200,
-                    }
+                    },
                 )
-                message = response['message']['content'].strip()
+                message = response["message"]["content"].strip()
             else:
                 # Fallback if client structure is different
                 raise AttributeError("LLM service client not available")
@@ -87,7 +89,9 @@ class HumanSimulator:
             return message
 
         except Exception as e:
-            logger.error(f"Error generating simulated human message: {str(e)}", exc_info=True)
+            logger.error(
+                f"Error generating simulated human message: {str(e)}", exc_info=True
+            )
             # Fallback to a basic message
             return self._get_fallback_message(turn_number)
 
@@ -116,15 +120,21 @@ Estado emocional atual: {emotional_state}
         elif emotional_state == "opening_up":
             base_prompt += "\n- Está começando a compartilhar mais detalhes"
         elif emotional_state == "vulnerable":
-            base_prompt += "\n- Está mais aberto e vulnerável, compartilhando mais profundamente"
+            base_prompt += (
+                "\n- Está mais aberto e vulnerável, compartilhando mais profundamente"
+            )
         elif emotional_state == "reflective":
-            base_prompt += "\n- Está refletindo sobre as conversas anteriores e processando"
+            base_prompt += (
+                "\n- Está refletindo sobre as conversas anteriores e processando"
+            )
 
         base_prompt += "\n\nResponda APENAS com a mensagem que esta pessoa enviaria. Não adicione explicações, aspas ou contexto."
 
         return base_prompt
 
-    def _build_user_prompt(self, conversation_history: List[dict], turn_number: int) -> str:
+    def _build_user_prompt(
+        self, conversation_history: List[dict], turn_number: int
+    ) -> str:
         """Build the user prompt with conversation context."""
         if turn_number == 1:
             # First message - initiate conversation

@@ -3,7 +3,7 @@ import json
 from django.contrib import admin
 from django.utils.html import format_html
 
-from core.models import Message, Profile, RagChunk
+from core.models import Message, Profile, RagChunk, Theme
 
 
 class MessageInline(admin.TabularInline):
@@ -138,3 +138,14 @@ class RagChunkAdmin(admin.ModelAdmin):
         return "No conversations available"
 
     conversations_display.short_description = "Conversations (Formatted)"
+
+
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    """Admin interface for Theme model."""
+
+    list_display = ["name", "role", "prompt_short"]
+
+    def prompt_short(self, obj):
+        """Show truncated prompt in list view."""
+        return obj.prompt[:50] + "..." if len(obj.prompt) > 50 else obj.prompt

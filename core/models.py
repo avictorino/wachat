@@ -2,6 +2,25 @@ from django.db import models
 from pgvector.django import VectorField
 
 
+class ThemeRoleChoices(models.TextChoices):
+    PERSON_SIMULATOR = "PERSON_SIMULATOR"
+    BOT_SIMULATOR = "BOT_SIMULATOR"
+    PERSON = "PERSON"
+    BOT = "BOT"
+
+
+class Theme(models.Model):
+    name = models.CharField(max_length=100, primary_key=True)
+    role = models.CharField(
+        choices=ThemeRoleChoices.choices,
+        default=ThemeRoleChoices.PERSON_SIMULATOR,
+        max_length=255,
+    )
+    prompt = models.TextField(
+        help_text="Thematic prompt text to apply to conversations"
+    )
+
+
 class Profile(models.Model):
     """
     User profile for storing user information across multiple channels.
@@ -33,12 +52,14 @@ class Profile(models.Model):
         null=True,
         help_text="Gender inferred from name (male/female/unknown)",
     )
-    prompt_theme = models.CharField(
-        max_length=100,
-        blank=True,
+    theme = models.ForeignKey(
+        Theme,
+        on_delete=models.SET_NULL,
         null=True,
-        help_text="Active thematic prompt id to apply to this user's conversation",
+        blank=True,
+        help_text="Assigned conversation theme (temporary)",
     )
+
     pending_reset_confirmation = models.BooleanField(
         default=False,
         help_text="True if user has initiated /reset and is awaiting confirmation",
@@ -55,7 +76,7 @@ class Profile(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return f"{self.name} ({self.telegram_user_id})"
+        return f"{self.name} ({self.inferred_gender})"
 
 
 class Message(models.Model):
@@ -75,6 +96,7 @@ class Message(models.Model):
     CHANNEL_CHOICES = [
         ("telegram", "Telegram"),
         ("whatsapp", "WhatsApp"),
+        ("simulation", "Simulation"),
         ("other", "Other"),
     ]
 
@@ -98,6 +120,11 @@ class Message(models.Model):
         null=True,
         blank=True,
         help_text="Full Ollama prompt payload sent to LLM (for observability)",
+    )
+    ollama_prompt_temperature = models.FloatField(
+        null=True,
+        blank=True,
+        help_text="Temperature setting used in Ollama prompt (for observability)",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
