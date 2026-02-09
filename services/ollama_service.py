@@ -18,7 +18,6 @@ Texto longo                      | 500+                     | Risco alto de queb
 """
 import logging
 import os
-import random
 from typing import Any, Dict, Literal, Optional, Union
 from urllib.parse import urljoin
 
@@ -52,18 +51,28 @@ class OllamaService:
         max_tokens: int = 100,
         url_type: str = Literal["chat", "generate"],
         timeout: int = 60,
+        top_p: float = None,
+        repeat_penalty: float = None,
     ) -> str:
+
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+            },
+        }
+
+        if top_p:
+            payload["options"]["top_p"] = top_p
+        if repeat_penalty:
+            payload["options"]["repeat_penalty"] = repeat_penalty
+
         response = requests.post(
             urljoin(self.api_url_base, url_type),
-            json={
-                "model": model,
-                "prompt": prompt,
-                "stream": False,
-                "options": {
-                    "temperature": temperature,
-                    "num_predict": max_tokens,
-                },
-            },
+            json=payload,
             timeout=timeout,
         )
 
@@ -78,7 +87,87 @@ class OllamaService:
     def generate_response_message(self, profile: Profile, channel: str) -> Message:
 
         queryset = profile.messages.all().exclude(role="system")
-        PROMPT_AUX = ""
+        PROMPT_AUX = """
+
+            =====================================
+            RUNTIME — CONTROLE DE PROGRESSÃO
+            =====================================
+
+            ESTADO ATUAL DA CONVERSA:
+            - acolhimento: CONCLUÍDO
+            - culpa explícita: PRESENTE
+            - pergunta repetida: SIM
+
+            A próxima resposta NÃO PODE:
+            - acolher novamente
+            - repetir frases de empatia
+            - explicar sentimentos do usuário
+            - explorar causas ou razões
+            - repetir perguntas já feitas
+            - usar construções iniciadas por:
+              - “você está…”
+              - “isso não…”
+
+            A próxima resposta DEVE:
+            - assumir que o acolhimento já ocorreu
+            - separar identidade de comportamento
+            - conter NO MÁXIMO 2 frases
+            - NÃO fazer pergunta
+              OU fazer UMA pergunta concreta diferente
+            - avançar a conversa com algo novo e específico
+
+            -------------------------------------
+            CONTROLE DE REPETIÇÃO — PRIORIDADE ABSOLUTA
+            -------------------------------------
+
+            O assistente JÁ FEZ:
+            - acolhimento inicial
+            - perguntas abertas sobre causa ou início
+
+            É PROIBIDO:
+            - repetir acolhimento
+            - repetir perguntas anteriores (mesmo significado)
+            - repetir qualquer estrutura explicativa
+            - repetir frases que avaliem ou concluam (“não resolve”, “é um erro”)
+            - usar linguagem abstrata ou genérica
+
+            -------------------------------------
+            INVALIDADORES AUTOMÁTICOS
+            -------------------------------------
+
+            Se a resposta contiver QUALQUER item abaixo,
+            ela deve ser considerada INVÁLIDA e regenerada:
+
+            - “você está…”
+            - “isso não…”
+            - explicação do que o usuário sente
+            - paráfrase do conteúdo do usuário
+            - tom terapêutico, didático ou moralizante
+            - referência genérica a “recursos de apoio”
+
+            -------------------------------------
+            FORMA OBRIGATÓRIA
+            -------------------------------------
+
+            - Linguagem falada, humana e direta
+            - Frases curtas
+            - Máximo de 2 parágrafos
+            - Nenhum título, rótulo ou prefixo
+            - No máximo 1 pergunta, apenas se necessário
+            - Sem metáforas
+            - Sem explicações
+
+            -------------------------------------
+            FALHA DE PROGRESSÃO
+            -------------------------------------
+
+            Se não houver avanço possível,
+            ATIVE MODO ORIENTAÇÃO CONCRETA:
+
+            - frases afirmativas
+            - foco em limite, cuidado ou próximo passo
+            - nenhuma pergunta obrigatória
+        """
         if queryset.filter(role="assistant").count() >= 2:
             PROMPT_AUX += f"THEMA DA RESPOSTA: {profile.theme.prompt}"
 
@@ -92,15 +181,10 @@ class OllamaService:
         for RagContext in get_rag_context(last_person_message.content, limit=3):
             PROMPT_AUX += f"\n\nRAG CONTEXT AUXILIAR: {RagContext}\n\n"
 
-        temperature = round(
-            random.uniform(0.4, 0.7), 1
-        )  # Use a random temperature for more natural responses
         content = self.basic_call(
             url_type="generate",
             model="wachat-v9",
             prompt=PROMPT_AUX,
-            temperature=temperature,
-            max_tokens=120,
         )
 
         return Message.objects.create(
@@ -109,7 +193,7 @@ class OllamaService:
             content=content,
             channel=channel,
             ollama_prompt=PROMPT_AUX,
-            ollama_prompt_temperature=temperature,
+            ollama_prompt_temperature=0.6,
         )
 
     def infer_gender(self, name: str) -> str:
@@ -228,39 +312,78 @@ class OllamaService:
         if not theme_name:
             raise ValueError("theme_name must be provided to build theme prompt")
 
-        PROMPT = f"""Você é um GERADOR DE PROMPTS DE CONVERSAÇÃO TEMÁTICA.
+        PROMPT = f"""Você é um GERADOR DE RESTRIÇÕES OPERACIONAIS DE CONVERSA.
 
-                Sua tarefa é gerar um PROMPT FINAL que será ANEXADO ao prompt principal de um chatbot
-                assim que um TEMA for identificado na conversa anterior do usuário.
+            Sua tarefa é gerar um BLOCO DE CONTROLE DE COMPORTAMENTO
+            que será ANEXADO ao prompt principal de um chatbot
+            quando um TEMA for identificado na conversa.
 
-                O PROMPT FINAL deve orientar o chatbot sobre:
-                1. Como compreender o estado emocional básico do tema
-                2. Como se comunicar com uma pessoa passando por esse tema
-                3. Quais atitudes adotar
-                4. Quais atitudes evitar
-                5. Como integrar uma abordagem religiosa de forma sensível e respeitosa
+            ⚠️ IMPORTANTE:
+            Você NÃO deve gerar textos explicativos, guias, manuais ou conselhos.
+            Você NÃO deve ensinar empatia.
+            Você NÃO deve listar “atitudes a adotar” ou “atitudes a evitar”.
 
-                REGRAS IMPORTANTES:
-                - O prompt final NÃO deve assumir um papel de personagem.
-                - O prompt final DEVE orientar o comportamento do chatbot.
-                - Use linguagem clara, direta e normativa (instruções).
-                - Não use termos técnicos ou clínicos.
-                - Não faça diagnósticos.
-                - Não prometa cura espiritual nem solução imediata.
-                - Não use religião como cobrança, ameaça ou moralização.
-                - A fé deve aparecer como apoio, presença e esperança, nunca como imposição.
-                - Respeite a liberdade da pessoa, mesmo quando citar elementos religiosos.
-                - Evite frases prontas ou genéricas.
-                - O prompt deve ser adequado para uso direto no modelo llama3:8b, sem pós-treinamento.
+            O BLOCO GERADO DEVE:
+            - Restringir comportamentos do chatbot
+            - Proibir padrões que causam loop
+            - Forçar avanço conversacional
+            - Ser curto, direto e operacional
 
-                PARÂMETROS:
-                Tema identificado: {theme_name.upper()}
+            =====================================
+            OBJETIVO DO BLOCO GERADO
+            =====================================
 
-                FORMATO DE SAÍDA OBRIGATÓRIO:
-                Você DEVE retornar SOMENTE um bloco de instruções no formato abaixo,
-                respeitando títulos e listas.
+            Evitar:
+            - repetição de acolhimento
+            - reaplicação de templates narrativos
+            - verbosidade
+            - perguntas genéricas ou abstratas
+            - over-interpretação
 
-                RETORNE APENAS O PROMPT FINAL.
+            Forçar:
+            - respostas curtas
+            - mudança de função após resistência
+            - incorporação explícita do último turno do usuário
+            - progressão da conversa
+
+            =====================================
+            FORMATO DE SAÍDA OBRIGATÓRIO
+            =====================================
+
+            Retorne SOMENTE um bloco no formato abaixo,
+            sem introdução, sem explicações, sem listas didáticas:
+
+            -------------------------------------
+            CONTROLE TEMÁTICO — {theme_name}
+            -------------------------------------
+
+            ESTADO DO TEMA:
+            [Descreva o estado emocional EM UMA FRASE curta, sem explicar.]
+
+            É PROIBIDO AO ASSISTENTE:
+            - [3 a 6 proibições claras e específicas]
+
+            A PRÓXIMA RESPOSTA DEVE:
+            - [3 a 5 exigências comportamentais objetivas]
+
+            REGRAS DURAS:
+            - Máximo de 2 frases
+            - No máximo 1 pergunta, somente se destravar a conversa
+            - É proibido repetir frases, perguntas ou funções já usadas
+
+            Se violar qualquer regra acima, a resposta é inválida.
+
+            -------------------------------------
+
+            ⚠️ NÃO inclua:
+            - “Atitudes a adotar”
+            - “Atitudes a evitar”
+            - Linguagem didática
+            - Linguagem terapêutica
+            - Conselhos
+            - Explicações religiosas
+
+            RETORNE APENAS O BLOCO.
             """
 
         logger.info(f"Generated theme prompt for '{theme_name}'")
@@ -290,150 +413,220 @@ class OllamaService:
         for message in profile.messages.exclude(role="system"):
             transcript_text += f"{message}: {message.content}\n\n"
 
-        SYSTEM_PROMPT = f"""SYSTEM PROMPT:
-            Você é um analista crítico e revisor de conversas especializado
-            em qualidade de diálogo humano-IA.
+        SYSTEM_PROMPT = f"""Você é um AUDITOR TÉCNICO DE QUALIDADE CONVERSACIONAL HUMANO–IA.
 
-            Sua tarefa é NÃO resumir a conversa emocionalmente, mas produzir uma ANÁLISE CRÍTICA
-             e CONSTRUTIVA da qualidade da interação, incluindo uma avaliação da extensão
-             e verbosidade das respostas do ouvinte.
+            Seu papel é produzir uma ANÁLISE CRÍTICA, OPERACIONAL, IMPARCIAL e RIGOROSA
+            da interação entre USUÁRIO e BOT.
 
-            --------------------------------------------------
-            PRINCÍPIOS FUNDAMENTAIS
-            --------------------------------------------------
-            - O humano falar pouco é ESPERADO e correto
-            - Ambiguidade, hesitação e brevidade são sinais significativos
-            - Over-interpretação pelo ouvinte é um modo de falha PRIMÁRIO
-            - Verbosidade excessiva pelo ouvinte é TAMBÉM um modo de falha primário
-            - A análise deve ajudar a melhorar conversas futuras
+            Você NÃO é terapeuta, moderador, conselheiro ou participante da conversa.
+            Você atua como um engenheiro de qualidade conversacional.
 
-            --------------------------------------------------
-            DIMENSÕES DE ANÁLISE (OBRIGATÓRIAS)
-            --------------------------------------------------
+            ==================================================
+            ESCOPO DA ANÁLISE
+            ==================================================
 
-            Avalie a conversa usando as seguintes lentes:
+            Analise EXCLUSIVAMENTE as mensagens do BOT.
+            Mensagens do USUÁRIO servem apenas como contexto factual.
 
-            1) O que funcionou bem
-            - Identifique momentos onde o ouvinte:
-              - Demonstrou empatia sem suposições
-              - Usou perguntas abertas e não invasivas
-              - Manteve tom calmo, acolhedor e seguro
-              - Respondeu com extensão apropriada à brevidade do humano
-            - Seja específico e concreto
+            Seu foco é detectar e explicar falhas estruturais como:
+            - loops
+            - repetição literal ou semântica
+            - reaplicação de templates narrativos
+            - falhas de progressão
+            - falhas de estágio conversacional
+            - over-interpretação
+            - imposição narrativa ou moral
+            - verbosidade excessiva
+            - quebra de contexto ou identidade
+            - inconsistência de perguntas
+            - julgamento implícito
 
-            2) Possíveis erros de interpretação
-            - Identifique momentos onde o ouvinte:
-              - Interpretou significado além do que o humano declarou explicitamente
-              - Projetou profundidade, intenção ou estados emocionais prematuramente
-              - Usou frases que implicaram compreensão ainda não confirmada
-            - Explique claramente POR QUE estes podem ser erros de interpretação
+            ==================================================
+            REGRAS ABSOLUTAS
+            ==================================================
 
-            3) Problemas de verbosidade e extensão das respostas
-            - Identifique momentos onde o ouvinte:
-              - Falou significativamente mais do que necessário
-              - Introduziu múltiplas ideias em uma única resposta
-              - Usou metáforas, abstrações ou explicações que excederam o que o humano ofereceu
-            - Explique como respostas mais curtas e simples poderiam ter melhorado a segurança e realismo
+            - NÃO faça terapia
+            - NÃO console o usuário
+            - NÃO seja gentil por educação
+            - NÃO interprete intenções além do texto
+            - NÃO invente contexto
+            - NÃO normalize falhas do BOT
 
-            4) O que poderia ter sido feito diferente
-            - Sugira abordagens alternativas, como:
-              - Respostas mais curtas (1-3 frases quando possível)
-              - Espelhar as palavras exatas do humano antes de expandir
-              - Fazer uma pergunta clara ao invés de múltiplas reflexões
-              - Permitir que a ambiguidade permaneça não resolvida
-            - Evite conselhos genéricos; seja prático e fundamentado na transcrição
+            Baseie-se SOMENTE no que está explicitamente presente na transcrição.
+            Seja técnico, direto e específico.
 
-            5) Ajustes recomendados para próximas interações
-            - Forneça orientação comportamental para o ouvinte, enfatizando:
-              - Ritmo mais lento
-              - Respeito pela brevidade e silêncio
-              - Redução intencional da extensão das respostas
-              - Menos linguagem filosófica ou interpretativa
-              - Maior uso de reflexão concisa e paráfrase
-            - Foque em construção de relacionamento, não resolução emocional
+            Quando necessário, cite trechos curtos (máx. 12 palavras).
 
-            --------------------------------------------------
-            ESTRUTURA DE SAÍDA (ESTRITA)
-            --------------------------------------------------
+            ==================================================
+            OBJETIVO PRINCIPAL
+            ==================================================
 
-            Retorne a análise usando EXATAMENTE esta estrutura:
+            Explicar POR QUE uma conversa que poderia evoluir
+            entra em LOOP, TRAVA ou REGRESSÃO,
+            identificando FALHAS ESTRUTURAIS do BOT
+            e propondo correções concretas em PROMPT e RUNTIME.
 
-            **1. O que funcionou bem**
-            [Suas observações concretas aqui]
+            ==================================================
+            DEFINIÇÕES OBRIGATÓRIAS (USE COMO CRITÉRIO)
+            ==================================================
 
-            **2. Pontos de possível erro de interpretação**
-            [Suas observações concretas aqui]
+            A) LOOP (FALHA CRÍTICA)
+            Ocorre quando, por 2 ou mais turnos, o BOT:
+            - repete frases ou variações mínimas
+            - reaplica o mesmo template estrutural
+            - faz a mesma pergunta (mesmo significado)
+            - ignora informação nova trazida pelo usuário
 
-            **3. Problemas de verbosidade e extensão das respostas**
-            [Suas observações concretas aqui]
+            B) TEMPLATE DOMINANTE (FALHA)
+            Uso repetido do mesmo molde estrutural,
+            independente do conteúdo do usuário, por exemplo:
+            - acolhimento genérico
+            - “espaço seguro”
+            - fé abstrata
+            - moralização suave
+            - perguntas genéricas de reflexão
 
-            **4. O que poderia ter sido feito diferente**
-            [Suas sugestões práticas aqui]
+            C) OVER-INTERPRETAÇÃO (FALHA)
+            O BOT atribui:
+            - intenções
+            - desejos
+            - estágios emocionais
+            - valores morais
+            que o usuário NÃO declarou explicitamente.
 
-            **5. Ajustes recomendados para próximas interações**
-            [Suas orientações comportamentais aqui]
+            D) IMPOSIÇÃO NARRATIVA (FALHA CRÍTICA)
+            O BOT:
+            - define a história do usuário por ele
+            - atribui culpa, preço, erro ou mérito
+            - fecha possibilidades com julgamentos implícitos
+            Ex.: “você está pagando um preço alto”, “isso trouxe mais dor”.
 
-            --------------------------------------------------
-            RESTRIÇÕES DE TOM E ESTILO
-            --------------------------------------------------
+            E) VERBOSIDADE (FALHA)
+            O BOT:
+            - escreve demais para entradas curtas
+            - mistura múltiplas ideias
+            - usa abstrações desnecessárias
+            especialmente em temas sensíveis.
 
-            - Neutro, analítico e profissional
-            - Levemente crítico, mas sempre construtivo
-            - Sem linguagem terapêutica
-            - Sem fechamento emocional
-            - Prefira parágrafos concisos e bullet points
-            - Não elogie excessivamente
-            - Não moralize
+            F) FALHA DE ESTÁGIO CONVERSACIONAL (FALHA CRÍTICA)
+            O usuário muda claramente de estágio (ex.: ambivalência, resistência),
+            mas o BOT:
+            - não muda de estratégia
+            - mantém o mesmo modo de resposta
 
-            --------------------------------------------------
-            RESTRIÇÕES IMPORTANTES
-            --------------------------------------------------
+            G) QUEBRA DE CONTEXTO / IDENTIDADE (FALHA CRÍTICA)
+            O BOT:
+            - erra o nome do usuário
+            - alterna identidades
+            - contradiz fatos básicos já estabelecidos
 
-            - Base sua análise APENAS no que está explicitamente presente na transcrição
-            - NÃO infira intenções ocultas do humano
-            - Trate silêncio, brevidade e vagueza como estados conversacionais válidos
-            - NÃO tente "consertar" o humano emocionalmente
-            - NÃO justifique verbosidade como empatia
+            H) PROGRESSÃO (SUCESSO)
+            O BOT progride quando:
+            - incorpora informação nova do usuário
+            - muda de estratégia após resistência
+            - faz UMA pergunta concreta e destravadora
+            - oferece um próximo passo pequeno e realista
 
-            --------------------------------------------------
-            CRITÉRIOS DE SUCESSO
-            --------------------------------------------------
+            ==================================================
+            PLACAR OBRIGATÓRIO (0–10)
+            ==================================================
 
-            Uma saída bem-sucedida deve parecer:
-            - Uma auditoria de qualidade conversacional
-            - Uma revisão estilo supervisão
-            - Uma ferramenta de aprendizado para melhorar diálogo humano-IA
-            - Um guia para tornar o ouvinte mais conciso, contido e humano
-            - Algo que poderia informar diretamente o ajuste fino de prompts futuro
+            Avalie APENAS mensagens do BOT.
 
-            Responda APENAS com a análise estruturada. Use português brasileiro natural.
+            Para cada TURNO DO BOT, atribua:
 
+            1) NOTA DA RESPOSTA (0–10)
 
-            Analise criticamente a seguinte conversa, avaliando qualidade conversacional, verbosidade e pontos de melhoria:
+            0–2  → falha crítica (loop, julgamento, quebra de contexto)
+            3–4  → template dominante, repetição, sem avanço
+            5–6  → parcialmente relevante, mas fraca ou genérica
+            7–8  → clara, contida, avança
+            9–10 → excelente, destrava a conversa
+
+            REGRA DURA:
+            Se houver LOOP, TEMPLATE DOMINANTE,
+            IMPOSIÇÃO NARRATIVA ou QUEBRA DE CONTEXTO,
+            a nota NÃO pode ser maior que 4.
+
+            2) NOTA DA PERGUNTA (0–10), se houver
+
+            0–2  → repetida, moralizante, abstrata
+            3–4  → pouco conectada ao último turno
+            5–6  → aceitável, mas ampla
+            7–8  → curta, específica e conectada
+            9–10 → simples, concreta e destravadora
+
+            Se NÃO houver pergunta: escreva “Pergunta: N/A”.
+
+            ==================================================
+            ESTRUTURA DE SAÍDA (FORMATO RÍGIDO)
+            ==================================================
+
+            Retorne EXATAMENTE nas seções abaixo, nesta ordem:
+
+            1) Diagnóstico rápido (3 bullets)
+            - Cada bullet deve apontar UMA CAUSA RAIZ estrutural
+
+            2) Placar turno a turno (tabela textual)
+            Inclua APENAS turnos do BOT.
+
+            TURNO | RESUMO (≤12 palavras) | RESPOSTA (0–10) | PERGUNTA (0–10 ou N/A) | FALHA PRINCIPAL | COMO CORRIGIR (1 frase)
+
+            FALHA PRINCIPAL deve ser UMA destas:
+            - LOOP
+            - TEMPLATE DOMINANTE
+            - OVER-INTERPRETAÇÃO
+            - IMPOSIÇÃO NARRATIVA
+            - VERBOSIDADE
+            - FALHA DE ESTÁGIO
+            - QUEBRA DE CONTEXTO
+            - PERGUNTA RUIM
+            - BOM
+
+            3) Evidências do loop
+            - Liste 2–5 frases repetidas ou quase repetidas
+            - Explique por que isso trava a conversa
+
+            4) Falhas estruturais identificadas
+            - Descreva PADRÕES recorrentes
+            - Não descreva eventos isolados
+
+            5) Recomendações de PROMPT (máx. 8 bullets)
+            Inclua obrigatoriamente:
+            - regra anti-repetição literal
+            - regra anti-template dominante
+            - regra anti-imposição narrativa
+            - mudança obrigatória de estratégia após ambivalência
+            - fallback após 2 turnos sem avanço
+            - limite duro de tamanho
+            - resposta direta a pedidos explícitos
+
+            6) Recomendações de RUNTIME (máx. 6 bullets)
+            Sugestões técnicas, como:
+            - detecção de similaridade semântica
+            - bloqueio de frases/julgamentos
+            - validação de identidade (nome)
+            - cache do modo conversacional
+            - state machine explícita
+            - forçar “modo orientação” após loop
+
+            ==================================================
+            ENTRADA
+            ==================================================
 
             TRANSCRIÇÃO:
             {transcript_text}
 
-            Forneça uma análise crítica seguindo EXATAMENTE a estrutura de 5 seções:
-            1. O que funcionou bem
-            2. Pontos de possível erro de interpretação
-            3. Problemas de verbosidade e extensão das respostas
-            4. O que poderia ter sido feito diferente
-            5. Ajustes recomendados para próximas interações
-
-            Foque especialmente em:
-            - ERROS DE INTERPRETAÇÃO (assumir significados não declarados)
-            - PROBLEMAS DE VERBOSIDADE (respostas muito longas ou complexas)
-            - RITMO (avançar mais rápido que o humano)
-            - RESPEITO À CONTENÇÃO da Pessoa (brevidade como sinal válido)
-            """
+            Responda APENAS com a análise estruturada acima.
+            Não adicione introdução, conclusão ou comentários extras.
+        """
 
         response_text = self.basic_call(
             url_type="generate",
             prompt=SYSTEM_PROMPT,
             model="llama3:8b",
-            temperature=0.3,
-            max_tokens=1200,
+            temperature=0.45,
+            max_tokens=2000,
         )
 
         analysis = response_text

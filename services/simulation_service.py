@@ -101,7 +101,8 @@ class SimulationUseCase:
                 )
             else:
                 self._ollama_service.generate_response_message(
-                    profile=profile, channel="simulation"
+                    profile=profile,
+                    channel="simulation",
                 )
 
             logger.info(
@@ -114,7 +115,7 @@ class SimulationUseCase:
 
         Message.objects.create(
             profile=profile,
-            role="system",
+            role="analysis",
             content=f"📊 Análise Crítica da Conversa:\n\n{analysis}",
             channel="simulation",
         )

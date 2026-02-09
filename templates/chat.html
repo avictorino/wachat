@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <title>Chat Simulation</title>
     <style>
         * {
@@ -10,7 +11,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: #e5ddd5;
@@ -18,7 +19,7 @@
             display: flex;
             flex-direction: column;
         }
-        
+
         /* Header with controls */
         .header {
             background-color: #075e54;
@@ -29,13 +30,13 @@
             gap: 10px;
             flex-wrap: wrap;
         }
-        
+
         .header h1 {
             font-size: 18px;
             font-weight: 500;
             margin-right: auto;
         }
-        
+
         .header select,
         .header button,
         .header input[type="text"] {
@@ -44,37 +45,37 @@
             border-radius: 4px;
             font-size: 14px;
         }
-        
+
         .header select {
             background-color: white;
             color: #075e54;
             min-width: 200px;
         }
-        
+
         .header button {
             background-color: #25d366;
             color: white;
             cursor: pointer;
             font-weight: 500;
         }
-        
+
         .header button:hover {
             background-color: #20bd5a;
         }
-        
+
         .header button.secondary {
             background-color: #34b7f1;
         }
-        
+
         .header button.secondary:hover {
             background-color: #2a9fd8;
         }
-        
+
         .header input[type="text"] {
             flex: 1;
             min-width: 150px;
         }
-        
+
         /* Chat container */
         .chat-container {
             flex: 1;
@@ -82,46 +83,46 @@
             padding: 20px;
             background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAADIAAAAyCAMAAAAp4XiDAAAAUVBMVEXm5uaZmZn///+AgICIiIhwcHCcnJyXl5exsbGampqRkZGOjo7e3t7s7OyhoaGWlpbx8fG3t7fCwsLJycnV1dXQ0NDc3Ny7u7ukpKSysrKtra3fZq/RAAAACXBIWXMAAA7EAAAOxAGVKw4bAAABAElEQVRIie2VyQ6DMAxE7ZCwlK3s+/9/Zo5VpRYJKKUSh3mHKLIe7HgSzF/hD0EqBtJRABHDMuU/pTNBv4ygBtMKJ0AqYqExgQTQQg4iEEZnEgEoEBEQYQkDiBgYG7O0CGEEgQGxQWRBKEFFADEKUJYHEkIdN+ADmDmBEBVcMEQHl+pMQjCAhYwGMzCQGdOKAwoFJjQGMCJQCJgwCWQijCJwDBHBhpAjdEFCEGSgEfQgiABTQWIPwoSAAr8jxIMLGALQ5zPMfIy4vZFj7MJSBgJVCCz+kYGsUvYl5ElpOTrOC6hd/MtVwPLqdvVnLC4F1NfXkr+j/l39P+vxAh6eGeU1/MqmAAAAAElFTkSuQmCC') repeat;
         }
-        
+
         .empty-state {
             text-align: center;
             padding: 40px 20px;
             color: #667781;
         }
-        
+
         .empty-state h2 {
             font-size: 20px;
             margin-bottom: 10px;
         }
-        
+
         .empty-state p {
             font-size: 14px;
         }
-        
+
         /* Messages */
         .message {
             margin-bottom: 12px;
             display: flex;
             animation: fadeIn 0.3s ease-in;
         }
-        
+
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        
+
         .message.user {
             justify-content: flex-end;
         }
-        
+
         .message.assistant {
             justify-content: flex-start;
         }
-        
+
         .message.system {
             justify-content: center;
         }
-        
+
         .message-bubble {
             max-width: 65%;
             padding: 8px 12px;
@@ -129,28 +130,28 @@
             word-wrap: break-word;
             position: relative;
         }
-        
+
         .message-sender {
             font-size: 12px;
             font-weight: 600;
             margin-bottom: 4px;
             color: #667781;
         }
-        
+
         .message.user .message-sender {
             color: #075e54;
         }
-        
+
         .message.user .message-bubble {
             background-color: #dcf8c6;
             border-bottom-right-radius: 0;
         }
-        
+
         .message.assistant .message-bubble {
             background-color: white;
             border-bottom-left-radius: 0;
         }
-        
+
         .message.system .message-bubble {
             background-color: #fff4cc;
             border-radius: 8px;
@@ -158,21 +159,21 @@
             font-size: 13px;
             white-space: pre-wrap;
         }
-        
+
         .message-content {
             font-size: 14px;
             line-height: 1.5;
             color: #303030;
             white-space: pre-wrap;
         }
-        
+
         .message-time {
             font-size: 11px;
             color: #667781;
             margin-top: 4px;
             text-align: right;
         }
-        
+
         /* Input area */
         .input-area {
             background-color: #f0f0f0;
@@ -181,13 +182,13 @@
             gap: 10px;
             align-items: center;
         }
-        
+
         .input-area form {
             display: flex;
             gap: 10px;
             flex: 1;
         }
-        
+
         .input-area input[type="text"] {
             flex: 1;
             padding: 10px 15px;
@@ -196,7 +197,7 @@
             font-size: 14px;
             outline: none;
         }
-        
+
         .input-area button {
             padding: 10px 20px;
             background-color: #075e54;
@@ -207,36 +208,92 @@
             font-size: 14px;
             font-weight: 500;
         }
-        
+
         .input-area button:hover {
             background-color: #064d44;
         }
-        
+
         .input-area button:disabled {
             background-color: #ccc;
             cursor: not-allowed;
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
             .message-bubble {
                 max-width: 80%;
             }
-            
+
             .header {
                 flex-direction: column;
                 align-items: stretch;
             }
-            
+
             .header h1 {
                 margin-bottom: 10px;
             }
-            
+
             .header select,
             .header button,
             .header input[type="text"] {
                 width: 100%;
             }
+        }
+
+        /* ============================
+           ANALYSIS PANEL
+        ============================ */
+
+        .analysis-panel {
+            background-color: #0f172a; /* azul escuro */
+            color: #e5e7eb;
+            border-radius: 10px;
+            padding: 16px;
+            margin: 16px auto;
+            max-width: 90%;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+        }
+
+        .analysis-header {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            color: #38bdf8;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 6px;
+        }
+
+        .analysis-content {
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        /* Destaque para seções */
+        .analysis-content strong {
+            color: #facc15; /* amarelo */
+        }
+
+        /* Tabela textual */
+        .analysis-content table,
+        .analysis-content pre {
+            background-color: #020617;
+            border-radius: 6px;
+            padding: 12px;
+            margin: 12px 0;
+            overflow-x: auto;
+        }
+
+        /* Falhas críticas */
+        .analysis-content .fail {
+            color: #fb7185; /* vermelho */
+            font-weight: 600;
+        }
+
+        /* Recomendações */
+        .analysis-content .recommend {
+            color: #4ade80; /* verde */
         }
     </style>
 </head>
@@ -244,7 +301,7 @@
     <!-- Header with controls -->
     <div class="header">
         <h1>💬 Chat Simulation</h1>
-        
+
         <!-- Profile selector -->
         <form method="get" action="/chat/" style="display: flex; gap: 10px; flex: 1;">
             <select name="profile_id" onchange="this.form.submit()">
@@ -256,14 +313,14 @@
                 {% endfor %}
             </select>
         </form>
-        
+
         <!-- New Profile button -->
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
             {% csrf_token %}
             <input type="hidden" name="action" value="new_profile">
             <button type="submit">➕ New Profile</button>
         </form>
-        
+
         <!-- Simulate button with theme selector -->
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
             {% csrf_token %}
@@ -283,7 +340,7 @@
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
     </div>
-    
+
     <!-- Chat messages area -->
     <div class="chat-container" id="chatContainer">
         {% if not selected_profile %}
@@ -298,26 +355,33 @@
             </div>
         {% else %}
             {% for message in messages %}
-                <div class="message {{ message.role }}">
-                    <div class="message-bubble">
-                        {% if message.role == "user" %}
-                            <div class="message-sender">{{ message.profile.name }}</div>
-                        {% elif message.role == "assistant" %}
-                            <div class="message-sender">Bot</div>
-                        {% endif %}
-                        <div class="message-content">{{ message.content }}</div>
-                        <div class="message-time">
-                            {{ message.created_at|date:"H:i" }}
+                {% if message.role == "analysis" %}
+                    <details class="analysis-panel">
+                        <summary class="analysis-header">📊 Análise Crítica da Conversa</summary>
+                        <div class="analysis-content markdown-body" data-markdown="{{ message.content }}"></div>
+                    </details>
+                {% else %}
+                    <div class="message {{ message.role }}">
+                        <div class="message-bubble">
                             {% if message.role == "user" %}
-                                <a href="/admin/core/message/{{ message.id }}/change/" target="_blank" style="margin-left: 8px; font-size: 10px; color: #667781; text-decoration: none;">🔍 ver prompt</a>
+                                <div class="message-sender">{{ message.profile.name }}</div>
+                            {% elif message.role == "assistant" %}
+                                <div class="message-sender">Bot</div>
                             {% endif %}
+                            <div class="message-content">{{ message.content }}</div>
+                            <div class="message-time">
+                                {{ message.created_at|date:"H:i" }}
+                                {% if message.role == "user" %}
+                                    <a href="/admin/core/message/{{ message.id }}/change/" target="_blank" style="margin-left: 8px; font-size: 10px; color: #667781; text-decoration: none;">🔍 ver prompt</a>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
-                </div>
+                {% endif %}
             {% endfor %}
         {% endif %}
     </div>
-    
+
     <!-- Input area -->
     {% if selected_profile %}
     <div class="input-area">
@@ -330,7 +394,7 @@
         </form>
     </div>
     {% endif %}
-    
+
     <script>
         // Auto-scroll to bottom on page load
         window.addEventListener('load', function() {
@@ -338,21 +402,28 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         });
 
+         window.addEventListener('load', () => {
+            document.querySelectorAll('[data-markdown]').forEach(el => {
+              const md = el.getAttribute('data-markdown');
+              el.innerHTML = marked.parse(md);
+            });
+          });
+
         // Prevent concurrent submissions
         (function() {
             const form = document.getElementById('chatForm');
             if (!form) return;
-            
+
             const sendButton = document.getElementById('sendButton');
             let isSubmitting = false;
-            
+
             form.addEventListener('submit', function(e) {
                 // Prevent concurrent submissions
                 if (isSubmitting) {
                     e.preventDefault();
                     return false;
                 }
-                
+
                 // Mark as submitting and disable button
                 isSubmitting = true;
                 sendButton.disabled = true;

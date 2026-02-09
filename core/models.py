@@ -91,6 +91,7 @@ class Message(models.Model):
         ("system", "System"),
         ("assistant", "Assistant"),
         ("user", "User"),
+        ("analysis", "Analysis"),
     ]
 
     CHANNEL_CHOICES = [
