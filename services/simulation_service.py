@@ -109,17 +109,6 @@ class SimulationUseCase:
                 f"Saved simulated user message for profile {profile.id}/{profile.name}"
             )
 
-        analysis = self._ollama_service.analyze_conversation_emotions(profile=profile)
-
-        logger.info("Generated critical analysis")
-
-        Message.objects.create(
-            profile=profile,
-            role="analysis",
-            content=f"📊 Análise Crítica da Conversa:\n\n{analysis}",
-            channel="simulation",
-        )
-
         return profile.id
 
     def _get_conversation_context(
@@ -137,7 +126,7 @@ class SimulationUseCase:
         Returns:
             List of message dicts with 'role' and 'content' keys
         """
-        query = Message.objects.filter(profile=profile).exclude(role="system")
+        query = Message.objects.filter(profile=profile).for_context()
 
         # Exclude specific message if provided (to avoid duplication)
         if exclude_message_id:
@@ -233,7 +222,7 @@ class SimulationUseCase:
             Não explique nada.
         """
 
-        for idx, message in enumerate(profile.messages.all().exclude(role="system")):
+        for idx, message in enumerate(profile.messages.for_context()):
             if idx == 0:
                 PROMPT += "\n\nBASEAR MINHA PERGUNTA NOS ACONTECIMENTOS ANTERIORES:\n\n"
             PROMPT += f"{message.role.upper()}: {message.content}\n\n\n"

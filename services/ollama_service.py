@@ -89,7 +89,7 @@ class OllamaService:
         if not profile.welcome_message_sent:
             return self.generate_welcome_message(profile=profile, channel=channel)
 
-        queryset = profile.messages.all().exclude(role="system")
+        queryset = profile.messages.for_context()
         PROMPT_AUX = """
 
             =====================================
@@ -184,9 +184,7 @@ class OllamaService:
             PROMPT_AUX += f"TEMA DA RESPOSTA: {profile.theme.prompt}"
 
         PROMPT_AUX += "\n\nULTIMAS CONVERSAS\n" if queryset.count() > 0 else ""
-        for idx, message in enumerate(
-            profile.messages.all().exclude(role="system", id=last_person_message.id)[:6]
-        ):
+        for idx, message in enumerate(queryset.exclude(id=last_person_message.id)[:6]):
             PROMPT_AUX += f"{message.role.upper()}: {message.content}\n\n"
 
         for RagContext in get_rag_context(last_person_message.content, limit=3):
@@ -459,8 +457,8 @@ class OllamaService:
     def analyze_conversation_emotions(self, profile: Profile) -> str:
 
         transcript_text = ""
-        for message in profile.messages.exclude(role="system"):
-            transcript_text += f"{message}: {message.content}\n\n"
+        for message in profile.messages.for_context():
+            transcript_text += f"{message.role}: {message.content}\n\n"
 
         SYSTEM_PROMPT = f"""Você é um AUDITOR TÉCNICO DE QUALIDADE CONVERSACIONAL HUMANO–IA.
 

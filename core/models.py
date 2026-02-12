@@ -21,6 +21,29 @@ class Theme(models.Model):
     )
 
 
+class MessageManager(models.Manager):
+    """Custom manager for Message model with context filtering."""
+
+    def for_context(self):
+        """
+        Return messages that should be included in conversation context.
+
+        Excludes:
+        - System messages (role="system"): Internal/technical messages
+        - Analysis messages (role="analysis"): Retrospective analysis reports
+        - Messages with exclude_from_context=True: Any message explicitly marked for exclusion
+
+        Note: Analysis messages are filtered both by role and by the exclude_from_context flag
+        as a defense-in-depth measure. The flag allows for future flexibility if other message
+        types need to be excluded from context without changing the role-based logic.
+        """
+        return (
+            self.exclude(role="system")
+            .exclude(role="analysis")
+            .exclude(exclude_from_context=True)
+        )
+
+
 class Profile(models.Model):
     """
     User profile for storing user information across multiple channels.
@@ -133,7 +156,13 @@ class Message(models.Model):
         blank=True,
         help_text="Temperature setting used in Ollama prompt (for observability)",
     )
+    exclude_from_context = models.BooleanField(
+        default=False,
+        help_text="If True, exclude this message from RAG and memory context",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = MessageManager()
 
     class Meta:
         ordering = ["created_at"]
