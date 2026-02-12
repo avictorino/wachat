@@ -127,6 +127,10 @@ class Message(models.Model):
         blank=True,
         help_text="Temperature setting used in Ollama prompt (for observability)",
     )
+    exclude_from_context = models.BooleanField(
+        default=False,
+        help_text="If True, exclude this message from RAG and memory context",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
