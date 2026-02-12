@@ -78,6 +78,8 @@ class ChatView(View):
             return self._handle_new_profile(request)
         elif action == "simulate":
             return self._handle_simulate(request, ollama_service=OllamaService())
+        elif action == "analyze":
+            return self._handle_analyze(request, ollama_service=OllamaService())
 
         # Default: redirect to GET
         return redirect("chat")
@@ -173,6 +175,35 @@ class ChatView(View):
         # Redirect to chat with simulation profile selected
         return redirect(f"{reverse('chat')}?profile_id={profile_id}")
 
+    def _handle_analyze(self, request, ollama_service):
+        """Analyze conversation emotions for selected profile."""
+        profile_id = request.POST.get("profile_id")
+
+        if not profile_id:
+            return redirect(reverse("chat"))
+
+        try:
+            profile = Profile.objects.get(id=profile_id)
+        except Profile.DoesNotExist:
+            return redirect(reverse("chat"))
+
+        # Generate analysis using ollama service
+        analysis = ollama_service.analyze_conversation_emotions(profile=profile)
+
+        logger.info("Generated critical analysis")
+
+        # Save analysis message with exclude_from_context flag
+        Message.objects.create(
+            profile=profile,
+            role="analysis",
+            content=f"📊 Análise Crítica da Conversa:\n\n{analysis}",
+            channel="other",
+            exclude_from_context=True,
+        )
+
+        # Redirect back to chat with selected profile
+        return redirect(f"{reverse('chat')}?profile_id={profile.id}")
+
     def _get_conversation_context(
         self, profile, actual_message_id, limit: int = 5
     ) -> list:
@@ -182,7 +213,7 @@ class ChatView(View):
         """
         recent_messages = (
             Message.objects.filter(profile=profile)
-            .exclude(role="system")
+            .for_context()
             .exclude(id=actual_message_id)
             .order_by("-created_at")[:limit]
         )

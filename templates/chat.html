@@ -339,6 +339,16 @@
             </select>
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
+
+        <!-- Analyze button (only show when profile is selected) -->
+        {% if selected_profile %}
+        <form method="post" action="/chat/" style="display: flex; gap: 10px;">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="analyze">
+            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+            <button type="submit" class="secondary" style="background-color: #9c27b0;">📊 Analyze</button>
+        </form>
+        {% endif %}
     </div>
 
     <!-- Chat messages area -->
