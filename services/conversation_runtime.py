@@ -23,6 +23,7 @@ MODE_AMBIVALENCIA = "AMBIVALENCIA"
 MODE_DEFENSIVO = "DEFENSIVO"
 MODE_CULPA = "CULPA"
 MODE_ORIENTACAO = "ORIENTACAO"
+MODE_PRESENCA_PROFUNDA = "PRESENCA_PROFUNDA"
 
 MAX_SENTENCES = 3
 MAX_WORDS = 120
@@ -157,6 +158,61 @@ _GUILT_MARKERS = [
     "me odeio",
     "sou um fracasso",
     "não presto",
+]
+
+_DEEP_SUFFERING_MARKERS = [
+    "angústia",
+    "angustia",
+    "no peito",
+    "aperto no peito",
+    "pesado demais",
+    "insuportável",
+    "insuportavel",
+    "não aguento",
+    "nao aguento",
+    "desespero",
+    "desesperado",
+    "desesperada",
+    "sem saída",
+    "sem saida",
+]
+
+_REPETITIVE_GUILT_MARKERS = [
+    "de novo",
+    "sempre",
+    "mais uma vez",
+    "outra vez",
+    "de novo eu",
+    "sempre eu",
+]
+
+_FAMILY_CONFLICT_MARKERS = [
+    "família",
+    "familia",
+    "mãe",
+    "mae",
+    "pai",
+    "esposa",
+    "marido",
+    "filho",
+    "filha",
+    "relacionamento",
+    "casamento",
+    "brig",
+    "discuss",
+    "conflito",
+]
+
+_IMPOTENCE_MARKERS = [
+    "não consigo",
+    "nao consigo",
+    "não dá",
+    "nao da",
+    "não adianta",
+    "nao adianta",
+    "sem saída",
+    "sem saida",
+    "impotente",
 ]
 
 _SPIRITUAL_IMPOSITION_PATTERNS = [
@@ -373,7 +429,7 @@ def contains_repeated_blocked_pattern(
     return False
 
 
-def enforce_hard_limits(message: str) -> str:
+def enforce_hard_limits(message: str, max_sentences: int = MAX_SENTENCES) -> str:
     chunks = [part.strip() for part in re.findall(r"[^.!?]+[.!?]?", message or "")]
     chunks = [part for part in chunks if part]
 
@@ -386,7 +442,7 @@ def enforce_hard_limits(message: str) -> str:
             else:
                 question_count += 1
         kept.append(chunk)
-        if len(kept) >= MAX_SENTENCES:
+        if len(kept) >= max_sentences:
             break
 
     limited = " ".join(kept).strip()
@@ -430,12 +486,51 @@ def detect_guilt(user_message: str) -> bool:
     return any(marker in msg for marker in _GUILT_MARKERS)
 
 
+def detect_deep_suffering(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(marker in msg for marker in _DEEP_SUFFERING_MARKERS)
+
+
+def detect_repetitive_guilt(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    has_guilt = any(marker in msg for marker in _GUILT_MARKERS)
+    if not has_guilt:
+        return False
+    return any(marker in msg for marker in _REPETITIVE_GUILT_MARKERS)
+
+
+def detect_family_conflict_impotence(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    has_family_conflict = any(marker in msg for marker in _FAMILY_CONFLICT_MARKERS)
+    has_impotence = any(marker in msg for marker in _IMPOTENCE_MARKERS)
+    return has_family_conflict and has_impotence
+
+
+def detect_explicit_despair(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(
+        marker in msg
+        for marker in [
+            "desespero",
+            "desesperado",
+            "desesperada",
+            "não aguento mais",
+            "nao aguento mais",
+            "acabou pra mim",
+        ]
+    )
+
+
 def detect_user_signals(user_message: str) -> dict:
     return {
         "guidance_request": detect_direct_guidance_request(user_message),
         "ambivalence": detect_ambivalence(user_message),
         "defensive": detect_defensiveness(user_message),
         "guilt": detect_guilt(user_message),
+        "deep_suffering": detect_deep_suffering(user_message),
+        "repetitive_guilt": detect_repetitive_guilt(user_message),
+        "family_conflict_impotence": detect_family_conflict_impotence(user_message),
+        "explicit_despair": detect_explicit_despair(user_message),
         "spiritual_context": has_spiritual_context(user_message),
         "high_spiritual_need": has_high_spiritual_need(user_message),
     }
@@ -450,6 +545,13 @@ def choose_conversation_mode(
     repeated_user_pattern: bool,
     signals: dict,
 ) -> str:
+    if (
+        signals.get("deep_suffering")
+        or signals.get("repetitive_guilt")
+        or signals.get("family_conflict_impotence")
+        or signals.get("explicit_despair")
+    ):
+        return MODE_PRESENCA_PROFUNDA
     if signals.get("guidance_request"):
         return MODE_ORIENTACAO
     if is_first_message or previous_mode == MODE_WELCOME:
@@ -477,10 +579,14 @@ def choose_spiritual_intensity(
 ) -> str:
     if spiritual_context:
         return "alta"
+    if mode == MODE_PRESENCA_PROFUNDA:
+        return "alta"
+    if high_spiritual_need:
+        return "media"
     if mode in {MODE_CULPA, MODE_AMBIVALENCIA} or (
         mode == MODE_ORIENTACAO and high_spiritual_need
     ):
-        return "média"
+        return "media"
     return "leve"
 
 

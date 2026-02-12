@@ -35,6 +35,7 @@ from services.conversation_runtime import (
     MODE_DEFENSIVO,
     MODE_EXPLORACAO,
     MODE_ORIENTACAO,
+    MODE_PRESENCA_PROFUNDA,
     MODE_WELCOME,
     choose_conversation_mode,
     choose_spiritual_intensity,
@@ -58,7 +59,6 @@ from services.conversation_runtime import (
     starts_with_user_echo,
     strip_opening_name_if_recently_used,
 )
-from services.rag_service import get_rag_context
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,7 @@ VALID_CONVERSATION_MODES = {
     MODE_DEFENSIVO,
     MODE_CULPA,
     MODE_ORIENTACAO,
+    MODE_PRESENCA_PROFUNDA,
 }
 
 LEGACY_MODE_MAP = {
@@ -83,6 +84,140 @@ TOPIC_MEMORY_MAX_ITEMS = 6
 TOPIC_MIN_CONFIDENCE = 0.45
 TOPIC_PROMOTE_CONFIDENCE = 0.6
 SUBSTANCE_TOPICS = {"alcool", "álcool", "drogas", "dependencia", "dependência"}
+RELATIONAL_TOPICS = {"familia", "família", "conflito", "relacionamento"}
+WACHAT_RESPONSE_MODEL = os.environ.get("OLLAMA_CHAT_MODEL", "llama3:8b")
+WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um companheiro virtual de inspiração cristã.
+
+Você caminha ao lado do usuário com empatia, presença humana e fé viva, enraizada no cristianismo.
+Sua presença é espiritual, próxima e serena.
+Você fala a partir da fé, mas nunca impõe a fé.
+Você oferece cuidado e direção suave, nunca cobrança.
+
+Você NÃO é juiz, interrogador, terapeuta clínico ou figura de autoridade.
+Você não analisa, não diagnostica, não conserta.
+Você acompanha, sustenta e aponta caminhos quando necessário.
+
+=====================================
+PRIORIDADE ABSOLUTA DE COMPORTAMENTO
+=====================================
+
+Estas regras têm precedência sobre qualquer outra instrução.
+
+- Não parafraseie nem reescreva o que o usuário disse.
+- Não explique sentimentos do usuário.
+- Não use frases motivacionais genéricas.
+- Não faça discursos longos.
+- Não transforme a fé em argumento ou lição.
+
+Se qualquer instrução entrar em conflito com estas regras,
+estas regras DEVEM prevalecer.
+
+=====================================
+MEMÓRIA E CONTEXTO
+=====================================
+
+Você SEMPRE receberá um histórico curto (até 10 mensagens).
+Esse histórico é SUA ÚNICA MEMÓRIA.
+
+Use-o para:
+- evitar repetição
+- evitar loops
+- manter continuidade emocional e espiritual
+
+NUNCA repita:
+- perguntas já feitas ou semanticamente equivalentes
+- frases prontas de empatia
+
+A menos que exista uma escalada emocional nova e explícita.
+
+=====================================
+BASE ESPIRITUAL DA CONVERSA
+=====================================
+
+A fé cristã é pano de fundo, nunca discurso.
+
+- Deus aparece como presença, não como argumento
+- A fé sustenta, não corrige
+- O evangelho é boa notícia, não exigência
+
+Use referências cristãs com extrema sobriedade.
+Uma frase espiritual curta é suficiente.
+
+Nunca use:
+- tom de sermão
+- lição moral
+- ameaça espiritual
+- cobrança religiosa
+
+=====================================
+OBJETIVO DE CADA RESPOSTA
+=====================================
+
+Cada resposta deve fazer APENAS UMA coisa:
+
+- Acompanhar o usuário
+- Separar erro de identidade
+- Apontar um próximo passo simples
+- Fazer UMA pergunta curta e concreta (quando necessário)
+
+Nunca tente fazer mais de uma coisa ao mesmo tempo.
+Sempre avance a conversa.
+
+=====================================
+REGRA ANTI-LOOP
+=====================================
+
+- Nunca mais de uma pergunta por mensagem
+- Se houver duas perguntas seguidas sem avanço,
+  a próxima resposta deve ser afirmativa e orientadora
+
+Progressão natural:
+1. O que está acontecendo
+2. O peso disso no coração
+3. Onde existe limite ou cuidado possível
+4. Um próximo passo simples
+
+=====================================
+LINGUAGEM
+=====================================
+
+- Português brasileiro simples
+- Linguagem falada, humana
+- Frases curtas
+- No máximo 2 parágrafos
+- Sem emojis
+
+Evite tom acadêmico, terapêutico ou religioso formal.
+
+=====================================
+ESPIRITUALIDADE NA PRÁTICA
+=====================================
+
+Use vocabulário cristão acessível:
+- graça
+- misericórdia
+- recomeço
+- cuidado
+- Deus presente na fraqueza
+
+Nunca diga ou sugira que:
+- Deus está desapontado
+- Deus se afastou
+- o sofrimento é punição
+
+=====================================
+PROIBIÇÕES ABSOLUTAS
+=====================================
+
+- Nunca fale como identidade (“eu sou…”, “como X…”)
+- Nunca peça desculpas por algo inexistente
+- Nunca pergunte se o problema é de outra pessoa
+- Nunca use linguagem clínica ou técnica
+
+Se violar qualquer regra acima, a resposta é inválida."""
+WACHAT_RESPONSE_TOP_P = 0.85
+WACHAT_RESPONSE_REPEAT_PENALTY = 1.25
+WACHAT_RESPONSE_NUM_CTX = 4096
 
 
 # Helper constant for gender context in Portuguese
@@ -109,6 +244,8 @@ class OllamaService:
         timeout: int = 60,
         top_p: float = None,
         repeat_penalty: float = None,
+        num_ctx: int = None,
+        system: Optional[str] = None,
     ) -> str:
 
         payload = {
@@ -121,10 +258,14 @@ class OllamaService:
             },
         }
 
-        if top_p:
+        if system:
+            payload["system"] = system
+        if top_p is not None:
             payload["options"]["top_p"] = top_p
-        if repeat_penalty:
+        if repeat_penalty is not None:
             payload["options"]["repeat_penalty"] = repeat_penalty
+        if num_ctx is not None:
+            payload["options"]["num_ctx"] = num_ctx
 
         response = requests.post(
             urljoin(self.api_url_base, url_type),
@@ -329,8 +470,8 @@ Histórico recente:
         else:
             candidate = (
                 "Obrigado por abrir isso com sinceridade. "
-                "Diante do que você trouxe, qual pequeno passo concreto você consegue dar ainda hoje para se proteger desse ciclo? "
-                "Se quiser, eu te ajudo a escolher esse passo agora."
+                "Eu estou com você nesse ponto delicado. "
+                "Qual foi o momento mais difícil disso para você hoje?"
             )
 
         if (
@@ -338,12 +479,28 @@ Histórico recente:
             and semantic_similarity(recent_assistant_messages[-1], candidate) > 0.85
         ):
             candidate = (
-                "Vamos tornar isso prático agora: escolha uma ação de proteção para as próximas 2 horas e me diga qual será. "
-                "Se puder, peça apoio de alguém de confiança hoje mesmo."
+                "Eu sigo com você nisso com respeito e cuidado. "
+                "O que ficou mais pesado no seu peito desde a última conversa?"
             )
         if allow_spiritual_context:
-            candidate += " Se você quiser, agora mesmo faça uma oração curta pedindo perdão, força e direção a Deus."
+            candidate += " Se fizer sentido para você, Deus vê esse lugar delicado onde você está."
         return enforce_hard_limits(candidate)
+
+    def _is_relational_topic(self, active_topic: Optional[str]) -> bool:
+        if not active_topic:
+            return False
+        normalized = active_topic.strip().lower()
+        return any(topic in normalized for topic in RELATIONAL_TOPICS)
+
+    def _generation_policy_for_mode(self, conversation_mode: str) -> Dict[str, Any]:
+        policy = {
+            MODE_WELCOME: {"temperature": 0.6, "num_predict": 100},
+            MODE_ACOLHIMENTO: {"temperature": 0.65, "num_predict": 110},
+            MODE_PRESENCA_PROFUNDA: {"temperature": 0.75, "num_predict": 140},
+            MODE_ORIENTACAO: {"temperature": 0.45, "num_predict": 100},
+            MODE_AMBIVALENCIA: {"temperature": 0.5, "num_predict": 100},
+        }.get(conversation_mode, {"temperature": 0.6, "num_predict": 110})
+        return policy
 
     def _build_dynamic_runtime_prompt(
         self,
@@ -368,13 +525,15 @@ Histórico recente:
             MODE_DEFENSIVO: "reduzir confronto e buscar clarificação objetiva",
             MODE_CULPA: "separar identidade de comportamento e propor reparo possível",
             MODE_ORIENTACAO: "entregar orientação prática breve e acionável",
+            MODE_PRESENCA_PROFUNDA: "sustentar presença, dignidade e misericórdia em sofrimento profundo",
             MODE_WELCOME: "acolhimento inicial curto",
         }.get(conversation_mode, "avançar a conversa com precisão")
 
         mode_actions = {
             MODE_ACOLHIMENTO: [
                 "Valide um elemento específico da fala atual.",
-                "Use no máximo 1 pergunta breve.",
+                "Reconheça a posição delicada da pessoa sem pressionar solução.",
+                "Use 1 pergunta breve apenas se ela realmente abrir continuidade.",
             ],
             MODE_EXPLORACAO: [
                 "Faça uma pergunta aberta concreta ligada ao último turno.",
@@ -396,14 +555,25 @@ Histórico recente:
                 "Ofereça 1 ação prática para hoje.",
                 "Ofereça apoio humano concreto ou ação individual imediata.",
             ],
+            MODE_PRESENCA_PROFUNDA: [
+                "Sustente presença e dignidade sem sugerir ação concreta.",
+                "Não priorize perguntas; use no máximo 1 pergunta curta se for indispensável.",
+                "Use tom contemplativo e misericordioso.",
+            ],
             MODE_WELCOME: [
                 "Acolha com sobriedade e convide para continuidade.",
             ],
-        }.get(conversation_mode, ["Avance um passo concreto."])
+        }.get(conversation_mode, ["Escolha a melhor função para este turno."])
 
         spiritual_policy = "Mantenha base espiritual leve (esperança/propósito) sem linguagem explícita."
-        if allow_spiritual_context:
-            spiritual_policy = "Pode usar linguagem cristã explícita curta e respeitosa, sem imposição."
+        if allow_spiritual_context or spiritual_intensity in {"media", "alta"}:
+            spiritual_policy = "Pode usar 1 frase espiritual clara e respeitosa, incluindo menção explícita a Deus, sem imposição."
+        if spiritual_intensity == "alta":
+            spiritual_policy += " Use presença espiritual viva e sóbria; nunca use linguagem moralizante."
+
+        max_sentences = 4 if conversation_mode == MODE_PRESENCA_PROFUNDA else 3
+        max_questions = 0 if conversation_mode == MODE_PRESENCA_PROFUNDA else 1
+        relational_topic = self._is_relational_topic(active_topic)
 
         prompt = f"""
 MODO ATUAL: {conversation_mode}
@@ -412,20 +582,22 @@ OBJETIVO DO MODO: {mode_objective}
 INTENSIDADE ESPIRITUAL: {spiritual_intensity}
 
 REGRAS GERAIS:
-- Máximo 3 frases e 1 pergunta.
+- Máximo {max_sentences} frases e {max_questions} pergunta(s).
 - Validar algo específico que o usuário acabou de dizer.
 - Não repetir frases/estruturas dos últimos turnos.
 - Não iniciar ecoando a frase do usuário.
 - Não inferir sentimentos não declarados.
 - {spiritual_policy}
-- Estrutura: validação específica -> direção espiritual compatível -> próximo passo.
+- Escolha a melhor função para este turno conforme o modo atual.
 """
         if direct_guidance_request:
             prompt += "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: resposta deve conter orientação prática direta.\n"
-        if force_progress_fallback:
+        if force_progress_fallback and conversation_mode != MODE_PRESENCA_PROFUNDA:
             prompt += "\nESTAGNAÇÃO DETECTADA: evitar pergunta padrão repetida; destravar com ação concreta.\n"
         if active_topic:
             prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
+        if conversation_mode == MODE_ACOLHIMENTO and relational_topic:
+            prompt += "\nNESTE TURNO, EVITE linguagem de ciclo, estratégia, ação imediata, proteção e passo concreto.\n"
         if top_topics:
             prompt += f"TÓPICOS RECENTES: {top_topics}\n"
         if theme_prompt:
@@ -446,16 +618,7 @@ REGRAS GERAIS:
         prompt += "\nResponda somente com a próxima fala do assistente."
         return prompt
 
-    def generate_response_message(self, profile: Profile, channel: str) -> Message:
-
-        if not profile.welcome_message_sent:
-            return self.generate_welcome_message(profile=profile, channel=channel)
-
-        queryset = profile.messages.for_context()
-        last_person_message = queryset.filter(role="user").last()
-        if not last_person_message:
-            return self.generate_welcome_message(profile=profile, channel=channel)
-
+    def _collect_recent_context(self, queryset) -> Dict[str, Any]:
         recent_user_messages = list(
             queryset.filter(role="user")
             .order_by("created_at")
@@ -467,16 +630,21 @@ REGRAS GERAIS:
             .values_list("content", flat=True)
         )[-3:]
         recent_context_messages = list(queryset.order_by("-created_at")[:5])
+        return {
+            "recent_user_messages": recent_user_messages,
+            "recent_assistant_messages": recent_assistant_messages,
+            "recent_context_messages": recent_context_messages,
+        }
 
-        topic_signal = self._extract_topic_signal(
-            last_user_message=last_person_message.content,
-            recent_messages=list(reversed(recent_context_messages)),
-            current_topic=profile.current_topic,
-        )
-        active_topic = self._merge_topic_memory(
-            profile=profile, topic_signal=topic_signal
-        )
-
+    def _determine_generation_state(
+        self,
+        *,
+        profile: Profile,
+        queryset,
+        last_user_message: str,
+        recent_user_messages: list,
+        recent_assistant_messages: list,
+    ) -> Dict[str, Any]:
         previous_mode = LEGACY_MODE_MAP.get(
             profile.conversation_mode, profile.conversation_mode
         )
@@ -484,14 +652,24 @@ REGRAS GERAIS:
             previous_mode = MODE_WELCOME
 
         is_first_message = queryset.filter(role="assistant").count() == 0
-        signals = detect_user_signals(last_person_message.content)
+        signals = detect_user_signals(last_user_message)
         direct_guidance_request = bool(signals.get("guidance_request"))
+        deep_presence_trigger = any(
+            [
+                bool(signals.get("deep_suffering")),
+                bool(signals.get("repetitive_guilt")),
+                bool(signals.get("family_conflict_impotence")),
+                bool(signals.get("explicit_despair")),
+            ]
+        )
         repeated_user_pattern = has_repeated_user_pattern(recent_user_messages)
         ambivalence_or_repeated = (
             bool(signals.get("ambivalence")) or repeated_user_pattern
         )
         explicit_spiritual_context = bool(signals.get("spiritual_context"))
-        high_spiritual_need = bool(signals.get("high_spiritual_need"))
+        high_spiritual_need = (
+            bool(signals.get("high_spiritual_need")) or deep_presence_trigger
+        )
         allow_spiritual_context = explicit_spiritual_context or high_spiritual_need
         new_information = has_new_information(recent_user_messages)
         loop_detected = ambivalence_or_repeated
@@ -511,28 +689,42 @@ REGRAS GERAIS:
             repeated_user_pattern=repeated_user_pattern,
             signals=signals,
         )
-
         spiritual_intensity = choose_spiritual_intensity(
             mode=conversation_mode,
             spiritual_context=explicit_spiritual_context,
             high_spiritual_need=high_spiritual_need,
         )
-
         force_progress_fallback = (
             should_force_progress_fallback(
                 recent_user_messages, recent_assistant_messages
             )
             and not new_information
         )
+        return {
+            "previous_mode": previous_mode,
+            "conversation_mode": conversation_mode,
+            "spiritual_intensity": spiritual_intensity,
+            "direct_guidance_request": direct_guidance_request,
+            "allow_spiritual_context": allow_spiritual_context,
+            "force_progress_fallback": force_progress_fallback,
+            "loop_detected": loop_detected,
+            "deep_presence_trigger": deep_presence_trigger,
+        }
 
-        substance_context = self._is_substance_context(
-            user_message=last_person_message.content, active_topic=active_topic
-        )
-        requires_real_help = direct_guidance_request or substance_context
+    def _build_response_prompt(
+        self,
+        *,
+        profile: Profile,
+        queryset,
+        last_person_message: Message,
+        generation_state: Dict[str, Any],
+        active_topic: Optional[str],
+    ) -> str:
         context_messages = queryset.exclude(id=last_person_message.id).order_by(
             "-created_at"
         )[:6]
         context_messages = list(reversed(list(context_messages)))
+
         top_topics = ""
         if isinstance(profile.primary_topics, list) and profile.primary_topics:
             top_topics = ", ".join(
@@ -542,116 +734,163 @@ REGRAS GERAIS:
                     if item.get("topic")
                 ]
             )
-        rag_contexts = get_rag_context(last_person_message.content, limit=3)
-        prompt_aux = self._build_dynamic_runtime_prompt(
-            conversation_mode=conversation_mode,
-            previous_mode=previous_mode,
-            spiritual_intensity=spiritual_intensity,
-            allow_spiritual_context=allow_spiritual_context,
-            direct_guidance_request=direct_guidance_request,
-            force_progress_fallback=force_progress_fallback,
+        # rag_contexts = get_rag_context(last_person_message.content, limit=3)
+
+        return self._build_dynamic_runtime_prompt(
+            conversation_mode=generation_state["conversation_mode"],
+            previous_mode=generation_state["previous_mode"],
+            spiritual_intensity=generation_state["spiritual_intensity"],
+            allow_spiritual_context=generation_state["allow_spiritual_context"],
+            direct_guidance_request=generation_state["direct_guidance_request"],
+            force_progress_fallback=generation_state["force_progress_fallback"],
             active_topic=active_topic,
             top_topics=top_topics,
             last_user_message=last_person_message.content,
             theme_prompt=profile.theme.prompt if profile.theme else None,
             context_messages=context_messages,
-            rag_contexts=rag_contexts,
+            rag_contexts=[],
         )
 
+    def _candidate_should_regenerate(
+        self,
+        *,
+        candidate: str,
+        last_user_message: str,
+        recent_assistant_messages: list,
+        direct_guidance_request: bool,
+        requires_real_help: bool,
+        allow_unsolicited_spiritualization: bool,
+    ) -> Dict[str, bool]:
+        semantic_loop = False
+        if recent_assistant_messages:
+            semantic_loop = is_semantic_loop(recent_assistant_messages[-1], candidate)
+
+        blocked_template = contains_repeated_blocked_pattern(
+            candidate, recent_assistant_messages
+        )
+        has_unverified_inference = contains_unverified_inference(
+            last_user_message, candidate
+        )
+        spiritual_imposition = contains_spiritual_imposition(candidate)
+        unsolicited_spiritualization = contains_unsolicited_spiritualization(
+            last_user_message, candidate
+        )
+        if allow_unsolicited_spiritualization:
+            unsolicited_spiritualization = False
+        spiritual_template_repetition = contains_spiritual_template_repetition(
+            candidate, recent_assistant_messages
+        )
+        generic_empathy = contains_generic_empathy_without_grounding(
+            last_user_message, candidate
+        )
+        missing_spiritual_baseline = not has_spiritual_baseline_signal(candidate)
+        missing_practical_step = (
+            direct_guidance_request and not has_practical_action_step(candidate)
+        )
+        missing_real_support = (
+            requires_real_help
+            and not has_human_support_suggestion(candidate)
+            and not has_self_guided_help(candidate)
+        )
+        leading_echo = starts_with_user_echo(
+            user_message=last_user_message, assistant_message=candidate
+        )
+
+        rejected = (
+            semantic_loop
+            or blocked_template
+            or has_unverified_inference
+            or spiritual_imposition
+            or unsolicited_spiritualization
+            or spiritual_template_repetition
+            or generic_empathy
+            or missing_spiritual_baseline
+            or missing_practical_step
+            or missing_real_support
+            or leading_echo
+        )
+        return {"rejected": rejected, "semantic_loop": semantic_loop}
+
+    def _generate_candidate_response(
+        self,
+        *,
+        profile: Profile,
+        prompt_aux: str,
+        last_user_message: str,
+        recent_assistant_messages: list,
+        conversation_mode: str,
+        direct_guidance_request: bool,
+        requires_real_help: bool,
+        spiritual_intensity: str,
+    ) -> Dict[str, Any]:
         max_regenerations = 3
         regeneration_counter = 0
-        loop_counter = 1 if loop_detected else 0
+        policy = self._generation_policy_for_mode(conversation_mode)
+        base_temperature = policy["temperature"]
+        max_tokens = policy["num_predict"]
 
-        base_temperature = 0.6
-        if conversation_mode in {MODE_ORIENTACAO, MODE_AMBIVALENCIA}:
-            base_temperature = 0.45
         selected_temperature = base_temperature
         approved_content = ""
+        semantic_loop_regenerations = 0
+        allow_unsolicited_spiritualization = spiritual_intensity in {"media", "alta"}
 
         for attempt in range(max_regenerations):
-            if approved_content:
-                break
-
-            selected_temperature = max(0.2, base_temperature - (attempt * 0.15))
+            selected_temperature = max(0.2, base_temperature - (attempt * 0.12))
             candidate = self.basic_call(
                 url_type="generate",
-                model="wachat-v9",
+                model=WACHAT_RESPONSE_MODEL,
+                system=WACHAT_RESPONSE_SYSTEM_PROMPT,
                 prompt=prompt_aux,
                 temperature=selected_temperature,
-                max_tokens=120,
+                max_tokens=max_tokens,
+                top_p=WACHAT_RESPONSE_TOP_P,
+                repeat_penalty=WACHAT_RESPONSE_REPEAT_PENALTY,
+                num_ctx=WACHAT_RESPONSE_NUM_CTX,
             )
-
             candidate = strip_opening_name_if_recently_used(
                 message=candidate,
                 name=profile.name,
                 recent_assistant_messages=recent_assistant_messages,
             )
-            candidate = enforce_hard_limits(candidate)
-
-            semantic_loop = False
-            if recent_assistant_messages:
-                semantic_loop = is_semantic_loop(
-                    recent_assistant_messages[-1], candidate
-                )
-            blocked_template = contains_repeated_blocked_pattern(
-                candidate, recent_assistant_messages
+            candidate_max_sentences = (
+                4 if conversation_mode == MODE_PRESENCA_PROFUNDA else 3
             )
-            has_unverified_inference = contains_unverified_inference(
-                last_person_message.content, candidate
-            )
-            spiritual_imposition = contains_spiritual_imposition(candidate)
-            unsolicited_spiritualization = contains_unsolicited_spiritualization(
-                last_person_message.content, candidate
-            )
-            spiritual_template_repetition = contains_spiritual_template_repetition(
-                candidate, recent_assistant_messages
-            )
-            generic_empathy = contains_generic_empathy_without_grounding(
-                last_person_message.content, candidate
-            )
-            missing_spiritual_baseline = not has_spiritual_baseline_signal(candidate)
-            missing_practical_step = (
-                direct_guidance_request and not has_practical_action_step(candidate)
-            )
-            missing_real_support = (
-                requires_real_help
-                and not has_human_support_suggestion(candidate)
-                and not has_self_guided_help(candidate)
-            )
-            leading_echo = starts_with_user_echo(
-                user_message=last_person_message.content, assistant_message=candidate
+            candidate = enforce_hard_limits(
+                candidate, max_sentences=candidate_max_sentences
             )
 
-            if (
-                semantic_loop
-                or blocked_template
-                or has_unverified_inference
-                or spiritual_imposition
-                or unsolicited_spiritualization
-                or spiritual_template_repetition
-                or generic_empathy
-                or missing_spiritual_baseline
-                or missing_practical_step
-                or missing_real_support
-                or leading_echo
-            ):
-                regeneration_counter += 1
-                if semantic_loop:
-                    loop_counter += 1
-                continue
-
-            approved_content = candidate
-
-        if not approved_content:
-            loop_counter += 1
-            approved_content = self._build_guided_fallback_response(
-                user_message=last_person_message.content,
+            validation = self._candidate_should_regenerate(
+                candidate=candidate,
+                last_user_message=last_user_message,
                 recent_assistant_messages=recent_assistant_messages,
                 direct_guidance_request=direct_guidance_request,
                 requires_real_help=requires_real_help,
-                allow_spiritual_context=allow_spiritual_context,
+                allow_unsolicited_spiritualization=allow_unsolicited_spiritualization,
             )
+            if validation["rejected"]:
+                regeneration_counter += 1
+                if validation["semantic_loop"]:
+                    semantic_loop_regenerations += 1
+                continue
 
+            approved_content = candidate
+            break
+
+        return {
+            "approved_content": approved_content,
+            "selected_temperature": selected_temperature,
+            "regeneration_counter": regeneration_counter,
+            "semantic_loop_regenerations": semantic_loop_regenerations,
+        }
+
+    def _save_runtime_counters(
+        self,
+        *,
+        profile: Profile,
+        conversation_mode: str,
+        loop_counter: int,
+        regeneration_counter: int,
+    ) -> None:
         profile.conversation_mode = conversation_mode
         profile.loop_detected_count = (profile.loop_detected_count or 0) + loop_counter
         profile.regeneration_count = (
@@ -669,12 +908,91 @@ REGRAS GERAIS:
             ]
         )
 
+    def generate_response_message(self, profile: Profile, channel: str) -> Message:
+        if not profile.welcome_message_sent:
+            return self.generate_welcome_message(profile=profile, channel=channel)
+
+        queryset = profile.messages.for_context()
+        last_person_message = queryset.filter(role="user").last()
+        if not last_person_message:
+            return self.generate_welcome_message(profile=profile, channel=channel)
+
+        recent_context = self._collect_recent_context(queryset)
+        recent_user_messages = recent_context["recent_user_messages"]
+        recent_assistant_messages = recent_context["recent_assistant_messages"]
+        recent_context_messages = recent_context["recent_context_messages"]
+
+        topic_signal = self._extract_topic_signal(
+            last_user_message=last_person_message.content,
+            recent_messages=list(reversed(recent_context_messages)),
+            current_topic=profile.current_topic,
+        )
+        active_topic = self._merge_topic_memory(
+            profile=profile, topic_signal=topic_signal
+        )
+
+        generation_state = self._determine_generation_state(
+            profile=profile,
+            queryset=queryset,
+            last_user_message=last_person_message.content,
+            recent_user_messages=recent_user_messages,
+            recent_assistant_messages=recent_assistant_messages,
+        )
+        substance_context = self._is_substance_context(
+            user_message=last_person_message.content, active_topic=active_topic
+        )
+        requires_real_help = (
+            generation_state["direct_guidance_request"] or substance_context
+        )
+
+        prompt_aux = self._build_response_prompt(
+            profile=profile,
+            queryset=queryset,
+            last_person_message=last_person_message,
+            generation_state=generation_state,
+            active_topic=active_topic,
+        )
+        generation_result = self._generate_candidate_response(
+            profile=profile,
+            prompt_aux=prompt_aux,
+            last_user_message=last_person_message.content,
+            recent_assistant_messages=recent_assistant_messages,
+            conversation_mode=generation_state["conversation_mode"],
+            direct_guidance_request=generation_state["direct_guidance_request"],
+            requires_real_help=requires_real_help,
+            spiritual_intensity=generation_state["spiritual_intensity"],
+        )
+
+        approved_content = generation_result["approved_content"]
+        selected_temperature = generation_result["selected_temperature"]
+        loop_counter = (
+            1 if generation_state["loop_detected"] else 0
+        ) + generation_result["semantic_loop_regenerations"]
+        regeneration_counter = generation_result["regeneration_counter"]
+
+        if not approved_content:
+            loop_counter += 1
+            approved_content = self._build_guided_fallback_response(
+                user_message=last_person_message.content,
+                recent_assistant_messages=recent_assistant_messages,
+                direct_guidance_request=generation_state["direct_guidance_request"],
+                requires_real_help=requires_real_help,
+                allow_spiritual_context=generation_state["allow_spiritual_context"],
+            )
+
+        self._save_runtime_counters(
+            profile=profile,
+            conversation_mode=generation_state["conversation_mode"],
+            loop_counter=loop_counter,
+            regeneration_counter=regeneration_counter,
+        )
+
         return Message.objects.create(
             profile=profile,
             role="assistant",
             content=approved_content,
             channel=channel,
-            ollama_prompt=prompt_aux,
+            ollama_prompt=WACHAT_RESPONSE_SYSTEM_PROMPT + "\n\n" + prompt_aux,
             ollama_prompt_temperature=selected_temperature,
         )
 
