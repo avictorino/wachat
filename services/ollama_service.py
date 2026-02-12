@@ -19,6 +19,7 @@ Texto longo                      | 500+                     | Risco alto de queb
 import json
 import logging
 import os
+import random
 import re
 from datetime import timedelta
 from typing import Any, Dict, Literal, Optional, Union
@@ -457,33 +458,77 @@ Histórico recente:
         requires_real_help: bool,
         allow_spiritual_context: bool,
     ) -> str:
-        if direct_guidance_request:
-            candidate = (
-                "Vamos começar por um passo simples hoje: retire a bebida de perto e avise uma pessoa de confiança que você precisa de apoio agora. "
-                "Depois disso, me diga qual horário você vai fazer esse passo."
+        user_norm = (user_message or "").lower()
+        contextual_question = "O que ficou mais sensível para você nisso hoje?"
+        if any(
+            marker in user_norm
+            for marker in [
+                "família",
+                "familia",
+                "relacionamento",
+                "casamento",
+                "filho",
+                "filha",
+                "mãe",
+                "mae",
+                "pai",
+            ]
+        ):
+            contextual_question = (
+                "Quando isso toca sua família, o que mais pesa em você agora?"
             )
+        elif any(
+            marker in user_norm
+            for marker in ["culpa", "culpado", "culpada", "vergonha", "erro"]
+        ):
+            contextual_question = "Onde a culpa ficou mais forte em você hoje?"
+        elif any(
+            marker in user_norm
+            for marker in ["angústia", "angustia", "peito", "pesado", "desespero"]
+        ):
+            contextual_question = "O que está mais pesado no seu peito neste momento?"
+
+        if direct_guidance_request:
+            guidance_candidates = [
+                "Vamos deixar isso simples e direto: escolha uma ação possível para as próximas horas e me diga qual você consegue iniciar primeiro.",
+                "Se você quer orientação prática agora, eu te acompanho: qual passo pequeno e realista você consegue assumir hoje?",
+            ]
+            candidate = random.choice(guidance_candidates)
         elif requires_real_help:
             candidate = (
-                "O que você está vivendo é sério, e pedir apoio agora é um passo de coragem. "
-                "Hoje, procure uma pessoa de confiança ou um grupo como AA/CAPS AD e compartilhe exatamente o que você me disse."
+                "Eu sigo com você nesse ponto sensível, sem te apertar com solução imediata. "
+                f"{contextual_question}"
             )
         else:
-            candidate = (
-                "Obrigado por abrir isso com sinceridade. "
-                "Eu estou com você nesse ponto delicado. "
-                "Qual foi o momento mais difícil disso para você hoje?"
-            )
+            presence_candidates = [
+                (
+                    "Obrigado por confiar isso aqui. "
+                    "Eu permaneço com você nesse lugar delicado. "
+                    f"{contextual_question}"
+                ),
+                (
+                    "Eu recebo o que você trouxe com respeito. "
+                    "Você não precisa carregar esse peso sozinho neste instante. "
+                    f"{contextual_question}"
+                ),
+            ]
+            candidate = random.choice(presence_candidates)
 
         if (
             recent_assistant_messages
             and semantic_similarity(recent_assistant_messages[-1], candidate) > 0.85
         ):
             candidate = (
-                "Eu sigo com você nisso com respeito e cuidado. "
-                "O que ficou mais pesado no seu peito desde a última conversa?"
+                "Eu continuo ao seu lado com presença e cuidado. "
+                f"{contextual_question}"
             )
         if allow_spiritual_context:
-            candidate += " Se fizer sentido para você, Deus vê esse lugar delicado onde você está."
+            spiritual_candidates = [
+                "Se fizer sentido para você, Deus vê esse lugar delicado onde você está.",
+                "Se isso fizer sentido no seu coração, Deus permanece perto também nesse ponto.",
+                "Se você permitir essa linguagem, Deus acolhe esse lugar sensível sem te esmagar.",
+            ]
+            candidate += f" {random.choice(spiritual_candidates)}"
         return enforce_hard_limits(candidate)
 
     def _is_relational_topic(self, active_topic: Optional[str]) -> bool:
@@ -572,7 +617,7 @@ Histórico recente:
             spiritual_policy += " Use presença espiritual viva e sóbria; nunca use linguagem moralizante."
 
         max_sentences = 4 if conversation_mode == MODE_PRESENCA_PROFUNDA else 3
-        max_questions = 0 if conversation_mode == MODE_PRESENCA_PROFUNDA else 1
+        max_questions = 1
         relational_topic = self._is_relational_topic(active_topic)
 
         prompt = f"""
@@ -590,9 +635,15 @@ REGRAS GERAIS:
 - {spiritual_policy}
 - Escolha a melhor função para este turno conforme o modo atual.
 """
-        if direct_guidance_request:
+        if direct_guidance_request and conversation_mode != MODE_PRESENCA_PROFUNDA:
             prompt += "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: resposta deve conter orientação prática direta.\n"
-        if force_progress_fallback and conversation_mode != MODE_PRESENCA_PROFUNDA:
+        if direct_guidance_request and conversation_mode == MODE_PRESENCA_PROFUNDA:
+            prompt += "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: acolha o pedido sem converter este turno em plano de ação.\n"
+        if (
+            force_progress_fallback
+            and conversation_mode != MODE_PRESENCA_PROFUNDA
+            and not (conversation_mode == MODE_ACOLHIMENTO and relational_topic)
+        ):
             prompt += "\nESTAGNAÇÃO DETECTADA: evitar pergunta padrão repetida; destravar com ação concreta.\n"
         if active_topic:
             prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
@@ -603,7 +654,7 @@ REGRAS GERAIS:
         if theme_prompt:
             prompt += f"\nTEMA CONTEXTUAL:\n{theme_prompt}\n"
 
-        prompt += "\nAÇÕES OBRIGATÓRIAS DESTE TURNO:\n"
+        prompt += "\nFUNÇÕES PRIORITÁRIAS DESTE TURNO:\n"
         for action in mode_actions:
             prompt += f"- {action}\n"
 
@@ -757,7 +808,7 @@ REGRAS GERAIS:
         candidate: str,
         last_user_message: str,
         recent_assistant_messages: list,
-        direct_guidance_request: bool,
+        enforce_practical_step: bool,
         requires_real_help: bool,
         allow_unsolicited_spiritualization: bool,
     ) -> Dict[str, bool]:
@@ -785,10 +836,11 @@ REGRAS GERAIS:
         )
         missing_spiritual_baseline = not has_spiritual_baseline_signal(candidate)
         missing_practical_step = (
-            direct_guidance_request and not has_practical_action_step(candidate)
+            enforce_practical_step and not has_practical_action_step(candidate)
         )
         missing_real_support = (
-            requires_real_help
+            enforce_practical_step
+            and requires_real_help
             and not has_human_support_suggestion(candidate)
             and not has_self_guided_help(candidate)
         )
@@ -828,6 +880,9 @@ REGRAS GERAIS:
         policy = self._generation_policy_for_mode(conversation_mode)
         base_temperature = policy["temperature"]
         max_tokens = policy["num_predict"]
+        enforce_practical_step = (
+            direct_guidance_request and conversation_mode != MODE_PRESENCA_PROFUNDA
+        )
 
         selected_temperature = base_temperature
         approved_content = ""
@@ -863,7 +918,7 @@ REGRAS GERAIS:
                 candidate=candidate,
                 last_user_message=last_user_message,
                 recent_assistant_messages=recent_assistant_messages,
-                direct_guidance_request=direct_guidance_request,
+                enforce_practical_step=enforce_practical_step,
                 requires_real_help=requires_real_help,
                 allow_unsolicited_spiritualization=allow_unsolicited_spiritualization,
             )
@@ -941,8 +996,9 @@ REGRAS GERAIS:
         substance_context = self._is_substance_context(
             user_message=last_person_message.content, active_topic=active_topic
         )
-        requires_real_help = (
-            generation_state["direct_guidance_request"] or substance_context
+        requires_real_help = generation_state["direct_guidance_request"] or (
+            generation_state["conversation_mode"] == MODE_ORIENTACAO
+            and substance_context
         )
 
         prompt_aux = self._build_response_prompt(

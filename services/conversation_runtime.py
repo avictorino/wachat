@@ -129,6 +129,8 @@ _HIGH_SPIRITUAL_NEED_MARKERS = [
     "culpa",
     "culpado",
     "culpada",
+    "recaída",
+    "recaida",
     "não consigo me perdoar",
     "sem saída",
     "desesper",
