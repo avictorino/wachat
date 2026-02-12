@@ -126,7 +126,7 @@ class SimulationUseCase:
         Returns:
             List of message dicts with 'role' and 'content' keys
         """
-        query = Message.objects.filter(profile=profile).exclude(role="system").exclude(role="analysis").exclude(exclude_from_context=True)
+        query = Message.objects.filter(profile=profile).for_context()
 
         # Exclude specific message if provided (to avoid duplication)
         if exclude_message_id:
@@ -222,7 +222,7 @@ class SimulationUseCase:
             Não explique nada.
         """
 
-        for idx, message in enumerate(profile.messages.all().exclude(role="system").exclude(role="analysis").exclude(exclude_from_context=True)):
+        for idx, message in enumerate(profile.messages.for_context()):
             if idx == 0:
                 PROMPT += "\n\nBASEAR MINHA PERGUNTA NOS ACONTECIMENTOS ANTERIORES:\n\n"
             PROMPT += f"{message.role.upper()}: {message.content}\n\n\n"

@@ -213,9 +213,7 @@ class ChatView(View):
         """
         recent_messages = (
             Message.objects.filter(profile=profile)
-            .exclude(role="system")
-            .exclude(role="analysis")
-            .exclude(exclude_from_context=True)
+            .for_context()
             .exclude(id=actual_message_id)
             .order_by("-created_at")[:limit]
         )

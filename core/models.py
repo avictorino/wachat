@@ -21,6 +21,17 @@ class Theme(models.Model):
     )
 
 
+class MessageManager(models.Manager):
+    """Custom manager for Message model with context filtering."""
+
+    def for_context(self):
+        """
+        Return messages that should be included in conversation context.
+        Excludes system messages, analysis messages, and messages marked to exclude.
+        """
+        return self.exclude(role="system").exclude(role="analysis").exclude(exclude_from_context=True)
+
+
 class Profile(models.Model):
     """
     User profile for storing user information across multiple channels.
@@ -132,6 +143,8 @@ class Message(models.Model):
         help_text="If True, exclude this message from RAG and memory context",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = MessageManager()
 
     class Meta:
         ordering = ["created_at"]
