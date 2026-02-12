@@ -24,6 +24,22 @@ from urllib.parse import urljoin
 import requests
 
 from core.models import Message, Profile
+from services.conversation_runtime import (
+    MODE_ACOLHIMENTO,
+    MODE_EXPLORACAO,
+    MODE_ORIENTACAO,
+    contains_repeated_blocked_pattern,
+    contains_unverified_inference,
+    detect_ambivalence,
+    enforce_hard_limits,
+    has_new_information,
+    has_repeated_user_pattern,
+    is_semantic_loop,
+    make_progress_fallback_question,
+    semantic_similarity,
+    should_force_progress_fallback,
+    strip_opening_name_if_recently_used,
+)
 from services.rag_service import get_rag_context
 
 logger = logging.getLogger(__name__)
@@ -90,121 +106,172 @@ class OllamaService:
             return self.generate_welcome_message(profile=profile, channel=channel)
 
         queryset = profile.messages.for_context()
-        PROMPT_AUX = """
+        last_person_message = queryset.filter(role="user").last()
+        if not last_person_message:
+            return self.generate_welcome_message(profile=profile, channel=channel)
 
-            =====================================
-            RUNTIME — CONTROLE DE PROGRESSÃO
-            =====================================
+        recent_user_messages = list(
+            queryset.filter(role="user")
+            .order_by("created_at")
+            .values_list("content", flat=True)
+        )[-3:]
+        recent_assistant_messages = list(
+            queryset.filter(role="assistant")
+            .order_by("created_at")
+            .values_list("content", flat=True)
+        )[-3:]
 
-            ESTADO ATUAL DA CONVERSA:
-            - acolhimento: CONCLUÍDO
-            - culpa explícita: PRESENTE
-            - pergunta repetida: SIM
+        previous_mode = profile.conversation_mode or MODE_ACOLHIMENTO
+        is_first_message = queryset.filter(role="assistant").count() == 0
+        ambivalence_or_repeated = detect_ambivalence(
+            last_person_message.content
+        ) or has_repeated_user_pattern(recent_user_messages)
+        new_information = has_new_information(recent_user_messages)
+        loop_detected = ambivalence_or_repeated
+        if len(recent_assistant_messages) >= 2:
+            loop_detected = loop_detected or (
+                semantic_similarity(
+                    recent_assistant_messages[-1], recent_assistant_messages[-2]
+                )
+                > 0.85
+            )
 
-            A próxima resposta NÃO PODE:
-            - acolher novamente
-            - repetir frases de empatia
-            - explicar sentimentos do usuário
-            - explorar causas ou razões
-            - repetir perguntas já feitas
-            - usar construções iniciadas por:
-              - “você está…”
-              - “isso não…”
+        # Explicit state machine
+        if is_first_message:
+            conversation_mode = MODE_ACOLHIMENTO
+        elif loop_detected:
+            conversation_mode = MODE_ORIENTACAO
+        elif new_information:
+            conversation_mode = MODE_EXPLORACAO
+        else:
+            conversation_mode = previous_mode
 
-            A próxima resposta DEVE:
-            - assumir que o acolhimento já ocorreu
-            - separar identidade de comportamento
-            - conter NO MÁXIMO 2 frases
-            - NÃO fazer pergunta
-              OU fazer UMA pergunta concreta diferente
-            - avançar a conversa com algo novo e específico
+        if ambivalence_or_repeated:
+            conversation_mode = MODE_ORIENTACAO
 
-            -------------------------------------
-            CONTROLE DE REPETIÇÃO — PRIORIDADE ABSOLUTA
-            -------------------------------------
+        force_progress_fallback = (
+            should_force_progress_fallback(
+                recent_user_messages, recent_assistant_messages
+            )
+            and not new_information
+        )
 
-            O assistente JÁ FEZ:
-            - acolhimento inicial
-            - perguntas abertas sobre causa ou início
+        prompt_aux = f"""
+            MODO CONVERSACIONAL ATUAL: {conversation_mode}
+            MODO ANTERIOR: {previous_mode}
 
-            É PROIBIDO:
-            - repetir acolhimento
-            - repetir perguntas anteriores (mesmo significado)
-            - repetir qualquer estrutura explicativa
-            - repetir frases que avaliem ou concluam (“não resolve”, “é um erro”)
-            - usar linguagem abstrata ou genérica
+            REGRAS DURAS:
+            - Máximo 3 frases
+            - Máximo 120 palavras
+            - Máximo 1 pergunta
+            - Não repetir saudação, primeira frase ou estrutura do último turno
+            - Não usar frases genéricas repetidas
+            - Não inferir sentimentos não explicitados pelo usuário
+            - Não impor narrativas absolutas sobre Deus
+            - Manter linguagem espiritual cristã com respeito e sem pregação
 
-            -------------------------------------
-            INVALIDADORES AUTOMÁTICOS
-            -------------------------------------
+            MODO ORIENTAÇÃO:
+            - frases mais curtas
+            - sem reflexão emocional profunda
+            - exatamente 1 pergunta concreta
+            - sem expansão espiritual
 
-            Se a resposta contiver QUALQUER item abaixo,
-            ela deve ser considerada INVÁLIDA e regenerada:
-
-            - “você está…”
-            - “isso não…”
-            - explicação do que o usuário sente
-            - paráfrase do conteúdo do usuário
-            - tom terapêutico, didático ou moralizante
-            - referência genérica a “recursos de apoio”
-
-            -------------------------------------
-            FORMA OBRIGATÓRIA
-            -------------------------------------
-
-            - Linguagem falada, humana e direta
-            - Frases curtas
-            - Máximo de 2 parágrafos
-            - Nenhum título, rótulo ou prefixo
-            - No máximo 1 pergunta, apenas se necessário
-            - Sem metáforas
-            - Sem explicações
-
-            -------------------------------------
-            FALHA DE PROGRESSÃO
-            -------------------------------------
-
-            Se não houver avanço possível,
-            ATIVE MODO ORIENTAÇÃO CONCRETA:
-
-            - frases afirmativas
-            - foco em limite, cuidado ou próximo passo
-            - nenhuma pergunta obrigatória
-
-            Foque na resposta para a última mensagem do usuário, usando as mensagens anteriores APENAS como contexto, sem repetir ou parafrasear.
+            Se houver estagnação, faça pergunta destravadora concreta.
+            Foque na última mensagem do usuário e avance o tema.
         """
 
-        last_person_message = queryset.filter(role="user").last()
-        if last_person_message:
-            PROMPT_AUX += (
-                f"\n\nÚLTIMA MENSAGEM DO USUÁRIO: {last_person_message.content}\n\n"
-            )
-
+        prompt_aux += (
+            f"\n\nÚLTIMA MENSAGEM DO USUÁRIO:\n{last_person_message.content}\n"
+        )
         if profile.theme:
-            PROMPT_AUX += f"TEMA DA RESPOSTA: {profile.theme.prompt}"
+            prompt_aux += f"\nTEMA DA RESPOSTA:\n{profile.theme.prompt}\n"
 
-        PROMPT_AUX += "\n\nULTIMAS CONVERSAS\n" if queryset.count() > 0 else ""
-        for idx, message in enumerate(queryset.exclude(id=last_person_message.id)[:6]):
-            PROMPT_AUX += f"{message.role.upper()}: {message.content}\n\n"
+        prompt_aux += "\nULTIMAS CONVERSAS:\n"
+        context_messages = queryset.exclude(id=last_person_message.id).order_by(
+            "-created_at"
+        )[:6]
+        for message in reversed(list(context_messages)):
+            prompt_aux += f"{message.role.upper()}: {message.content}\n\n"
 
-        for RagContext in get_rag_context(last_person_message.content, limit=3):
-            PROMPT_AUX += (
-                f"\n\nRAG CONTEXT AUXILIAR (BAIXA PRIORIDADE): {RagContext}\n\n"
+        for rag_context in get_rag_context(last_person_message.content, limit=3):
+            prompt_aux += f"RAG CONTEXT AUXILIAR (BAIXA PRIORIDADE): {rag_context}\n"
+
+        max_regenerations = 3
+        regeneration_counter = 0
+        loop_counter = 1 if loop_detected else 0
+
+        base_temperature = 0.6 if conversation_mode != MODE_ORIENTACAO else 0.45
+        selected_temperature = base_temperature
+        approved_content = ""
+
+        if force_progress_fallback:
+            approved_content = make_progress_fallback_question()
+            loop_counter += 1
+
+        for attempt in range(max_regenerations):
+            if approved_content:
+                break
+
+            selected_temperature = max(0.2, base_temperature - (attempt * 0.15))
+            candidate = self.basic_call(
+                url_type="generate",
+                model="wachat-v9",
+                prompt=prompt_aux,
+                temperature=selected_temperature,
+                max_tokens=120,
             )
 
-        content = self.basic_call(
-            url_type="generate",
-            model="wachat-v9",
-            prompt=PROMPT_AUX,
+            candidate = strip_opening_name_if_recently_used(
+                message=candidate,
+                name=profile.name,
+                recent_assistant_messages=recent_assistant_messages,
+            )
+            candidate = enforce_hard_limits(candidate)
+
+            semantic_loop = False
+            if recent_assistant_messages:
+                semantic_loop = is_semantic_loop(
+                    recent_assistant_messages[-1], candidate
+                )
+            blocked_template = contains_repeated_blocked_pattern(
+                candidate, recent_assistant_messages
+            )
+            has_unverified_inference = contains_unverified_inference(
+                last_person_message.content, candidate
+            )
+
+            if semantic_loop or blocked_template or has_unverified_inference:
+                regeneration_counter += 1
+                if semantic_loop:
+                    loop_counter += 1
+                continue
+
+            approved_content = candidate
+
+        if not approved_content:
+            approved_content = enforce_hard_limits(make_progress_fallback_question())
+
+        profile.conversation_mode = conversation_mode
+        profile.loop_detected_count = (profile.loop_detected_count or 0) + loop_counter
+        profile.regeneration_count = (
+            profile.regeneration_count or 0
+        ) + regeneration_counter
+        profile.save(
+            update_fields=[
+                "conversation_mode",
+                "loop_detected_count",
+                "regeneration_count",
+                "updated_at",
+            ]
         )
 
         return Message.objects.create(
             profile=profile,
             role="assistant",
-            content=content,
+            content=approved_content,
             channel=channel,
-            ollama_prompt=PROMPT_AUX,
-            ollama_prompt_temperature=0.6,
+            ollama_prompt=prompt_aux,
+            ollama_prompt_temperature=selected_temperature,
         )
 
     def infer_gender(self, name: str) -> str:
@@ -343,7 +410,8 @@ class OllamaService:
         )
 
         profile.welcome_message_sent = True
-        profile.save(update_fields=["welcome_message_sent"])
+        profile.conversation_mode = MODE_ACOLHIMENTO
+        profile.save(update_fields=["welcome_message_sent", "conversation_mode"])
 
         return Message.objects.create(
             profile=profile,

@@ -99,6 +99,24 @@ class Profile(models.Model):
         default=False,
         help_text="True if this message is a generated welcome message (for analytics)",
     )
+    conversation_mode = models.CharField(
+        max_length=20,
+        choices=[
+            ("acolhimento", "Acolhimento"),
+            ("exploração", "Exploração"),
+            ("orientação", "Orientação"),
+        ],
+        default="acolhimento",
+        help_text="Current conversation mode used by response runtime state machine",
+    )
+    loop_detected_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of loop detections for this profile conversation",
+    )
+    regeneration_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Total number of response regenerations for this profile conversation",
+    )
 
     class Meta:
         ordering = ["-created_at"]
