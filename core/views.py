@@ -98,49 +98,12 @@ class ChatView(View):
         except Profile.DoesNotExist:
             return redirect(reverse("chat"))
 
-        # Save user message
-        actual_message = Message.objects.create(
-            profile=profile, role="user", content=message_text, channel="other"
-        )
-        logger.info(f"User message saved for profile {profile.id}")
-
-        # Get LLM service
-        llm_service = OllamaService()
-
-        # Get conversation context
-        context = self._get_conversation_context(
-            profile, actual_message_id=actual_message.id, limit=5
+        Message.objects.create(
+            profile=profile, role="user", content=message_text, channel="chat"
         )
 
-        # Generate LLM response
-        # theme_id is passed for logging/analytics only
-        response_messages = llm_service.generate_intent_response(
-            user_message=message_text,
-            conversation_context=context,
-            name=profile.name,
-            inferred_gender=profile.inferred_gender,
-            intent=None,
-            theme_id=profile.prompt_theme,
-        )
+        OllamaService().generate_response_message(profile=profile, channel="chat")
 
-        # Capture and save Ollama prompt payload for observability
-        if hasattr(llm_service, "get_last_prompt_payload"):
-            prompt_payload = llm_service.get_last_prompt_payload()
-            if prompt_payload and isinstance(prompt_payload, dict):
-                actual_message.ollama_prompt = prompt_payload
-                actual_message.save(update_fields=["ollama_prompt"])
-                logger.info(
-                    f"Saved Ollama prompt payload to message {actual_message.id}"
-                )
-
-        # Save assistant responses
-        for response_msg in response_messages:
-            Message.objects.create(
-                profile=profile, role="assistant", content=response_msg, channel="other"
-            )
-        logger.info(f"Assistant responses saved for profile {profile.id}")
-
-        # Redirect back to chat with selected profile
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
     def _handle_new_profile(self, request):

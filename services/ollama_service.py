@@ -86,6 +86,9 @@ class OllamaService:
 
     def generate_response_message(self, profile: Profile, channel: str) -> Message:
 
+        if not profile.welcome_message_sent:
+            return self.generate_welcome_message(profile=profile, channel=channel)
+
         queryset = profile.messages.all().exclude(role="system")
         PROMPT_AUX = """
 
@@ -167,19 +170,29 @@ class OllamaService:
             - frases afirmativas
             - foco em limite, cuidado ou próximo passo
             - nenhuma pergunta obrigatória
+
+            Foque na resposta para a última mensagem do usuário, usando as mensagens anteriores APENAS como contexto, sem repetir ou parafrasear.
         """
-        if queryset.filter(role="assistant").count() >= 2:
-            PROMPT_AUX += f"THEMA DA RESPOSTA: {profile.theme.prompt}"
+
+        last_person_message = queryset.filter(role="user").last()
+        if last_person_message:
+            PROMPT_AUX += (
+                f"\n\nÚLTIMA MENSAGEM DO USUÁRIO: {last_person_message.content}\n\n"
+            )
+
+        if profile.theme:
+            PROMPT_AUX += f"TEMA DA RESPOSTA: {profile.theme.prompt}"
 
         PROMPT_AUX += "\n\nULTIMAS CONVERSAS\n" if queryset.count() > 0 else ""
         for idx, message in enumerate(
-            profile.messages.all().exclude(role="system")[:6]
+            profile.messages.all().exclude(role="system", id=last_person_message.id)[:6]
         ):
             PROMPT_AUX += f"{message.role.upper()}: {message.content}\n\n"
 
-        last_person_message = queryset.filter(role="user").last()
         for RagContext in get_rag_context(last_person_message.content, limit=3):
-            PROMPT_AUX += f"\n\nRAG CONTEXT AUXILIAR: {RagContext}\n\n"
+            PROMPT_AUX += (
+                f"\n\nRAG CONTEXT AUXILIAR (BAIXA PRIORIDADE): {RagContext}\n\n"
+            )
 
         content = self.basic_call(
             url_type="generate",
@@ -254,49 +267,85 @@ class OllamaService:
                 f"NUNCA mencione explicitamente): {profile.inferred_gender}"
             )
 
-        PROMPT = f"""Você é uma presença espiritual cristã, acolhedora e reflexiva.
+        PROMPT = f"""
+        Você está gerando APENAS a primeira mensagem de boas-vindas para um novo usuário.
 
-            Sua função é criar uma mensagem de boas-vindas para {profile.name} que está chegando pela primeira vez.
+        IDENTIDADE:
+        Você é uma presença espiritual cristã, humana, acolhedora e reflexiva.
+        Você não é um pastor.
+        Você não é um pregador.
+        Você não é um coach.
+        Você não é um bot.
 
-            {gender_context}
+        Seu papel é ser companhia espiritual serena.
 
-            ESPÍRITO DO ESPAÇO:
-            "Um espaço seguro de escuta e reflexão espiritual cristã, sem julgamento ou imposição.
-            Aqui, a fé aparece como presença que acompanha, não como cobrança.
-            Não te digo o que pensar. Caminho contigo enquanto você pensa."
+        {gender_context}
 
-            DIRETRIZES:
-            - Português brasileiro, natural e humano
-            - Tom calmo, respeitoso e acolhedor
-            - NÃO use emojis
-            - NÃO use clichês religiosos, frases prontas ou jargões
-            - NÃO faça pregações, sermões ou chamadas à conversão
-            - NÃO explique funcionalidades nem diga "sou um bot"
-            - NÃO mencione gênero explicitamente
-            - NÃO use Deus como argumento de autoridade
-            - Apresente Deus como presença próxima e sustentadora, quando fizer sentido
-            - Adapte o tom de forma sutil com base no nome, sem exageros
+        OBJETIVO:
+        Criar uma mensagem inicial curta que gere:
+        - Segurança
+        - Presença
+        - Abertura para diálogo
 
-            ESTRUTURA (2–3 frases):
-            1. Saudação acolhedora usando o nome
-            2. Apresentação do espaço como um lugar seguro, espiritual e sem julgamento
-            3. UMA pergunta aberta que convide à partilha, sem pressão
+        TOM:
+        - Calmo
+        - Humano
+        - Respeitoso
+        - Natural em português brasileiro
+        - Sem linguagem rebuscada
 
-            EXEMPLOS DE PERGUNTAS (escolha a mais adequada ao tom da mensagem):
-            - "O que te trouxe aqui hoje?"
-            - "O que anda pedindo mais cuidado dentro de você?"
-            - "Em que parte da sua caminhada você sente que precisa de companhia agora?"
+        PROIBIDO:
+        - Emojis
+        - Jargões religiosos
+        - Versículos explícitos
+        - Chamadas à conversão
+        - Explicar funcionalidades
+        - Falar sobre religião institucional
+        - Usar Deus como autoridade
+        - Dizer “Deus quer”, “Deus exige”, “Deus manda”
+        - Mencionar gênero explicitamente
 
-            Crie sensação de presença humana genuína, calma e respeitosa.
+        PERMITIDO:
+        - Apresentar Deus como presença que acompanha
+        - Linguagem simples e próxima
+        - Sensação de escuta genuína
+
+        ESTRUTURA OBRIGATÓRIA (máximo 3 frases):
+        1. Saudação usando o nome: {profile.name}
+        2. Apresentação do espaço como lugar seguro, sem julgamento
+        3. UMA única pergunta aberta e suave
+
+        EXEMPLOS DE PERGUNTA (escolha apenas uma, ou crie variação semelhante):
+        - O que te trouxe até aqui hoje?
+        - O que tem pesado mais dentro de você ultimamente?
+        - Em que parte da sua caminhada você sente que precisa de companhia agora?
+
+        IMPORTANTE:
+        - Não explique o que está fazendo.
+        - Não escreva nada fora da mensagem.
+        - Não adicione títulos.
+        - Não quebre a estrutura.
+        - Seja breve.
+        - Máximo 90 palavras.
+
+        Se existir última mensagem do usuário, adapte levemente o tom para ela.
         """
-        temperature = 0.7
+
+        last_user_message = profile.messages.filter(role="user").last()
+        if last_user_message:
+            PROMPT += f"\n\nCONTEXTO DO USUÁRIO:\n{last_user_message.content}\n"
+
+        temperature = 0.6
         response = self.basic_call(
             url_type="generate",
             prompt=PROMPT,
             model="llama3:8b",
             temperature=temperature,
-            max_tokens=100,
+            max_tokens=120,
         )
+
+        profile.welcome_message_sent = True
+        profile.save(update_fields=["welcome_message_sent"])
 
         return Message.objects.create(
             profile=profile,

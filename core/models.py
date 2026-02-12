@@ -72,6 +72,11 @@ class Profile(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    welcome_message_sent = models.BooleanField(
+        default=False,
+        help_text="True if this message is a generated welcome message (for analytics)",
+    )
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -98,6 +103,7 @@ class Message(models.Model):
         ("telegram", "Telegram"),
         ("whatsapp", "WhatsApp"),
         ("simulation", "Simulation"),
+        ("chat", "Chat Interface"),
         ("other", "Other"),
     ]
 
