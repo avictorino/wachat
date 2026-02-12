@@ -26,13 +26,19 @@ import requests
 from core.models import Message, Profile
 from services.conversation_runtime import (
     MODE_ACOLHIMENTO,
+    MODE_AMBIVALENCIA,
     MODE_EXPLORACAO,
     MODE_ORIENTACAO,
+    MODE_WELCOME,
+    contains_generic_empathy_without_grounding,
     contains_repeated_blocked_pattern,
+    contains_unsolicited_spiritualization,
     contains_unverified_inference,
     detect_ambivalence,
+    detect_direct_guidance_request,
     enforce_hard_limits,
     has_new_information,
+    has_practical_action_step,
     has_repeated_user_pattern,
     is_semantic_loop,
     make_progress_fallback_question,
@@ -43,6 +49,20 @@ from services.conversation_runtime import (
 from services.rag_service import get_rag_context
 
 logger = logging.getLogger(__name__)
+
+VALID_CONVERSATION_MODES = {
+    MODE_WELCOME,
+    MODE_ACOLHIMENTO,
+    MODE_EXPLORACAO,
+    MODE_AMBIVALENCIA,
+    MODE_ORIENTACAO,
+}
+
+LEGACY_MODE_MAP = {
+    "acolhimento": MODE_ACOLHIMENTO,
+    "exploração": MODE_EXPLORACAO,
+    "orientação": MODE_ORIENTACAO,
+}
 
 
 # Helper constant for gender context in Portuguese
@@ -121,8 +141,16 @@ class OllamaService:
             .values_list("content", flat=True)
         )[-3:]
 
-        previous_mode = profile.conversation_mode or MODE_ACOLHIMENTO
+        previous_mode = LEGACY_MODE_MAP.get(
+            profile.conversation_mode, profile.conversation_mode
+        )
+        if previous_mode not in VALID_CONVERSATION_MODES:
+            previous_mode = MODE_WELCOME
+
         is_first_message = queryset.filter(role="assistant").count() == 0
+        direct_guidance_request = detect_direct_guidance_request(
+            last_person_message.content
+        )
         ambivalence_or_repeated = detect_ambivalence(
             last_person_message.content
         ) or has_repeated_user_pattern(recent_user_messages)
@@ -136,9 +164,16 @@ class OllamaService:
                 > 0.85
             )
 
-        # Explicit state machine
-        if is_first_message:
+        # Explicit state machine:
+        # WELCOME -> ACOLHIMENTO -> EXPLORACAO -> AMBIVALENCIA -> ORIENTACAO
+        if direct_guidance_request:
+            conversation_mode = MODE_ORIENTACAO
+        elif is_first_message:
             conversation_mode = MODE_ACOLHIMENTO
+        elif previous_mode == MODE_WELCOME:
+            conversation_mode = MODE_ACOLHIMENTO
+        elif ambivalence_or_repeated:
+            conversation_mode = MODE_AMBIVALENCIA
         elif loop_detected:
             conversation_mode = MODE_ORIENTACAO
         elif new_information:
@@ -146,7 +181,9 @@ class OllamaService:
         else:
             conversation_mode = previous_mode
 
-        if ambivalence_or_repeated:
+        if conversation_mode == MODE_AMBIVALENCIA and (
+            direct_guidance_request or has_repeated_user_pattern(recent_user_messages)
+        ):
             conversation_mode = MODE_ORIENTACAO
 
         force_progress_fallback = (
@@ -155,6 +192,35 @@ class OllamaService:
             )
             and not new_information
         )
+
+        state_runtime_rules = {
+            MODE_WELCOME: """
+            - objetivo: acolhimento inicial e abertura
+            - não aprofundar diagnóstico
+            - no máximo 1 pergunta breve
+            """,
+            MODE_ACOLHIMENTO: """
+            - validar ponto específico dito pelo usuário
+            - evitar reflexão longa
+            - preparar transição para exploração objetiva
+            """,
+            MODE_EXPLORACAO: """
+            - avançar a conversa com 1 pergunta concreta
+            - usar evidência textual da última fala
+            - não repetir moldes dos últimos turnos
+            """,
+            MODE_AMBIVALENCIA: """
+            - reconhecer conflito explícito (sem moralizar)
+            - separar sentimento de comportamento
+            - perguntar um próximo critério de decisão
+            """,
+            MODE_ORIENTACAO: """
+            - responder com 1 ação prática simples e imediata
+            - sem espiritualização automática
+            - sem reflexão emocional profunda
+            - não fazer mais de 1 pergunta
+            """,
+        }
 
         prompt_aux = f"""
             MODO CONVERSACIONAL ATUAL: {conversation_mode}
@@ -167,16 +233,15 @@ class OllamaService:
             - Não repetir saudação, primeira frase ou estrutura do último turno
             - Não usar frases genéricas repetidas
             - Não inferir sentimentos não explicitados pelo usuário
-            - Não impor narrativas absolutas sobre Deus
+            - Não espiritualizar automaticamente sem contexto do usuário
             - Manter linguagem espiritual cristã com respeito e sem pregação
+            - Empatia deve citar algo específico que o usuário disse
 
-            MODO ORIENTAÇÃO:
-            - frases mais curtas
-            - sem reflexão emocional profunda
-            - exatamente 1 pergunta concreta
-            - sem expansão espiritual
+            REGRAS ESPECÍFICAS DO ESTADO:
+            {state_runtime_rules.get(conversation_mode, state_runtime_rules[MODE_EXPLORACAO])}
 
             Se houver estagnação, faça pergunta destravadora concreta.
+            Se o usuário pediu orientação prática, dê 1 passo acionável agora.
             Foque na última mensagem do usuário e avance o tema.
         """
 
@@ -200,7 +265,9 @@ class OllamaService:
         regeneration_counter = 0
         loop_counter = 1 if loop_detected else 0
 
-        base_temperature = 0.6 if conversation_mode != MODE_ORIENTACAO else 0.45
+        base_temperature = 0.6
+        if conversation_mode in {MODE_ORIENTACAO, MODE_AMBIVALENCIA}:
+            base_temperature = 0.45
         selected_temperature = base_temperature
         approved_content = ""
 
@@ -239,8 +306,24 @@ class OllamaService:
             has_unverified_inference = contains_unverified_inference(
                 last_person_message.content, candidate
             )
+            unsolicited_spiritualization = contains_unsolicited_spiritualization(
+                last_person_message.content, candidate
+            )
+            generic_empathy = contains_generic_empathy_without_grounding(
+                last_person_message.content, candidate
+            )
+            missing_practical_step = (
+                direct_guidance_request and not has_practical_action_step(candidate)
+            )
 
-            if semantic_loop or blocked_template or has_unverified_inference:
+            if (
+                semantic_loop
+                or blocked_template
+                or has_unverified_inference
+                or unsolicited_spiritualization
+                or generic_empathy
+                or missing_practical_step
+            ):
                 regeneration_counter += 1
                 if semantic_loop:
                     loop_counter += 1
@@ -410,7 +493,7 @@ class OllamaService:
         )
 
         profile.welcome_message_sent = True
-        profile.conversation_mode = MODE_ACOLHIMENTO
+        profile.conversation_mode = MODE_WELCOME
         profile.save(update_fields=["welcome_message_sent", "conversation_mode"])
 
         return Message.objects.create(

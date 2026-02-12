@@ -8,7 +8,7 @@ from faker import Faker
 
 from core.models import Message, Profile
 from services.ollama_service import OllamaService
-from services.simulation_service import SimulationUseCase
+from services.simulation_service import SimulatedUserProfile, SimulationUseCase
 
 logger = logging.getLogger(__name__)
 
@@ -128,15 +128,30 @@ class ChatView(View):
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
     def _handle_simulate(self, request, ollama_service):
+        profile_id = request.POST.get("profile_id")
+        emotional_profile = request.POST.get(
+            "emotional_profile", SimulatedUserProfile.AMBIVALENTE.value
+        ).strip()
 
-        theme = request.POST.get("theme", "").strip().lower()
+        if not profile_id:
+            return redirect(reverse("chat"))
 
-        profile_id = SimulationUseCase(ollama_service=ollama_service).handle(
-            theme_name=theme, num_messages=4
-        )
+        try:
+            selected_profile_id = SimulationUseCase(
+                ollama_service=ollama_service
+            ).handle(
+                profile_id=int(profile_id),
+                emotional_profile=emotional_profile,
+            )
+
+            profile = Profile.objects.get(id=selected_profile_id)
+
+            OllamaService().generate_response_message(profile=profile, channel="chat")
+        except Profile.DoesNotExist:
+            return redirect(reverse("chat"))
 
         # Redirect to chat with simulation profile selected
-        return redirect(f"{reverse('chat')}?profile_id={profile_id}")
+        return redirect(f"{reverse('chat')}?profile_id={selected_profile_id}")
 
     def _handle_analyze(self, request, ollama_service):
         """Analyze conversation emotions for selected profile."""

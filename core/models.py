@@ -102,11 +102,13 @@ class Profile(models.Model):
     conversation_mode = models.CharField(
         max_length=20,
         choices=[
-            ("acolhimento", "Acolhimento"),
-            ("exploração", "Exploração"),
-            ("orientação", "Orientação"),
+            ("WELCOME", "Welcome"),
+            ("ACOLHIMENTO", "Acolhimento"),
+            ("EXPLORACAO", "Exploracao"),
+            ("AMBIVALENCIA", "Ambivalencia"),
+            ("ORIENTACAO", "Orientacao"),
         ],
-        default="acolhimento",
+        default="WELCOME",
         help_text="Current conversation mode used by response runtime state machine",
     )
     loop_detected_count = models.PositiveIntegerField(

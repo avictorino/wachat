@@ -321,21 +321,21 @@
             <button type="submit">➕ New Profile</button>
         </form>
 
-        <!-- Simulate button with theme selector -->
+        <!-- Simulate button with emotional profile selector -->
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
             {% csrf_token %}
             <input type="hidden" name="action" value="simulate">
-            <select name="theme">
-                <option value="desabafar" selected>Desabafar</option>
-                <option value="doenca">Doença</option>
-                <option value="ansiedade">Ansiedade</option>
-                <option value="ato_criminoso_pecado">Ato Criminoso/Pecado</option>
-                <option value="problemas_financeiros">Problemas Financeiros</option>
-                <option value="distante_religiao">Distante da Religião</option>
-                <option value="redes_sociais">Redes Sociais</option>
-                <option value="drogas">Drogas</option>
-                <option value="alcool">Álcool</option>
-                <option value="outro">Outro</option>
+            {% if selected_profile %}
+            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+            {% endif %}
+            <select name="emotional_profile">
+                <option value="ambivalente" selected>Ambivalente</option>
+                <option value="defensivo">Defensivo</option>
+                <option value="culpa_forte">Culpa Forte</option>
+                <option value="desesperanca">Desesperanca</option>
+                <option value="racional">Racional</option>
+                <option value="pedido_ajuda_implicito">Pedido Ajuda</option>
+                <option value="fechamento_emocional">Fechamento</option>
             </select>
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
