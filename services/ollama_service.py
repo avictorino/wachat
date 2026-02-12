@@ -411,7 +411,7 @@ class OllamaService:
 
         transcript_text = ""
         for message in profile.messages.for_context():
-            transcript_text += f"{message}: {message.content}\n\n"
+            transcript_text += f"{message.role}: {message.content}\n\n"
 
         SYSTEM_PROMPT = f"""Você é um AUDITOR TÉCNICO DE QUALIDADE CONVERSACIONAL HUMANO–IA.
 

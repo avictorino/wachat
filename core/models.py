@@ -27,7 +27,15 @@ class MessageManager(models.Manager):
     def for_context(self):
         """
         Return messages that should be included in conversation context.
-        Excludes system messages, analysis messages, and messages marked to exclude.
+        
+        Excludes:
+        - System messages (role="system"): Internal/technical messages
+        - Analysis messages (role="analysis"): Retrospective analysis reports
+        - Messages with exclude_from_context=True: Any message explicitly marked for exclusion
+        
+        Note: Analysis messages are filtered both by role and by the exclude_from_context flag
+        as a defense-in-depth measure. The flag allows for future flexibility if other message
+        types need to be excluded from context without changing the role-based logic.
         """
         return self.exclude(role="system").exclude(role="analysis").exclude(exclude_from_context=True)
 
