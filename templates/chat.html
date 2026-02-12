@@ -179,23 +179,44 @@
             background-color: #f0f0f0;
             padding: 10px 15px;
             display: flex;
+            flex-direction: column;
             gap: 10px;
-            align-items: center;
+            align-items: stretch;
         }
 
         .input-area form {
             display: flex;
             gap: 10px;
             flex: 1;
+            width: 100%;
         }
 
         .input-area input[type="text"] {
             flex: 1;
+            min-width: 0;
             padding: 10px 15px;
             border: none;
             border-radius: 20px;
             font-size: 14px;
             outline: none;
+        }
+
+        .input-area select {
+            padding: 10px 12px;
+            border: 1px solid #d0d0d0;
+            border-radius: 12px;
+            font-size: 14px;
+            background-color: #fff;
+            min-width: 0;
+        }
+
+        #chatForm {
+            align-items: center;
+        }
+
+        #simulateForm {
+            align-items: center;
+            margin-top: 0;
         }
 
         .input-area button {
@@ -236,6 +257,26 @@
             .header select,
             .header button,
             .header input[type="text"] {
+                width: 100%;
+            }
+
+            .input-area {
+                padding: 10px;
+                gap: 8px;
+            }
+
+            #chatForm,
+            #simulateForm {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+
+            #chatForm button,
+            #simulateForm button,
+            #chatForm select,
+            #simulateForm select,
+            #chatForm input[type="text"] {
                 width: 100%;
             }
         }
@@ -321,25 +362,6 @@
             <button type="submit">➕ New Profile</button>
         </form>
 
-        <!-- Simulate button with emotional profile selector -->
-        <form method="post" action="/chat/" style="display: flex; gap: 10px;">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="simulate">
-            {% if selected_profile %}
-            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
-            {% endif %}
-            <select name="emotional_profile">
-                <option value="ambivalente" selected>Ambivalente</option>
-                <option value="defensivo">Defensivo</option>
-                <option value="culpa_forte">Culpa Forte</option>
-                <option value="desesperanca">Desesperanca</option>
-                <option value="racional">Racional</option>
-                <option value="pedido_ajuda_implicito">Pedido Ajuda</option>
-                <option value="fechamento_emocional">Fechamento</option>
-            </select>
-            <button type="submit" class="secondary">🎭 Simulate</button>
-        </form>
-
         <!-- Analyze button (only show when profile is selected) -->
         {% if selected_profile %}
         <form method="post" action="/chat/" style="display: flex; gap: 10px;">
@@ -374,14 +396,19 @@
                     <div class="message {{ message.role }}">
                         <div class="message-bubble">
                             {% if message.role == "user" %}
-                                <div class="message-sender">{{ message.profile.name }}</div>
+                                <div class="message-sender">
+                                    {{ message.profile.name }}
+                                    {% if message.generated_by_simulator %}
+                                        <span title="Mensagem gerada pelo simulador" style="margin-left: 6px;">🎭</span>
+                                    {% endif %}
+                                </div>
                             {% elif message.role == "assistant" %}
                                 <div class="message-sender">Bot</div>
                             {% endif %}
                             <div class="message-content">{{ message.content }}</div>
                             <div class="message-time">
                                 {{ message.created_at|date:"H:i" }}
-                                {% if message.role == "user" %}
+                                {% if message.ollama_prompt %}
                                     <a href="/admin/core/message/{{ message.id }}/change/" target="_blank" style="margin-left: 8px; font-size: 10px; color: #667781; text-decoration: none;">🔍 ver prompt</a>
                                 {% endif %}
                             </div>
@@ -399,9 +426,47 @@
             {% csrf_token %}
             <input type="hidden" name="action" value="send_message">
             <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+            <select id="predefinedMessageSelect" style="min-width: 230px;">
+                <option value="">Mensagem pré-definida...</option>
+                <option value="Eu estou com uma angústia no peito e não consigo me acalmar, parece que tudo está pesado demais.">Angústia emocional</option>
+                <option value="Minha família está em conflito e eu me sinto no meio de tudo, sem saber como agir.">Problemas familiares</option>
+                <option value="Sinto muita culpa pelo que fiz e não consigo me perdoar, isso me prende todos os dias.">Culpa e arrependimento</option>
+                <option value="Eu caio no mesmo comportamento de novo e de novo, prometo parar e acabo repetindo.">Vício ou comportamento repetitivo</option>
+                <option value="Estou sem esperança de que as coisas mudem, parece que nada vai melhorar.">Desesperança</option>
+                <option value="Eu preciso de orientação prática agora, me diga por onde começo de forma simples.">Pedido direto de orientação</option>
+                <option value="As contas estão acumulando e estou desesperado com dinheiro, não consigo pensar direito.">Problemas financeiros</option>
+                <option value="Tenho vivido com muita ansiedade e medo, minha mente não para e eu não descanso.">Ansiedade e medo</option>
+                <option value="Pode me dar um passo simples para eu começar hoje?">Pedido simples</option>
+                <option value="Me ajuda aí, preciso de um começo bem direto porque eu tô travado.">Pedido informal</option>
+            </select>
             <input type="text" name="message_text" placeholder="Type a message..." required autofocus>
             <button type="submit" id="sendButton">Send</button>
         </form>
+
+        <form method="post" action="/chat/" id="simulateForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="simulate">
+            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+            <select name="emotional_profile">
+                <option value="ambivalente" selected>Ambivalente</option>
+                <option value="defensivo">Defensivo</option>
+                <option value="culpa_forte">Culpa forte</option>
+                <option value="desesperanca">Desesperança</option>
+                <option value="racional">Racional</option>
+                <option value="pedido_ajuda_implicito">Pedido de ajuda implícito</option>
+                <option value="fechamento_emocional">Fechamento emocional</option>
+            </select>
+            <select name="simulate_mode">
+                <option value="test" selected>Modo teste (não salvar)</option>
+                <option value="persist">Salvar no histórico</option>
+            </select>
+            <button type="submit" class="secondary">🎭 Simulate</button>
+        </form>
+        {% if simulated_preview %}
+        <div style="margin-top: 8px; font-size: 13px; color: #555;">
+            <strong>Prévia simulate:</strong> {{ simulated_preview }}
+        </div>
+        {% endif %}
     </div>
     {% endif %}
 
@@ -425,7 +490,17 @@
             if (!form) return;
 
             const sendButton = document.getElementById('sendButton');
+            const select = document.getElementById('predefinedMessageSelect');
+            const input = form.querySelector('input[name="message_text"]');
             let isSubmitting = false;
+
+            if (select && input) {
+                select.addEventListener('change', function() {
+                    if (!select.value) return;
+                    input.value = select.value;
+                    input.focus();
+                });
+            }
 
             form.addEventListener('submit', function(e) {
                 // Prevent concurrent submissions

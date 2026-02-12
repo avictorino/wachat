@@ -76,6 +76,14 @@ class SimulationUseCase:
     def simulate_next_user_message(
         self, conversation, profile: SimulatedUserProfile
     ) -> str:
+        result = self.simulate_next_user_message_with_metadata(
+            conversation=conversation, profile=profile
+        )
+        return result["content"]
+
+    def simulate_next_user_message_with_metadata(
+        self, conversation, profile: SimulatedUserProfile
+    ) -> dict:
         selected_profile = _parse_profile(profile)
         recent_history = _to_recent_history(conversation=conversation, limit=5)
 
@@ -103,14 +111,19 @@ Regras obrigatórias:
 - Não use listas ou rótulos.
 - Escreva apenas a próxima fala do usuário.
 """
+        temperature = 0.5
         result = self._ollama_service.basic_call(
             url_type="generate",
             prompt=prompt,
             model=OLLAMA_SIMULATION_MODEL,
-            temperature=0.5,
+            temperature=temperature,
             max_tokens=90,
         )
-        return _trim_to_three_sentences(result)
+        return {
+            "content": _trim_to_three_sentences(result),
+            "prompt": prompt,
+            "temperature": temperature,
+        }
 
     def handle(
         self, profile_id: int, emotional_profile: Union[SimulatedUserProfile, str]
@@ -123,7 +136,7 @@ Regras obrigatórias:
             .exclude(exclude_from_context=True)
             .order_by("created_at")
         )
-        next_message = self.simulate_next_user_message(
+        simulation = self.simulate_next_user_message_with_metadata(
             conversation=conversation,
             profile=_parse_profile(emotional_profile),
         )
@@ -131,7 +144,10 @@ Regras obrigatórias:
         Message.objects.create(
             profile=profile,
             role="user",
-            content=next_message,
+            content=simulation["content"],
             channel="simulation",
+            generated_by_simulator=True,
+            ollama_prompt=simulation["prompt"],
+            ollama_prompt_temperature=simulation["temperature"],
         )
         return profile.id

@@ -1,5 +1,6 @@
 import logging
 import random
+from urllib.parse import urlencode
 
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -64,6 +65,7 @@ class ChatView(View):
             "profiles": profiles,
             "selected_profile": selected_profile,
             "messages": messages,
+            "simulated_preview": request.GET.get("simulated_preview", "").strip(),
         }
 
         return render(request, "chat.html", context)
@@ -132,23 +134,38 @@ class ChatView(View):
         emotional_profile = request.POST.get(
             "emotional_profile", SimulatedUserProfile.AMBIVALENTE.value
         ).strip()
+        simulate_mode = request.POST.get("simulate_mode", "persist").strip().lower()
 
         if not profile_id:
             return redirect(reverse("chat"))
 
         try:
-            selected_profile_id = SimulationUseCase(
-                ollama_service=ollama_service
-            ).handle(
-                profile_id=int(profile_id),
-                emotional_profile=emotional_profile,
-            )
-
-            profile = Profile.objects.get(id=selected_profile_id)
-
-            OllamaService().generate_response_message(profile=profile, channel="chat")
+            profile = Profile.objects.get(id=int(profile_id))
         except Profile.DoesNotExist:
             return redirect(reverse("chat"))
+
+        simulation_use_case = SimulationUseCase(ollama_service=ollama_service)
+        if simulate_mode == "test":
+            conversation = (
+                Message.objects.filter(profile=profile)
+                .exclude(role="system")
+                .exclude(role="analysis")
+                .exclude(exclude_from_context=True)
+                .order_by("created_at")
+            )
+            simulated_preview = simulation_use_case.simulate_next_user_message(
+                conversation=conversation,
+                profile=emotional_profile,
+            )
+            query = urlencode(
+                {"profile_id": profile.id, "simulated_preview": simulated_preview}
+            )
+            return redirect(f"{reverse('chat')}?{query}")
+
+        selected_profile_id = simulation_use_case.handle(
+            profile_id=profile.id,
+            emotional_profile=emotional_profile,
+        )
 
         # Redirect to chat with simulation profile selected
         return redirect(f"{reverse('chat')}?profile_id={selected_profile_id}")

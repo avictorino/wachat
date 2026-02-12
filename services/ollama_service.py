@@ -16,34 +16,45 @@ Resposta explicativa curta       | 150                      | Pode escapar
 Texto médio                      | 250–400                  | Já não é conversa
 Texto longo                      | 500+                     | Risco alto de quebrar regras
 """
+import json
 import logging
 import os
+import re
+from datetime import timedelta
 from typing import Any, Dict, Literal, Optional, Union
 from urllib.parse import urljoin
 
 import requests
+from django.utils import timezone
 
 from core.models import Message, Profile
 from services.conversation_runtime import (
     MODE_ACOLHIMENTO,
     MODE_AMBIVALENCIA,
+    MODE_CULPA,
+    MODE_DEFENSIVO,
     MODE_EXPLORACAO,
     MODE_ORIENTACAO,
     MODE_WELCOME,
     contains_generic_empathy_without_grounding,
     contains_repeated_blocked_pattern,
+    contains_spiritual_imposition,
     contains_unsolicited_spiritualization,
     contains_unverified_inference,
     detect_ambivalence,
+    detect_defensiveness,
     detect_direct_guidance_request,
+    detect_guilt,
     enforce_hard_limits,
+    has_human_support_suggestion,
     has_new_information,
     has_practical_action_step,
     has_repeated_user_pattern,
+    has_spiritual_context,
     is_semantic_loop,
-    make_progress_fallback_question,
     semantic_similarity,
     should_force_progress_fallback,
+    starts_with_user_echo,
     strip_opening_name_if_recently_used,
 )
 from services.rag_service import get_rag_context
@@ -55,6 +66,8 @@ VALID_CONVERSATION_MODES = {
     MODE_ACOLHIMENTO,
     MODE_EXPLORACAO,
     MODE_AMBIVALENCIA,
+    MODE_DEFENSIVO,
+    MODE_CULPA,
     MODE_ORIENTACAO,
 }
 
@@ -63,6 +76,12 @@ LEGACY_MODE_MAP = {
     "exploração": MODE_EXPLORACAO,
     "orientação": MODE_ORIENTACAO,
 }
+
+TOPIC_MEMORY_WINDOW_DAYS = 7
+TOPIC_MEMORY_MAX_ITEMS = 6
+TOPIC_MIN_CONFIDENCE = 0.45
+TOPIC_PROMOTE_CONFIDENCE = 0.6
+SUBSTANCE_TOPICS = {"alcool", "álcool", "drogas", "dependencia", "dependência"}
 
 
 # Helper constant for gender context in Portuguese
@@ -120,6 +139,211 @@ class OllamaService:
         else:
             return response_data.get("response", "").strip()
 
+    def _safe_parse_json(self, text: str) -> Dict[str, Any]:
+        if not text:
+            return {}
+        raw = text.strip()
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not match:
+            return {}
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            return {}
+
+    def _extract_topic_signal(
+        self,
+        last_user_message: str,
+        recent_messages: list,
+        current_topic: Optional[str],
+    ) -> Dict[str, Any]:
+        transcript = ""
+        for message in recent_messages[-5:]:
+            transcript += f"{message.role.upper()}: {message.content}\n"
+
+        prompt = f"""
+Você extrai o tópico principal de conversa em português brasileiro.
+Retorne SOMENTE JSON válido, sem comentários, sem markdown:
+{{
+  "topic": "string curta ou null",
+  "confidence": 0.0,
+  "keep_current": true
+}}
+
+Regras:
+- "topic" deve ser um assunto principal concreto (ex.: drogas, álcool, culpa, ansiedade, família, trabalho, recaída).
+- Se não houver evidência suficiente, use topic=null e keep_current=true.
+- confidence entre 0 e 1.
+- Não inventar.
+
+Tópico atual salvo: {current_topic or "null"}
+Última mensagem do usuário: {last_user_message}
+Histórico recente:
+{transcript if transcript else "sem histórico"}
+"""
+        raw = self.basic_call(
+            url_type="generate",
+            prompt=prompt,
+            model="llama3:8b",
+            temperature=0.2,
+            max_tokens=120,
+        )
+        parsed = self._safe_parse_json(raw)
+        topic = parsed.get("topic")
+        confidence = parsed.get("confidence", 0)
+        keep_current = bool(parsed.get("keep_current", False))
+
+        try:
+            confidence = float(confidence)
+        except (TypeError, ValueError):
+            confidence = 0.0
+        confidence = max(0.0, min(1.0, confidence))
+
+        if isinstance(topic, str):
+            topic = topic.strip().lower()
+            if not topic:
+                topic = None
+        else:
+            topic = None
+
+        return {
+            "topic": topic,
+            "confidence": confidence,
+            "keep_current": keep_current,
+        }
+
+    def _active_topic_for_profile(self, profile: Profile) -> Optional[str]:
+        if not profile.current_topic or not profile.topic_last_updated:
+            return None
+        expires_at = profile.topic_last_updated + timedelta(
+            days=TOPIC_MEMORY_WINDOW_DAYS
+        )
+        if timezone.now() > expires_at:
+            return None
+        return profile.current_topic
+
+    def _merge_topic_memory(
+        self, profile: Profile, topic_signal: Dict[str, Any]
+    ) -> Optional[str]:
+        active_topic = self._active_topic_for_profile(profile)
+        topic = topic_signal.get("topic")
+        confidence = topic_signal.get("confidence", 0.0)
+        keep_current = bool(topic_signal.get("keep_current", False))
+
+        if not topic or confidence < TOPIC_MIN_CONFIDENCE:
+            return active_topic
+
+        now = timezone.now()
+        topic_key = topic.lower()
+        topics = (
+            profile.primary_topics if isinstance(profile.primary_topics, list) else []
+        )
+        normalized_topics = []
+        for item in topics:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("topic", "")).strip().lower()
+            if not name:
+                continue
+            try:
+                score = float(item.get("score", 0))
+            except (TypeError, ValueError):
+                score = 0.0
+            normalized_topics.append(
+                {
+                    "topic": name,
+                    "score": max(0.0, min(1.0, score * 0.97)),
+                    "last_seen": item.get("last_seen"),
+                }
+            )
+
+        found = False
+        for item in normalized_topics:
+            if item["topic"] == topic_key:
+                item["score"] = min(1.0, item["score"] + (0.25 + (confidence * 0.35)))
+                item["last_seen"] = now.isoformat()
+                found = True
+                break
+        if not found:
+            normalized_topics.append(
+                {
+                    "topic": topic_key,
+                    "score": min(1.0, 0.3 + (confidence * 0.5)),
+                    "last_seen": now.isoformat(),
+                }
+            )
+
+        normalized_topics = sorted(
+            normalized_topics, key=lambda x: x.get("score", 0), reverse=True
+        )[:TOPIC_MEMORY_MAX_ITEMS]
+
+        profile.primary_topics = normalized_topics
+        if (
+            confidence >= TOPIC_PROMOTE_CONFIDENCE
+            or not active_topic
+            or not keep_current
+        ):
+            profile.current_topic = topic_key
+            profile.topic_last_updated = now
+            return topic_key
+        return active_topic
+
+    def _is_substance_context(
+        self, user_message: str, active_topic: Optional[str]
+    ) -> bool:
+        user_norm = (user_message or "").lower()
+        if any(
+            term in user_norm
+            for term in ["beb", "alcool", "álcool", "droga", "recaída", "recaida"]
+        ):
+            return True
+        if active_topic and active_topic.lower() in SUBSTANCE_TOPICS:
+            return True
+        return False
+
+    def _build_guided_fallback_response(
+        self,
+        *,
+        user_message: str,
+        recent_assistant_messages: list,
+        direct_guidance_request: bool,
+        requires_real_help: bool,
+        allow_spiritual_context: bool,
+    ) -> str:
+        if direct_guidance_request:
+            candidate = (
+                "Vamos começar por um passo simples hoje: retire a bebida de perto e avise uma pessoa de confiança que você precisa de apoio agora. "
+                "Depois disso, me diga qual horário você vai fazer esse passo."
+            )
+        elif requires_real_help:
+            candidate = (
+                "O que você está vivendo é sério, e pedir apoio agora é um passo de coragem. "
+                "Hoje, procure uma pessoa de confiança ou um grupo como AA/CAPS AD e compartilhe exatamente o que você me disse."
+            )
+        else:
+            candidate = (
+                "Obrigado por abrir isso com sinceridade. "
+                "Diante do que você trouxe, qual pequeno passo concreto você consegue dar ainda hoje para se proteger desse ciclo? "
+                "Se quiser, eu te ajudo a escolher esse passo agora."
+            )
+
+        if (
+            recent_assistant_messages
+            and semantic_similarity(recent_assistant_messages[-1], candidate) > 0.85
+        ):
+            candidate = (
+                "Vamos tornar isso prático agora: escolha uma ação de proteção para as próximas 2 horas e me diga qual será. "
+                "Se puder, peça apoio de alguém de confiança hoje mesmo."
+            )
+        if allow_spiritual_context:
+            candidate += " Se você quiser, podemos incluir oração nisso."
+        return enforce_hard_limits(candidate)
+
     def generate_response_message(self, profile: Profile, channel: str) -> Message:
 
         if not profile.welcome_message_sent:
@@ -140,6 +364,16 @@ class OllamaService:
             .order_by("created_at")
             .values_list("content", flat=True)
         )[-3:]
+        recent_context_messages = list(queryset.order_by("-created_at")[:5])
+
+        topic_signal = self._extract_topic_signal(
+            last_user_message=last_person_message.content,
+            recent_messages=list(reversed(recent_context_messages)),
+            current_topic=profile.current_topic,
+        )
+        active_topic = self._merge_topic_memory(
+            profile=profile, topic_signal=topic_signal
+        )
 
         previous_mode = LEGACY_MODE_MAP.get(
             profile.conversation_mode, profile.conversation_mode
@@ -154,6 +388,9 @@ class OllamaService:
         ambivalence_or_repeated = detect_ambivalence(
             last_person_message.content
         ) or has_repeated_user_pattern(recent_user_messages)
+        is_defensive = detect_defensiveness(last_person_message.content)
+        has_guilt = detect_guilt(last_person_message.content)
+        allow_spiritual_context = has_spiritual_context(last_person_message.content)
         new_information = has_new_information(recent_user_messages)
         loop_detected = ambivalence_or_repeated
         if len(recent_assistant_messages) >= 2:
@@ -174,6 +411,10 @@ class OllamaService:
             conversation_mode = MODE_ACOLHIMENTO
         elif ambivalence_or_repeated:
             conversation_mode = MODE_AMBIVALENCIA
+        elif is_defensive:
+            conversation_mode = MODE_DEFENSIVO
+        elif has_guilt:
+            conversation_mode = MODE_CULPA
         elif loop_detected:
             conversation_mode = MODE_ORIENTACAO
         elif new_information:
@@ -212,15 +453,30 @@ class OllamaService:
             MODE_AMBIVALENCIA: """
             - reconhecer conflito explícito (sem moralizar)
             - separar sentimento de comportamento
-            - perguntar um próximo critério de decisão
+            - fazer 1 pergunta investigativa clara
+            """,
+            MODE_DEFENSIVO: """
+            - reduzir confronto e evitar julgamento
+            - validar um fato específico e pedir clarificação objetiva
+            - não usar frases conclusivas sobre a pessoa
+            """,
+            MODE_CULPA: """
+            - diferenciar comportamento de identidade
+            - evitar rótulos absolutos
+            - perguntar um próximo passo de reparo concreto
             """,
             MODE_ORIENTACAO: """
             - responder com 1 ação prática simples e imediata
+            - oferecer 1 ajuda real de apoio humano (ex.: pessoa de confiança, pastor, grupo, CAPS AD/AA)
             - sem espiritualização automática
             - sem reflexão emocional profunda
             - não fazer mais de 1 pergunta
             """,
         }
+        substance_context = self._is_substance_context(
+            user_message=last_person_message.content, active_topic=active_topic
+        )
+        requires_real_help = direct_guidance_request or substance_context
 
         prompt_aux = f"""
             MODO CONVERSACIONAL ATUAL: {conversation_mode}
@@ -233,17 +489,33 @@ class OllamaService:
             - Não repetir saudação, primeira frase ou estrutura do último turno
             - Não usar frases genéricas repetidas
             - Não inferir sentimentos não explicitados pelo usuário
-            - Não espiritualizar automaticamente sem contexto do usuário
-            - Manter linguagem espiritual cristã com respeito e sem pregação
+            - Só mencionar espiritualidade se o usuário trouxer contexto espiritual explícito
+            - Se mencionar espiritualidade, manter tom cristão respeitoso e não impositivo
             - Empatia deve citar algo específico que o usuário disse
+            - Nunca iniciar repetindo/parafraseando a primeira frase do usuário
 
             REGRAS ESPECÍFICAS DO ESTADO:
             {state_runtime_rules.get(conversation_mode, state_runtime_rules[MODE_EXPLORACAO])}
 
             Se houver estagnação, faça pergunta destravadora concreta.
             Se o usuário pediu orientação prática, dê 1 passo acionável agora.
+            Se houver tema de álcool/drogas ou pedido de ajuda, ofereça também 1 apoio humano concreto.
             Foque na última mensagem do usuário e avance o tema.
         """
+        if force_progress_fallback:
+            prompt_aux += "\nALERTA DE ESTAGNAÇÃO: NÃO repetir pergunta padrão; destravar com ação concreta.\n"
+        if active_topic:
+            prompt_aux += f"\nTÓPICO ATIVO DE MEMÓRIA (manter continuidade se fizer sentido): {active_topic}\n"
+        if isinstance(profile.primary_topics, list) and profile.primary_topics:
+            top_topics = ", ".join(
+                [
+                    item.get("topic", "")
+                    for item in profile.primary_topics[:3]
+                    if item.get("topic")
+                ]
+            )
+            if top_topics:
+                prompt_aux += f"TÓPICOS PRINCIPAIS RECENTES: {top_topics}\n"
 
         prompt_aux += (
             f"\n\nÚLTIMA MENSAGEM DO USUÁRIO:\n{last_person_message.content}\n"
@@ -270,10 +542,6 @@ class OllamaService:
             base_temperature = 0.45
         selected_temperature = base_temperature
         approved_content = ""
-
-        if force_progress_fallback:
-            approved_content = make_progress_fallback_question()
-            loop_counter += 1
 
         for attempt in range(max_regenerations):
             if approved_content:
@@ -306,6 +574,7 @@ class OllamaService:
             has_unverified_inference = contains_unverified_inference(
                 last_person_message.content, candidate
             )
+            spiritual_imposition = contains_spiritual_imposition(candidate)
             unsolicited_spiritualization = contains_unsolicited_spiritualization(
                 last_person_message.content, candidate
             )
@@ -315,14 +584,23 @@ class OllamaService:
             missing_practical_step = (
                 direct_guidance_request and not has_practical_action_step(candidate)
             )
+            missing_real_support = (
+                requires_real_help and not has_human_support_suggestion(candidate)
+            )
+            leading_echo = starts_with_user_echo(
+                user_message=last_person_message.content, assistant_message=candidate
+            )
 
             if (
                 semantic_loop
                 or blocked_template
                 or has_unverified_inference
+                or spiritual_imposition
                 or unsolicited_spiritualization
                 or generic_empathy
                 or missing_practical_step
+                or missing_real_support
+                or leading_echo
             ):
                 regeneration_counter += 1
                 if semantic_loop:
@@ -332,7 +610,14 @@ class OllamaService:
             approved_content = candidate
 
         if not approved_content:
-            approved_content = enforce_hard_limits(make_progress_fallback_question())
+            loop_counter += 1
+            approved_content = self._build_guided_fallback_response(
+                user_message=last_person_message.content,
+                recent_assistant_messages=recent_assistant_messages,
+                direct_guidance_request=direct_guidance_request,
+                requires_real_help=requires_real_help,
+                allow_spiritual_context=allow_spiritual_context,
+            )
 
         profile.conversation_mode = conversation_mode
         profile.loop_detected_count = (profile.loop_detected_count or 0) + loop_counter
@@ -344,6 +629,9 @@ class OllamaService:
                 "conversation_mode",
                 "loop_detected_count",
                 "regeneration_count",
+                "current_topic",
+                "primary_topics",
+                "topic_last_updated",
                 "updated_at",
             ]
         )

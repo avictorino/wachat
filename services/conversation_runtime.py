@@ -20,6 +20,8 @@ MODE_WELCOME = "WELCOME"
 MODE_ACOLHIMENTO = "ACOLHIMENTO"
 MODE_EXPLORACAO = "EXPLORACAO"
 MODE_AMBIVALENCIA = "AMBIVALENCIA"
+MODE_DEFENSIVO = "DEFENSIVO"
+MODE_CULPA = "CULPA"
 MODE_ORIENTACAO = "ORIENTACAO"
 
 MAX_SENTENCES = 3
@@ -105,6 +107,51 @@ _SPIRITUAL_TERMS = [
     "fé",
     "espiritual",
     "jesus",
+]
+
+_DEFENSIVE_MARKERS = [
+    "não é bem assim",
+    "você não entende",
+    "vocês não entendem",
+    "não tenho problema",
+    "não é minha culpa",
+    "todo mundo faz",
+    "não exagera",
+]
+
+_GUILT_MARKERS = [
+    "culpa",
+    "culpado",
+    "culpada",
+    "erro",
+    "vergonha",
+    "me odeio",
+    "sou um fracasso",
+    "não presto",
+]
+
+_SPIRITUAL_IMPOSITION_PATTERNS = [
+    "deus quer que",
+    "deus exige",
+    "deus manda",
+    "se você tiver fé tudo",
+]
+
+_SUPPORT_REFERRAL_MARKERS = [
+    "caps",
+    "caps ad",
+    "aa",
+    "alcoólicos anônimos",
+    "grupo",
+    "pastor",
+    "igreja",
+    "pessoa de confiança",
+    "familiar",
+    "amigo",
+    "profissional",
+    "médico",
+    "terapeuta",
+    "psicólogo",
 ]
 
 _FALLBACK_QUESTIONS = [
@@ -219,6 +266,11 @@ def detect_direct_guidance_request(user_message: str) -> bool:
     return any(marker in msg for marker in _DIRECT_GUIDANCE_MARKERS)
 
 
+def has_spiritual_context(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(term in msg for term in _SPIRITUAL_TERMS)
+
+
 def contains_unsolicited_spiritualization(
     user_message: str, assistant_message: str
 ) -> bool:
@@ -229,6 +281,11 @@ def contains_unsolicited_spiritualization(
     assistant_has_spiritual = any(term in assistant_norm for term in _SPIRITUAL_TERMS)
     user_has_spiritual = any(term in user_norm for term in _SPIRITUAL_TERMS)
     return assistant_has_spiritual and not user_has_spiritual
+
+
+def contains_spiritual_imposition(assistant_message: str) -> bool:
+    assistant_norm = _normalize(assistant_message)
+    return any(pattern in assistant_norm for pattern in _SPIRITUAL_IMPOSITION_PATTERNS)
 
 
 def contains_generic_empathy_without_grounding(
@@ -315,6 +372,16 @@ def detect_ambivalence(user_message: str) -> bool:
     return any(marker in msg for marker in _AMBIVALENCE_MARKERS)
 
 
+def detect_defensiveness(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(marker in msg for marker in _DEFENSIVE_MARKERS)
+
+
+def detect_guilt(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(marker in msg for marker in _GUILT_MARKERS)
+
+
 def has_repeated_user_pattern(user_messages: Iterable[str]) -> bool:
     recent = [msg for msg in list(user_messages)[-2:] if msg]
     if len(recent) < 2:
@@ -348,3 +415,31 @@ def make_progress_fallback_question() -> str:
 def has_practical_action_step(assistant_message: str) -> bool:
     msg = _normalize(assistant_message)
     return any(marker in msg for marker in _PRACTICAL_ACTION_MARKERS)
+
+
+def has_human_support_suggestion(assistant_message: str) -> bool:
+    msg = _normalize(assistant_message)
+    return any(marker in msg for marker in _SUPPORT_REFERRAL_MARKERS)
+
+
+def starts_with_user_echo(user_message: str, assistant_message: str) -> bool:
+    user_first = _extract_first_sentence(user_message)
+    assistant_first = _extract_first_sentence(assistant_message)
+    if not user_first or not assistant_first:
+        return False
+
+    user_tokens = user_first.split()
+    assistant_tokens = assistant_first.split()
+    if len(user_tokens) < 4 or len(assistant_tokens) < 4:
+        return False
+
+    overlap = 0
+    for a, b in zip(user_tokens[:8], assistant_tokens[:8]):
+        if a == b:
+            overlap += 1
+        else:
+            break
+    if overlap >= 4:
+        return True
+
+    return semantic_similarity(user_first, assistant_first) > 0.9
