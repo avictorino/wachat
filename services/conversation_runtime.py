@@ -100,13 +100,42 @@ _GENERIC_EMPATHY_PATTERNS = [
     "eu entendo sua dor",
 ]
 
-_SPIRITUAL_TERMS = [
+_EXPLICIT_SPIRITUAL_TERMS = [
     "deus",
     "oração",
     "orar",
-    "fé",
-    "espiritual",
     "jesus",
+    "igreja",
+    "salmo",
+    "bíblia",
+    "biblia",
+]
+
+_SPIRITUAL_BASELINE_TERMS = [
+    "esperança",
+    "esperanca",
+    "graça",
+    "graca",
+    "paz",
+    "misericórdia",
+    "misericordia",
+    "propósito",
+    "proposito",
+    "fé",
+]
+
+_HIGH_SPIRITUAL_NEED_MARKERS = [
+    "culpa",
+    "culpado",
+    "culpada",
+    "não consigo me perdoar",
+    "sem saída",
+    "desesper",
+    "sozinho",
+    "sozinha",
+    "não tenho ninguém",
+    "não tenho ninguem",
+    "não tenho com quem contar",
 ]
 
 _DEFENSIVE_MARKERS = [
@@ -152,6 +181,18 @@ _SUPPORT_REFERRAL_MARKERS = [
     "médico",
     "terapeuta",
     "psicólogo",
+]
+
+_SELF_GUIDED_HELP_MARKERS = [
+    "oração curta",
+    "ore agora",
+    "oração agora",
+    "salmo",
+    "respire",
+    "escreva uma oração",
+    "entregue a deus",
+    "peça perdão a deus",
+    "graça",
 ]
 
 _FALLBACK_QUESTIONS = [
@@ -268,7 +309,12 @@ def detect_direct_guidance_request(user_message: str) -> bool:
 
 def has_spiritual_context(user_message: str) -> bool:
     msg = _normalize(user_message)
-    return any(term in msg for term in _SPIRITUAL_TERMS)
+    return any(term in msg for term in _EXPLICIT_SPIRITUAL_TERMS) or "fé" in msg
+
+
+def has_high_spiritual_need(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(marker in msg for marker in _HIGH_SPIRITUAL_NEED_MARKERS)
 
 
 def contains_unsolicited_spiritualization(
@@ -278,8 +324,10 @@ def contains_unsolicited_spiritualization(
     assistant_norm = _normalize(assistant_message)
     if not assistant_norm:
         return False
-    assistant_has_spiritual = any(term in assistant_norm for term in _SPIRITUAL_TERMS)
-    user_has_spiritual = any(term in user_norm for term in _SPIRITUAL_TERMS)
+    assistant_has_spiritual = any(
+        term in assistant_norm for term in _EXPLICIT_SPIRITUAL_TERMS
+    )
+    user_has_spiritual = any(term in user_norm for term in _EXPLICIT_SPIRITUAL_TERMS)
     return assistant_has_spiritual and not user_has_spiritual
 
 
@@ -382,6 +430,60 @@ def detect_guilt(user_message: str) -> bool:
     return any(marker in msg for marker in _GUILT_MARKERS)
 
 
+def detect_user_signals(user_message: str) -> dict:
+    return {
+        "guidance_request": detect_direct_guidance_request(user_message),
+        "ambivalence": detect_ambivalence(user_message),
+        "defensive": detect_defensiveness(user_message),
+        "guilt": detect_guilt(user_message),
+        "spiritual_context": has_spiritual_context(user_message),
+        "high_spiritual_need": has_high_spiritual_need(user_message),
+    }
+
+
+def choose_conversation_mode(
+    *,
+    previous_mode: str,
+    is_first_message: bool,
+    loop_detected: bool,
+    has_new_info: bool,
+    repeated_user_pattern: bool,
+    signals: dict,
+) -> str:
+    if signals.get("guidance_request"):
+        return MODE_ORIENTACAO
+    if is_first_message or previous_mode == MODE_WELCOME:
+        return MODE_ACOLHIMENTO
+    if signals.get("ambivalence"):
+        return MODE_AMBIVALENCIA
+    if signals.get("defensive"):
+        return MODE_DEFENSIVO
+    if signals.get("guilt"):
+        return MODE_CULPA
+    if loop_detected:
+        return MODE_ORIENTACAO
+    if has_new_info:
+        return MODE_EXPLORACAO
+    if repeated_user_pattern and previous_mode == MODE_AMBIVALENCIA:
+        return MODE_ORIENTACAO
+    return previous_mode
+
+
+def choose_spiritual_intensity(
+    *,
+    mode: str,
+    spiritual_context: bool,
+    high_spiritual_need: bool,
+) -> str:
+    if spiritual_context:
+        return "alta"
+    if mode in {MODE_CULPA, MODE_AMBIVALENCIA} or (
+        mode == MODE_ORIENTACAO and high_spiritual_need
+    ):
+        return "média"
+    return "leve"
+
+
 def has_repeated_user_pattern(user_messages: Iterable[str]) -> bool:
     recent = [msg for msg in list(user_messages)[-2:] if msg]
     if len(recent) < 2:
@@ -420,6 +522,29 @@ def has_practical_action_step(assistant_message: str) -> bool:
 def has_human_support_suggestion(assistant_message: str) -> bool:
     msg = _normalize(assistant_message)
     return any(marker in msg for marker in _SUPPORT_REFERRAL_MARKERS)
+
+
+def has_self_guided_help(assistant_message: str) -> bool:
+    msg = _normalize(assistant_message)
+    return any(marker in msg for marker in _SELF_GUIDED_HELP_MARKERS)
+
+
+def has_spiritual_baseline_signal(assistant_message: str) -> bool:
+    msg = _normalize(assistant_message)
+    return any(term in msg for term in _SPIRITUAL_BASELINE_TERMS)
+
+
+def contains_spiritual_template_repetition(
+    assistant_message: str, recent_assistant_messages: Iterable[str]
+) -> bool:
+    if not has_spiritual_baseline_signal(assistant_message):
+        return False
+    for old in list(recent_assistant_messages)[-5:]:
+        if not has_spiritual_baseline_signal(old):
+            continue
+        if semantic_similarity(old, assistant_message) > 0.87:
+            return True
+    return False
 
 
 def starts_with_user_echo(user_message: str, assistant_message: str) -> bool:

@@ -166,6 +166,10 @@ class ChatView(View):
             profile_id=profile.id,
             emotional_profile=emotional_profile,
         )
+        simulated_profile = Profile.objects.get(id=selected_profile_id)
+        OllamaService().generate_response_message(
+            profile=simulated_profile, channel="chat"
+        )
 
         # Redirect to chat with simulation profile selected
         return redirect(f"{reverse('chat')}?profile_id={selected_profile_id}")

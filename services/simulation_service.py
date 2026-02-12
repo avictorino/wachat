@@ -5,6 +5,7 @@ from enum import Enum
 from typing import Iterable, List, Union
 
 from core.models import Message, Profile
+from services.conversation_runtime import detect_user_signals
 from services.ollama_service import OllamaService
 
 OLLAMA_SIMULATION_MODEL = "llama3:8b"
@@ -86,6 +87,17 @@ class SimulationUseCase:
     ) -> dict:
         selected_profile = _parse_profile(profile)
         recent_history = _to_recent_history(conversation=conversation, limit=5)
+        last_user_message = next(
+            (
+                msg["content"]
+                for msg in reversed(recent_history)
+                if msg["role"] == "user"
+            ),
+            "",
+        )
+        detected_signals = (
+            detect_user_signals(last_user_message) if last_user_message else {}
+        )
 
         history_text = ""
         for message in recent_history:
@@ -110,6 +122,7 @@ Regras obrigatórias:
 - Não analise.
 - Não use listas ou rótulos.
 - Escreva apenas a próxima fala do usuário.
+- Considere os sinais detectados do contexto para manter coerência emocional: {detected_signals}.
 """
         temperature = 0.5
         result = self._ollama_service.basic_call(

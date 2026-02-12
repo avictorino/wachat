@@ -36,21 +36,22 @@ from services.conversation_runtime import (
     MODE_EXPLORACAO,
     MODE_ORIENTACAO,
     MODE_WELCOME,
+    choose_conversation_mode,
+    choose_spiritual_intensity,
     contains_generic_empathy_without_grounding,
     contains_repeated_blocked_pattern,
     contains_spiritual_imposition,
+    contains_spiritual_template_repetition,
     contains_unsolicited_spiritualization,
     contains_unverified_inference,
-    detect_ambivalence,
-    detect_defensiveness,
-    detect_direct_guidance_request,
-    detect_guilt,
+    detect_user_signals,
     enforce_hard_limits,
     has_human_support_suggestion,
     has_new_information,
     has_practical_action_step,
     has_repeated_user_pattern,
-    has_spiritual_context,
+    has_self_guided_help,
+    has_spiritual_baseline_signal,
     is_semantic_loop,
     semantic_similarity,
     should_force_progress_fallback,
@@ -341,8 +342,109 @@ Histórico recente:
                 "Se puder, peça apoio de alguém de confiança hoje mesmo."
             )
         if allow_spiritual_context:
-            candidate += " Se você quiser, podemos incluir oração nisso."
+            candidate += " Se você quiser, agora mesmo faça uma oração curta pedindo perdão, força e direção a Deus."
         return enforce_hard_limits(candidate)
+
+    def _build_dynamic_runtime_prompt(
+        self,
+        *,
+        conversation_mode: str,
+        previous_mode: str,
+        spiritual_intensity: str,
+        allow_spiritual_context: bool,
+        direct_guidance_request: bool,
+        force_progress_fallback: bool,
+        active_topic: Optional[str],
+        top_topics: str,
+        last_user_message: str,
+        theme_prompt: Optional[str],
+        context_messages: list,
+        rag_contexts: list,
+    ) -> str:
+        mode_objective = {
+            MODE_ACOLHIMENTO: "acolher com precisão e abrir espaço de continuidade",
+            MODE_EXPLORACAO: "aprofundar com investigação concreta",
+            MODE_AMBIVALENCIA: "investigar conflito interno sem concluir pelo usuário",
+            MODE_DEFENSIVO: "reduzir confronto e buscar clarificação objetiva",
+            MODE_CULPA: "separar identidade de comportamento e propor reparo possível",
+            MODE_ORIENTACAO: "entregar orientação prática breve e acionável",
+            MODE_WELCOME: "acolhimento inicial curto",
+        }.get(conversation_mode, "avançar a conversa com precisão")
+
+        mode_actions = {
+            MODE_ACOLHIMENTO: [
+                "Valide um elemento específico da fala atual.",
+                "Use no máximo 1 pergunta breve.",
+            ],
+            MODE_EXPLORACAO: [
+                "Faça uma pergunta aberta concreta ligada ao último turno.",
+                "Evite explicações longas.",
+            ],
+            MODE_AMBIVALENCIA: [
+                "Formule uma pergunta investigativa de decisão/critério.",
+                "Não moralize e não conclua intenção.",
+            ],
+            MODE_DEFENSIVO: [
+                "Reconheça o ponto sem confrontar.",
+                "Peça clarificação objetiva em 1 pergunta.",
+            ],
+            MODE_CULPA: [
+                "Diferencie erro de identidade pessoal.",
+                "Proponha próximo passo de reparo realista.",
+            ],
+            MODE_ORIENTACAO: [
+                "Ofereça 1 ação prática para hoje.",
+                "Ofereça apoio humano concreto ou ação individual imediata.",
+            ],
+            MODE_WELCOME: [
+                "Acolha com sobriedade e convide para continuidade.",
+            ],
+        }.get(conversation_mode, ["Avance um passo concreto."])
+
+        spiritual_policy = "Mantenha base espiritual leve (esperança/propósito) sem linguagem explícita."
+        if allow_spiritual_context:
+            spiritual_policy = "Pode usar linguagem cristã explícita curta e respeitosa, sem imposição."
+
+        prompt = f"""
+MODO ATUAL: {conversation_mode}
+MODO ANTERIOR: {previous_mode}
+OBJETIVO DO MODO: {mode_objective}
+INTENSIDADE ESPIRITUAL: {spiritual_intensity}
+
+REGRAS GERAIS:
+- Máximo 3 frases e 1 pergunta.
+- Validar algo específico que o usuário acabou de dizer.
+- Não repetir frases/estruturas dos últimos turnos.
+- Não iniciar ecoando a frase do usuário.
+- Não inferir sentimentos não declarados.
+- {spiritual_policy}
+- Estrutura: validação específica -> direção espiritual compatível -> próximo passo.
+"""
+        if direct_guidance_request:
+            prompt += "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: resposta deve conter orientação prática direta.\n"
+        if force_progress_fallback:
+            prompt += "\nESTAGNAÇÃO DETECTADA: evitar pergunta padrão repetida; destravar com ação concreta.\n"
+        if active_topic:
+            prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
+        if top_topics:
+            prompt += f"TÓPICOS RECENTES: {top_topics}\n"
+        if theme_prompt:
+            prompt += f"\nTEMA CONTEXTUAL:\n{theme_prompt}\n"
+
+        prompt += "\nAÇÕES OBRIGATÓRIAS DESTE TURNO:\n"
+        for action in mode_actions:
+            prompt += f"- {action}\n"
+
+        prompt += f"\nÚLTIMA MENSAGEM DO USUÁRIO:\n{last_user_message}\n"
+        prompt += "\nHISTÓRICO RECENTE:\n"
+        for msg in context_messages:
+            prompt += f"{msg.role.upper()}: {msg.content}\n"
+        if rag_contexts:
+            prompt += "\nRAG CONTEXT AUXILIAR:\n"
+            for rag in rag_contexts:
+                prompt += f"- {rag}\n"
+        prompt += "\nResponda somente com a próxima fala do assistente."
+        return prompt
 
     def generate_response_message(self, profile: Profile, channel: str) -> Message:
 
@@ -382,15 +484,15 @@ Histórico recente:
             previous_mode = MODE_WELCOME
 
         is_first_message = queryset.filter(role="assistant").count() == 0
-        direct_guidance_request = detect_direct_guidance_request(
-            last_person_message.content
+        signals = detect_user_signals(last_person_message.content)
+        direct_guidance_request = bool(signals.get("guidance_request"))
+        repeated_user_pattern = has_repeated_user_pattern(recent_user_messages)
+        ambivalence_or_repeated = (
+            bool(signals.get("ambivalence")) or repeated_user_pattern
         )
-        ambivalence_or_repeated = detect_ambivalence(
-            last_person_message.content
-        ) or has_repeated_user_pattern(recent_user_messages)
-        is_defensive = detect_defensiveness(last_person_message.content)
-        has_guilt = detect_guilt(last_person_message.content)
-        allow_spiritual_context = has_spiritual_context(last_person_message.content)
+        explicit_spiritual_context = bool(signals.get("spiritual_context"))
+        high_spiritual_need = bool(signals.get("high_spiritual_need"))
+        allow_spiritual_context = explicit_spiritual_context or high_spiritual_need
         new_information = has_new_information(recent_user_messages)
         loop_detected = ambivalence_or_repeated
         if len(recent_assistant_messages) >= 2:
@@ -401,31 +503,20 @@ Histórico recente:
                 > 0.85
             )
 
-        # Explicit state machine:
-        # WELCOME -> ACOLHIMENTO -> EXPLORACAO -> AMBIVALENCIA -> ORIENTACAO
-        if direct_guidance_request:
-            conversation_mode = MODE_ORIENTACAO
-        elif is_first_message:
-            conversation_mode = MODE_ACOLHIMENTO
-        elif previous_mode == MODE_WELCOME:
-            conversation_mode = MODE_ACOLHIMENTO
-        elif ambivalence_or_repeated:
-            conversation_mode = MODE_AMBIVALENCIA
-        elif is_defensive:
-            conversation_mode = MODE_DEFENSIVO
-        elif has_guilt:
-            conversation_mode = MODE_CULPA
-        elif loop_detected:
-            conversation_mode = MODE_ORIENTACAO
-        elif new_information:
-            conversation_mode = MODE_EXPLORACAO
-        else:
-            conversation_mode = previous_mode
+        conversation_mode = choose_conversation_mode(
+            previous_mode=previous_mode,
+            is_first_message=is_first_message,
+            loop_detected=loop_detected,
+            has_new_info=new_information,
+            repeated_user_pattern=repeated_user_pattern,
+            signals=signals,
+        )
 
-        if conversation_mode == MODE_AMBIVALENCIA and (
-            direct_guidance_request or has_repeated_user_pattern(recent_user_messages)
-        ):
-            conversation_mode = MODE_ORIENTACAO
+        spiritual_intensity = choose_spiritual_intensity(
+            mode=conversation_mode,
+            spiritual_context=explicit_spiritual_context,
+            high_spiritual_need=high_spiritual_need,
+        )
 
         force_progress_fallback = (
             should_force_progress_fallback(
@@ -434,78 +525,15 @@ Histórico recente:
             and not new_information
         )
 
-        state_runtime_rules = {
-            MODE_WELCOME: """
-            - objetivo: acolhimento inicial e abertura
-            - não aprofundar diagnóstico
-            - no máximo 1 pergunta breve
-            """,
-            MODE_ACOLHIMENTO: """
-            - validar ponto específico dito pelo usuário
-            - evitar reflexão longa
-            - preparar transição para exploração objetiva
-            """,
-            MODE_EXPLORACAO: """
-            - avançar a conversa com 1 pergunta concreta
-            - usar evidência textual da última fala
-            - não repetir moldes dos últimos turnos
-            """,
-            MODE_AMBIVALENCIA: """
-            - reconhecer conflito explícito (sem moralizar)
-            - separar sentimento de comportamento
-            - fazer 1 pergunta investigativa clara
-            """,
-            MODE_DEFENSIVO: """
-            - reduzir confronto e evitar julgamento
-            - validar um fato específico e pedir clarificação objetiva
-            - não usar frases conclusivas sobre a pessoa
-            """,
-            MODE_CULPA: """
-            - diferenciar comportamento de identidade
-            - evitar rótulos absolutos
-            - perguntar um próximo passo de reparo concreto
-            """,
-            MODE_ORIENTACAO: """
-            - responder com 1 ação prática simples e imediata
-            - oferecer 1 ajuda real de apoio humano (ex.: pessoa de confiança, pastor, grupo, CAPS AD/AA)
-            - sem espiritualização automática
-            - sem reflexão emocional profunda
-            - não fazer mais de 1 pergunta
-            """,
-        }
         substance_context = self._is_substance_context(
             user_message=last_person_message.content, active_topic=active_topic
         )
         requires_real_help = direct_guidance_request or substance_context
-
-        prompt_aux = f"""
-            MODO CONVERSACIONAL ATUAL: {conversation_mode}
-            MODO ANTERIOR: {previous_mode}
-
-            REGRAS DURAS:
-            - Máximo 3 frases
-            - Máximo 120 palavras
-            - Máximo 1 pergunta
-            - Não repetir saudação, primeira frase ou estrutura do último turno
-            - Não usar frases genéricas repetidas
-            - Não inferir sentimentos não explicitados pelo usuário
-            - Só mencionar espiritualidade se o usuário trouxer contexto espiritual explícito
-            - Se mencionar espiritualidade, manter tom cristão respeitoso e não impositivo
-            - Empatia deve citar algo específico que o usuário disse
-            - Nunca iniciar repetindo/parafraseando a primeira frase do usuário
-
-            REGRAS ESPECÍFICAS DO ESTADO:
-            {state_runtime_rules.get(conversation_mode, state_runtime_rules[MODE_EXPLORACAO])}
-
-            Se houver estagnação, faça pergunta destravadora concreta.
-            Se o usuário pediu orientação prática, dê 1 passo acionável agora.
-            Se houver tema de álcool/drogas ou pedido de ajuda, ofereça também 1 apoio humano concreto.
-            Foque na última mensagem do usuário e avance o tema.
-        """
-        if force_progress_fallback:
-            prompt_aux += "\nALERTA DE ESTAGNAÇÃO: NÃO repetir pergunta padrão; destravar com ação concreta.\n"
-        if active_topic:
-            prompt_aux += f"\nTÓPICO ATIVO DE MEMÓRIA (manter continuidade se fizer sentido): {active_topic}\n"
+        context_messages = queryset.exclude(id=last_person_message.id).order_by(
+            "-created_at"
+        )[:6]
+        context_messages = list(reversed(list(context_messages)))
+        top_topics = ""
         if isinstance(profile.primary_topics, list) and profile.primary_topics:
             top_topics = ", ".join(
                 [
@@ -514,24 +542,21 @@ Histórico recente:
                     if item.get("topic")
                 ]
             )
-            if top_topics:
-                prompt_aux += f"TÓPICOS PRINCIPAIS RECENTES: {top_topics}\n"
-
-        prompt_aux += (
-            f"\n\nÚLTIMA MENSAGEM DO USUÁRIO:\n{last_person_message.content}\n"
+        rag_contexts = get_rag_context(last_person_message.content, limit=3)
+        prompt_aux = self._build_dynamic_runtime_prompt(
+            conversation_mode=conversation_mode,
+            previous_mode=previous_mode,
+            spiritual_intensity=spiritual_intensity,
+            allow_spiritual_context=allow_spiritual_context,
+            direct_guidance_request=direct_guidance_request,
+            force_progress_fallback=force_progress_fallback,
+            active_topic=active_topic,
+            top_topics=top_topics,
+            last_user_message=last_person_message.content,
+            theme_prompt=profile.theme.prompt if profile.theme else None,
+            context_messages=context_messages,
+            rag_contexts=rag_contexts,
         )
-        if profile.theme:
-            prompt_aux += f"\nTEMA DA RESPOSTA:\n{profile.theme.prompt}\n"
-
-        prompt_aux += "\nULTIMAS CONVERSAS:\n"
-        context_messages = queryset.exclude(id=last_person_message.id).order_by(
-            "-created_at"
-        )[:6]
-        for message in reversed(list(context_messages)):
-            prompt_aux += f"{message.role.upper()}: {message.content}\n\n"
-
-        for rag_context in get_rag_context(last_person_message.content, limit=3):
-            prompt_aux += f"RAG CONTEXT AUXILIAR (BAIXA PRIORIDADE): {rag_context}\n"
 
         max_regenerations = 3
         regeneration_counter = 0
@@ -578,14 +603,20 @@ Histórico recente:
             unsolicited_spiritualization = contains_unsolicited_spiritualization(
                 last_person_message.content, candidate
             )
+            spiritual_template_repetition = contains_spiritual_template_repetition(
+                candidate, recent_assistant_messages
+            )
             generic_empathy = contains_generic_empathy_without_grounding(
                 last_person_message.content, candidate
             )
+            missing_spiritual_baseline = not has_spiritual_baseline_signal(candidate)
             missing_practical_step = (
                 direct_guidance_request and not has_practical_action_step(candidate)
             )
             missing_real_support = (
-                requires_real_help and not has_human_support_suggestion(candidate)
+                requires_real_help
+                and not has_human_support_suggestion(candidate)
+                and not has_self_guided_help(candidate)
             )
             leading_echo = starts_with_user_echo(
                 user_message=last_person_message.content, assistant_message=candidate
@@ -597,7 +628,9 @@ Histórico recente:
                 or has_unverified_inference
                 or spiritual_imposition
                 or unsolicited_spiritualization
+                or spiritual_template_repetition
                 or generic_empathy
+                or missing_spiritual_baseline
                 or missing_practical_step
                 or missing_real_support
                 or leading_echo
