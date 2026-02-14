@@ -1,8 +1,6 @@
 import math
 import os
-import random
 import re
-from difflib import SequenceMatcher
 from typing import Iterable, List
 
 import requests
@@ -274,12 +272,6 @@ _SELF_GUIDED_HELP_MARKERS = [
     "graça",
 ]
 
-_FALLBACK_QUESTIONS = [
-    "O que exatamente aconteceu ontem?",
-    "Qual foi a última decisão que você tomou sobre isso?",
-    "Qual foi o momento mais difícil nas últimas 24 horas?",
-]
-
 _PRACTICAL_ACTION_MARKERS = [
     "agora",
     "hoje",
@@ -341,17 +333,14 @@ def semantic_similarity(text_a: str, text_b: str) -> float:
         return 0.0
     if _normalize(text_a) == _normalize(text_b):
         return 1.0
-    try:
-        vec_a = _embedding_for_text(text_a)
-        vec_b = _embedding_for_text(text_b)
-        dot = sum(a * b for a, b in zip(vec_a, vec_b))
-        norm_a = math.sqrt(sum(a * a for a in vec_a))
-        norm_b = math.sqrt(sum(b * b for b in vec_b))
-        if not norm_a or not norm_b:
-            return 0.0
-        return dot / (norm_a * norm_b)
-    except Exception:
-        return SequenceMatcher(None, _normalize(text_a), _normalize(text_b)).ratio()
+    vec_a = _embedding_for_text(text_a)
+    vec_b = _embedding_for_text(text_b)
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if not norm_a or not norm_b:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def is_semantic_loop(last_message: str, new_message: str) -> bool:
@@ -658,22 +647,6 @@ def has_new_information(user_messages: Iterable[str]) -> bool:
     if len(recent) < 2:
         return True
     return semantic_similarity(recent[0], recent[1]) < 0.8
-
-
-def should_force_progress_fallback(
-    user_messages: Iterable[str], assistant_messages: Iterable[str]
-) -> bool:
-    recent_users = [msg for msg in list(user_messages)[-2:] if msg]
-    recent_assistant = [msg for msg in list(assistant_messages)[-2:] if msg]
-    if len(recent_users) < 2 or len(recent_assistant) < 2:
-        return False
-    user_similarity = semantic_similarity(recent_users[0], recent_users[1])
-    assistant_similarity = semantic_similarity(recent_assistant[0], recent_assistant[1])
-    return user_similarity > 0.85 and assistant_similarity > 0.85
-
-
-def make_progress_fallback_question() -> str:
-    return random.choice(_FALLBACK_QUESTIONS)
 
 
 def has_practical_action_step(assistant_message: str) -> bool:

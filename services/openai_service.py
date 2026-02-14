@@ -3,36 +3,34 @@ from typing import Any, Dict, Literal, Optional, Union
 
 from openai import OpenAI
 
+GPT5_MODEL = "gpt-5-mini"
+GPT5_TEMPERATURE = 1.0
+OPENAI_TIMEOUT_SECONDS = 60
+DEFAULT_MAX_COMPLETION_TOKENS = 900
+
 
 class OpenAIService:
-    """Provider implementation for OpenAI Chat Completions API."""
+    """OpenAI client wrapper fixed to GPT-5."""
 
     def __init__(self):
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
-            raise ValueError("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+            raise ValueError("OPENAI_API_KEY is required.")
 
         self.client = OpenAI(api_key=api_key)
-        self.default_model = os.environ.get("OPENAI_MODEL", "gpt-5-mini")
+        self.default_model = GPT5_MODEL
         self._last_prompt_payload: Optional[Dict[str, Any]] = None
 
     def basic_call(
         self,
         prompt: Union[str, list],
-        model: str,
-        temperature: float = 0.7,
         max_tokens: int = 100,
         url_type: str = Literal["chat", "generate"],
-        timeout: int = 60,
-        top_p: float = None,
-        repeat_penalty: float = None,
         num_ctx: int = None,
         system: Optional[str] = None,
     ) -> str:
-        selected_model = model or self.default_model
-        resolved_temperature = self._resolve_temperature(
-            model=selected_model, requested_temperature=temperature
-        )
+        selected_model = self.default_model
+        resolved_temperature = GPT5_TEMPERATURE
         messages = self._build_messages(prompt=prompt, system=system)
         resolved_max_tokens = self._resolve_max_completion_tokens(
             messages=messages,
@@ -43,9 +41,7 @@ class OpenAIService:
             messages=messages,
             temperature=resolved_temperature,
             max_completion_tokens=resolved_max_tokens,
-            timeout=timeout,
-            top_p=top_p,
-            repeat_penalty=repeat_penalty,
+            timeout=OPENAI_TIMEOUT_SECONDS,
         )
 
         self._last_prompt_payload = {
@@ -56,8 +52,6 @@ class OpenAIService:
                 "temperature": resolved_temperature,
                 "max_tokens": resolved_max_tokens,
                 "max_completion_tokens": resolved_max_tokens,
-                "top_p": top_p,
-                "repeat_penalty": repeat_penalty,
                 "num_ctx": num_ctx,
                 "system": system,
             },
@@ -88,22 +82,9 @@ class OpenAIService:
     def _resolve_max_completion_tokens(
         self, messages: list, requested_max_tokens: int
     ) -> int:
-        if requested_max_tokens and requested_max_tokens != 100:
+        if requested_max_tokens and requested_max_tokens > 0:
             return requested_max_tokens
-
-        default_max = int(os.environ.get("OPENAI_DEFAULT_MAX_COMPLETION_TOKENS", "320"))
-        prompt_chars = 0
-        for message in messages:
-            content = message.get("content", "") if isinstance(message, dict) else ""
-            if isinstance(content, str):
-                prompt_chars += len(content)
-        dynamic_max = max(default_max, 256 + (prompt_chars // 20))
-        return min(dynamic_max, 700)
-
-    def _resolve_temperature(self, model: str, requested_temperature: float) -> float:
-        if (model or "").startswith("gpt-5"):
-            return 1.0
-        return requested_temperature
+        return DEFAULT_MAX_COMPLETION_TOKENS
 
     def _build_request_payload(
         self,
@@ -112,8 +93,6 @@ class OpenAIService:
         temperature: float,
         max_completion_tokens: int,
         timeout: int,
-        top_p: Optional[float],
-        repeat_penalty: Optional[float],
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "model": model,
@@ -122,10 +101,6 @@ class OpenAIService:
             "max_completion_tokens": max_completion_tokens,
             "timeout": timeout,
         }
-        if top_p is not None:
-            payload["top_p"] = top_p
-        if repeat_penalty is not None:
-            payload["frequency_penalty"] = max(-2.0, min(2.0, repeat_penalty - 1))
         return payload
 
     def _log_request_debug(self, payload: Dict[str, Any], attempt_label: str) -> None:
@@ -136,7 +111,6 @@ class OpenAIService:
             "temperature": payload.get("temperature"),
             "max_completion_tokens": payload.get("max_completion_tokens"),
             "max_tokens": payload.get("max_tokens"),
-            "top_p": payload.get("top_p"),
             "timeout": payload.get("timeout"),
             "message_roles": [m.get("role") for m in payload.get("messages", [])],
         }

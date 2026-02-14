@@ -1,25 +1,6 @@
-"""
-TEMPERATURE        | COMPORTAMENTO
--------------------|---------------------------------------------
-0.0 – 0.2          | Quase determinístico, frio, repetitivo
-0.3 – 0.5          | Controlado, humano, consistente
-0.6 – 0.8          | Natural, mais espontâneo
-0.9 – 1.2          | Criativo, imprevisível
-> 1.2              | Caótico, quebra regras fácil
-
-NUM_PREDICT                      | RECOMENDADO              | OBSERVAÇÃO
----------------------------------|--------------------------|-------------------------------
-Resposta ultra curta (1 frase)   | 30                       | Muito rígido
-1–2 frases humanas               | 50–70                    | Ideal para simulação
-Até 3 frases (limite duro)       | 80–100                   | Mais seguro
-Resposta explicativa curta       | 150                      | Pode escapar
-Texto médio                      | 250–400                  | Já não é conversa
-Texto longo                      | 500+                     | Risco alto de quebrar regras
-"""
 import json
 import logging
 import os
-import random
 import re
 from copy import deepcopy
 from datetime import timedelta
@@ -56,11 +37,10 @@ from services.conversation_runtime import (
     has_spiritual_baseline_signal,
     is_semantic_loop,
     semantic_similarity,
-    should_force_progress_fallback,
     starts_with_user_echo,
     strip_opening_name_if_recently_used,
 )
-from services.llm_service import LLMService
+from services.openai_service import OpenAIService
 
 logger = logging.getLogger(__name__)
 
@@ -87,13 +67,14 @@ TOPIC_MIN_CONFIDENCE = 0.45
 TOPIC_PROMOTE_CONFIDENCE = 0.6
 SUBSTANCE_TOPICS = {"alcool", "álcool", "drogas", "dependencia", "dependência"}
 RELATIONAL_TOPICS = {"familia", "família", "conflito", "relacionamento"}
-WACHAT_RESPONSE_MODEL = (
-    os.environ.get("LLM_CHAT_MODEL")
-    or os.environ.get("OPENAI_MODEL")
-    or os.environ.get("OLLAMA_CHAT_MODEL", "llama3:8b")
-)
-WACHAT_WELCOME_MODEL = os.environ.get("OPENAI_WELCOME_MODEL", "gpt-4o-mini")
-WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com atuação de aconselhamento prático, emocional e espiritual, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
+WACHAT_RESPONSE_MODEL = "gpt-5-mini"
+FIXED_TEMPERATURE = 1.0
+FIXED_TIMEOUT_SECONDS = 60
+FIXED_RESPONSE_MAX_COMPLETION_TOKENS = 900
+FIXED_WELCOME_MAX_COMPLETION_TOKENS = 480
+
+WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com atuação de aconselhamento prático,
+emocional e espiritual, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
 
 PAPEL
 - Prioridade de atuação: pastor evangélico, depois psicólogo prático, conselheiro, coach e técnico de rotina.
@@ -156,9 +137,6 @@ PROIBIÇÕES
 
 FORMATO DE SAÍDA
 - Entregue apenas a próxima fala do assistente."""
-WACHAT_RESPONSE_TOP_P = 0.85
-WACHAT_RESPONSE_REPEAT_PENALTY = 1.25
-WACHAT_RESPONSE_NUM_CTX = 4096
 
 
 # Helper constant for gender context in Portuguese
@@ -167,10 +145,10 @@ WACHAT_RESPONSE_NUM_CTX = 4096
 
 
 class ChatService:
-    """Conversation orchestration service that is provider-agnostic."""
+    """Conversation orchestration service using OpenAI GPT-5."""
 
-    def __init__(self, llm_service: LLMService):
-        self._llm_service = llm_service
+    def __init__(self):
+        self._llm_service = OpenAIService()
 
     def basic_call(self, *args, **kwargs) -> str:
         return self._llm_service.basic_call(*args, **kwargs)
@@ -204,20 +182,17 @@ class ChatService:
 
     def _safe_parse_json(self, text: str) -> Dict[str, Any]:
         if not text:
-            return {}
+            raise ValueError("Expected JSON content, but received empty text.")
         raw = text.strip()
         try:
             return json.loads(raw)
-        except Exception:
-            pass
-
-        match = re.search(r"\{.*\}", raw, re.DOTALL)
-        if not match:
-            return {}
-        try:
+        except json.JSONDecodeError as exc:
+            match = re.search(r"\{.*\}", raw, re.DOTALL)
+            if not match:
+                raise ValueError(
+                    "LLM output did not contain a valid JSON object."
+                ) from exc
             return json.loads(match.group(0))
-        except Exception:
-            return {}
 
     def _extract_topic_signal(
         self,
@@ -252,8 +227,6 @@ class ChatService:
         raw = self.basic_call(
             url_type="generate",
             prompt=prompt,
-            model=WACHAT_WELCOME_MODEL,
-            temperature=0.2,
             max_tokens=120,
         )
         parsed = self._safe_parse_json(raw)
@@ -369,168 +342,11 @@ class ChatService:
             return True
         return False
 
-    def _build_guided_fallback_response(
-        self,
-        *,
-        user_message: str,
-        recent_assistant_messages: list,
-        direct_guidance_request: bool,
-        requires_real_help: bool,
-        allow_spiritual_context: bool,
-        force_no_question: bool = False,
-    ) -> str:
-        user_norm = (user_message or "").lower()
-        reflection_options = [
-            "Vamos trabalhar no que você trouxe agora, com objetividade e cuidado.",
-            "Seu último ponto traz um gatilho claro, e isso pode ser tratado com passos curtos.",
-            "O que você descreveu tem lógica emocional, e dá para organizar uma resposta prática.",
-        ]
-        if any(marker in user_norm for marker in ["acidente", "dirigir", "carro"]):
-            reflection_options = [
-                "Depois de um acidente, esse medo ao dirigir com a família é um alerta comum do corpo e da mente.",
-                "Esse gatilho no volante mostra que seu sistema de proteção ainda está em estado de ameaça.",
-                "Seu medo de dirigir de novo com a família faz sentido após o acidente e precisa de reconstrução gradual de segurança.",
-            ]
-        elif any(
-            marker in user_norm
-            for marker in ["culpa", "culpado", "culpada", "falta de ação", "erro"]
-        ):
-            reflection_options = [
-                "Essa culpa está tentando explicar o trauma como se tudo dependesse só de você.",
-                "Quando a mente cola no 'eu falhei', ela amplia o peso e bloqueia a recuperação.",
-                "Esse pensamento de responsabilidade total costuma aparecer forte depois de eventos traumáticos.",
-            ]
-        elif any(
-            marker in user_norm for marker in ["familia", "família", "filho", "filha"]
-        ):
-            reflection_options = [
-                "Quando a família entra no cenário, o medo sobe rápido porque você quer proteger quem ama.",
-                "Seu cuidado com a família aumenta a pressão interna, e isso intensifica a ansiedade.",
-                "Esse medo pela família mostra amor e responsabilidade, mas não precisa virar prisão.",
-            ]
-        question_options = [
-            "O que ficou mais sensível para você nisso hoje?",
-            "Qual momento da noite mais dispara essa ansiedade em você?",
-            "Quando esse medo começa, qual pensamento chega primeiro?",
-        ]
-        if any(
-            marker in user_norm
-            for marker in [
-                "família",
-                "familia",
-                "relacionamento",
-                "casamento",
-                "filho",
-                "filha",
-                "mãe",
-                "mae",
-                "pai",
-            ]
-        ):
-            question_options = [
-                "Quando isso toca sua família, o que mais pesa em você agora?",
-                "Em casa, qual situação tem te deixado mais no limite?",
-                "Qual conflito familiar mais tem consumido sua energia hoje?",
-            ]
-        elif any(
-            marker in user_norm
-            for marker in ["culpa", "culpado", "culpada", "vergonha", "erro"]
-        ):
-            question_options = [
-                "Onde a culpa ficou mais forte em você hoje?",
-                "Qual lembrança reacendeu essa culpa agora?",
-                "Em que momento do dia essa culpa mais te aperta?",
-            ]
-        elif any(
-            marker in user_norm
-            for marker in ["angústia", "angustia", "peito", "pesado", "desespero"]
-        ):
-            question_options = [
-                "O que está mais pesado no seu peito neste momento?",
-                "Qual pensamento está te esmagando mais agora?",
-                "Que parte dessa angústia está mais difícil de carregar hoje?",
-            ]
-
-        contextual_question = question_options[0]
-        recent_norm = [msg.lower() for msg in recent_assistant_messages[-3:]]
-        for option in question_options:
-            if all(option.lower() not in msg for msg in recent_norm):
-                contextual_question = option
-                break
-        contextual_reflection = reflection_options[0]
-        for option in reflection_options:
-            if all(option.lower() not in msg for msg in recent_norm):
-                contextual_reflection = option
-                break
-
-        if direct_guidance_request or force_no_question:
-            guidance_candidates = [
-                (
-                    f"{contextual_reflection} "
-                    "Agora, foca em duas coisas simples: respiração com expiração lenta por 2 minutos e uma frase escrita com o medo principal para colocar ordem no que está confuso. "
-                    "Depois, se fizer sentido, faça uma oração curta entregando esse peso a Deus."
-                ),
-                (
-                    f"{contextual_reflection} "
-                    "Para as próximas horas, reduz estímulo de tela e luz e prepara um fechamento simples para a noite. "
-                    "Se isso tocar seu coração, encerra com uma oração breve por paz e proteção."
-                ),
-            ]
-            candidate = random.choice(guidance_candidates)
-        elif requires_real_help:
-            candidate = (
-                f"{contextual_reflection} "
-                "Eu sigo com você nesse ponto sensível, sem te apertar com solução imediata. "
-                f"{contextual_question}"
-            )
-        else:
-            presence_candidates = [
-                (
-                    f"{contextual_reflection} "
-                    "Podemos olhar para isso com passos pequenos e reais. "
-                    f"{contextual_question}"
-                ),
-                (
-                    f"{contextual_reflection} "
-                    "Você não precisa atravessar esse momento totalmente sozinho. "
-                    f"{contextual_question}"
-                ),
-            ]
-            candidate = random.choice(presence_candidates)
-
-        if (
-            recent_assistant_messages
-            and semantic_similarity(recent_assistant_messages[-1], candidate) > 0.85
-        ):
-            candidate = (
-                "Vamos manter isso simples e verdadeiro, sem repetir fórmulas. "
-                f"{contextual_question}"
-            )
-        if allow_spiritual_context:
-            spiritual_candidates = [
-                "Se fizer sentido para você, Deus vê esse lugar delicado onde você está.",
-                "Se isso fizer sentido no seu coração, Deus permanece perto também nesse ponto.",
-                "Se você permitir essa linguagem, Deus acolhe esse lugar sensível sem te esmagar.",
-            ]
-            candidate += f" {random.choice(spiritual_candidates)}"
-        return enforce_hard_limits(candidate)
-
     def _is_relational_topic(self, active_topic: Optional[str]) -> bool:
         if not active_topic:
             return False
         normalized = active_topic.strip().lower()
         return any(topic in normalized for topic in RELATIONAL_TOPICS)
-
-    def _generation_policy_for_mode(self, conversation_mode: str) -> Dict[str, Any]:
-        policy = {
-            MODE_WELCOME: {"temperature": 0.6, "num_predict": 100},
-            MODE_ACOLHIMENTO: {"temperature": 0.62, "num_predict": 150},
-            MODE_PRESENCA_PROFUNDA: {"temperature": 0.68, "num_predict": 200},
-            MODE_ORIENTACAO: {"temperature": 0.48, "num_predict": 180},
-            MODE_AMBIVALENCIA: {"temperature": 0.5, "num_predict": 170},
-            MODE_EXPLORACAO: {"temperature": 0.54, "num_predict": 170},
-        }.get(conversation_mode, {"temperature": 0.58, "num_predict": 170})
-        return policy
 
     def _build_dynamic_runtime_prompt(
         self,
@@ -541,7 +357,6 @@ class ChatService:
         allow_spiritual_context: bool,
         direct_guidance_request: bool,
         repetition_complaint: bool,
-        force_progress_fallback: bool,
         active_topic: Optional[str],
         top_topics: str,
         last_user_message: str,
@@ -657,12 +472,6 @@ REGRAS GERAIS:
                 "\nUSUÁRIO SINALIZOU REPETIÇÃO: não repita pergunta; "
                 "entregue orientação prática nova e específica para este caso, sem pergunta ao final.\n"
             )
-        if (
-            force_progress_fallback
-            and conversation_mode != MODE_PRESENCA_PROFUNDA
-            and not (conversation_mode == MODE_ACOLHIMENTO and relational_topic)
-        ):
-            prompt += "\nESTAGNAÇÃO DETECTADA: evitar pergunta padrão repetida; destravar com ação concreta.\n"
         if active_topic:
             prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
         if conversation_mode == MODE_ACOLHIMENTO and relational_topic:
@@ -771,12 +580,6 @@ REGRAS GERAIS:
             spiritual_context=explicit_spiritual_context,
             high_spiritual_need=high_spiritual_need,
         )
-        force_progress_fallback = (
-            should_force_progress_fallback(
-                recent_user_messages, recent_assistant_messages
-            )
-            and not new_information
-        )
         return {
             "previous_mode": previous_mode,
             "conversation_mode": conversation_mode,
@@ -784,7 +587,6 @@ REGRAS GERAIS:
             "direct_guidance_request": direct_guidance_request,
             "repetition_complaint": repetition_complaint,
             "allow_spiritual_context": allow_spiritual_context,
-            "force_progress_fallback": force_progress_fallback,
             "loop_detected": loop_detected,
             "deep_presence_trigger": deep_presence_trigger,
         }
@@ -821,7 +623,6 @@ REGRAS GERAIS:
             allow_spiritual_context=generation_state["allow_spiritual_context"],
             direct_guidance_request=generation_state["direct_guidance_request"],
             repetition_complaint=generation_state["repetition_complaint"],
-            force_progress_fallback=generation_state["force_progress_fallback"],
             active_topic=active_topic,
             top_topics=top_topics,
             last_user_message=last_person_message.content,
@@ -902,92 +703,6 @@ REGRAS GERAIS:
         )
         return {"rejected": rejected, "semantic_loop": semantic_loop}
 
-    def _generate_candidate_response(
-        self,
-        *,
-        profile: Profile,
-        prompt_aux: str,
-        last_user_message: str,
-        recent_assistant_messages: list,
-        conversation_mode: str,
-        direct_guidance_request: bool,
-        requires_real_help: bool,
-        spiritual_intensity: str,
-    ) -> Dict[str, Any]:
-        max_regenerations = 3
-        regeneration_counter = 0
-        policy = self._generation_policy_for_mode(conversation_mode)
-        base_temperature = policy["temperature"]
-        max_tokens = policy["num_predict"]
-        question_first_modes = {
-            MODE_ACOLHIMENTO,
-            MODE_EXPLORACAO,
-            MODE_AMBIVALENCIA,
-            MODE_DEFENSIVO,
-        }
-        enforce_practical_step = (
-            direct_guidance_request
-            and conversation_mode != MODE_PRESENCA_PROFUNDA
-            and conversation_mode not in question_first_modes
-        )
-
-        selected_temperature = base_temperature
-        approved_content = ""
-        approved_payload = None
-        last_attempt_payload = None
-        semantic_loop_regenerations = 0
-        allow_unsolicited_spiritualization = spiritual_intensity in {"media", "alta"}
-
-        for attempt in range(max_regenerations):
-            selected_temperature = max(0.2, base_temperature - (attempt * 0.12))
-            candidate = self.basic_call(
-                url_type="generate",
-                model=WACHAT_RESPONSE_MODEL,
-                system=WACHAT_RESPONSE_SYSTEM_PROMPT,
-                prompt=prompt_aux,
-                temperature=selected_temperature,
-                max_tokens=max_tokens,
-                top_p=WACHAT_RESPONSE_TOP_P,
-                repeat_penalty=WACHAT_RESPONSE_REPEAT_PENALTY,
-                num_ctx=WACHAT_RESPONSE_NUM_CTX,
-            )
-            last_attempt_payload = self.get_last_prompt_payload()
-            candidate = strip_opening_name_if_recently_used(
-                message=candidate,
-                name=profile.name,
-                recent_assistant_messages=recent_assistant_messages,
-            )
-            candidate_max_sentences = 4
-            candidate = enforce_hard_limits(
-                candidate, max_sentences=candidate_max_sentences
-            )
-
-            validation = self._candidate_should_regenerate(
-                candidate=candidate,
-                last_user_message=last_user_message,
-                recent_assistant_messages=recent_assistant_messages,
-                enforce_practical_step=enforce_practical_step,
-                requires_real_help=requires_real_help,
-                allow_unsolicited_spiritualization=allow_unsolicited_spiritualization,
-            )
-            if validation["rejected"]:
-                regeneration_counter += 1
-                if validation["semantic_loop"]:
-                    semantic_loop_regenerations += 1
-                continue
-
-            approved_content = candidate
-            approved_payload = last_attempt_payload
-            break
-
-        return {
-            "approved_content": approved_content,
-            "approved_payload": approved_payload or last_attempt_payload,
-            "selected_temperature": selected_temperature,
-            "regeneration_counter": regeneration_counter,
-            "semantic_loop_regenerations": semantic_loop_regenerations,
-        }
-
     def _save_runtime_counters(
         self,
         *,
@@ -1062,26 +777,8 @@ REGRAS GERAIS:
             active_topic=active_topic,
         )
 
-        model_name = os.environ.get("OPENAI_MODEL_NAME", "gpt-5-mini")
-        base_output_budget = 300
-        reasoning_buffer = 300
-        min_completion_budget = base_output_budget + reasoning_buffer
-        configured_budget = int(
-            os.environ.get(
-                "OPENAI_MAX_COMPLETION_TOKENS",
-                str(min_completion_budget),
-            )
-        )
-        max_completion_tokens = max(min_completion_budget, configured_budget)
-
-        generation_policy = self._generation_policy_for_mode(
-            generation_state["conversation_mode"]
-        )
-        initial_temperature = generation_policy["temperature"]
-        retry_temperature = max(0.2, initial_temperature - 0.12)
-        retry_suffix = "Finalize your answer now in the required format."
-        supports_custom_temperature = not model_name.strip().lower().startswith("gpt-5")
-        max_attempts = 3
+        model_name = WACHAT_RESPONSE_MODEL
+        max_completion_tokens = FIXED_RESPONSE_MAX_COMPLETION_TOKENS
         question_first_modes = {
             MODE_ACOLHIMENTO,
             MODE_EXPLORACAO,
@@ -1178,147 +875,53 @@ REGRAS GERAIS:
                 f"accepted_prediction_tokens={metadata.get('accepted_prediction_tokens')}"
             )
 
-        transcript_lines = []
-        for msg in recent_context_messages[-6:]:
-            role = "USER" if msg.role == "user" else "ASSISTANT"
-            transcript_lines.append(f"{role}: {(msg.content or '').strip()[:300]}")
-        transcript = "\n".join(transcript_lines).strip()  # noqa
-
-        attempt_response = None  # noqa
-        attempt_metadata = {}
-        selected_temperature = initial_temperature
+        selected_temperature = FIXED_TEMPERATURE
         selected_max_completion_tokens = max_completion_tokens
-        attempts_made = 0
         regeneration_counter = 0
         semantic_loop_regenerations = 0
 
-        for attempt in range(max_attempts):
-            attempts_made = attempt + 1
-            selected_temperature = (
-                retry_temperature if attempt == 1 else initial_temperature
-            )
-            selected_max_completion_tokens = (
-                max_completion_tokens * 2 if attempt == 1 else max_completion_tokens
-            )
-            user_content = prompt_aux
-            if attempt >= 1:
-                user_content = (
-                    f"{user_content}\n\n{retry_suffix} "
-                    "Priorize presença emocional contextualizada e evite estrutura de lista."
-                )
+        request_messages = [
+            {"role": "system", "content": WACHAT_RESPONSE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt_aux},
+        ]
+        request_kwargs = {
+            "model": model_name,
+            "messages": request_messages,
+            "max_completion_tokens": selected_max_completion_tokens,
+            "timeout": FIXED_TIMEOUT_SECONDS,
+            "temperature": selected_temperature,
+        }
 
-            request_messages = [
-                {"role": "system", "content": WACHAT_RESPONSE_SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
-            ]
+        response = client.chat.completions.create(**request_kwargs)
+        response_metadata = _usage_metadata(response)
+        _dev_log(response_metadata)
 
-            request_kwargs = {
-                "model": model_name,
-                "messages": request_messages,
-                "max_completion_tokens": selected_max_completion_tokens,
-                "timeout": 60,
-            }
-            if supports_custom_temperature:
-                request_kwargs["temperature"] = selected_temperature
+        assistant_text = _extract_text_response(response).strip()
+        if not assistant_text:
+            raise RuntimeError("OpenAI returned empty assistant content.")
 
-            attempt_response = client.chat.completions.create(
-                **request_kwargs,
-            )
-            attempt_metadata = _usage_metadata(attempt_response)
-            _dev_log(attempt_metadata)
-
-            assistant_text = _extract_text_response(attempt_response).strip()
-            should_retry = (
-                not assistant_text or attempt_metadata.get("finish_reason") == "length"
-            )
-            if should_retry and attempt < (max_attempts - 1):
-                continue
-
-            if not assistant_text:
-                assistant_text = self._build_guided_fallback_response(
-                    user_message=last_person_message.content,
-                    recent_assistant_messages=recent_assistant_messages,
-                    direct_guidance_request=generation_state["direct_guidance_request"],
-                    requires_real_help=requires_real_help,
-                    allow_spiritual_context=generation_state["allow_spiritual_context"],
-                    force_no_question=enforce_practical_step,
-                )
-                selected_temperature = retry_temperature
-
-            assistant_text = strip_opening_name_if_recently_used(
-                message=assistant_text,
-                name=profile.name,
-                recent_assistant_messages=recent_assistant_messages,
-            )
-            assistant_text = enforce_hard_limits(assistant_text, max_sentences=4)
-
-            validation = self._candidate_should_regenerate(
-                candidate=assistant_text,
-                last_user_message=last_person_message.content,
-                recent_assistant_messages=recent_assistant_messages,
-                enforce_practical_step=enforce_practical_step,
-                requires_real_help=requires_real_help,
-                allow_unsolicited_spiritualization=allow_unsolicited_spiritualization,
-            )
-            if validation["rejected"] and attempt < (max_attempts - 1):
-                regeneration_counter += 1
-                if validation["semantic_loop"]:
-                    semantic_loop_regenerations += 1
-                continue
-
-            response_payload = {
-                "provider": "openai",
-                "request_params": {
-                    "model": model_name,
-                    "temperature": (
-                        selected_temperature if supports_custom_temperature else None
-                    ),
-                    "max_completion_tokens": selected_max_completion_tokens,
-                    "retry_attempt": attempt,
-                },
-                "metadata": {
-                    **attempt_metadata,
-                    "regeneration_counter": regeneration_counter,
-                    "semantic_loop_regenerations": semantic_loop_regenerations,
-                },
-            }
-
-            loop_counter = 1 if generation_state["loop_detected"] else 0
-            self._save_runtime_counters(
-                profile=profile,
-                conversation_mode=generation_state["conversation_mode"],
-                loop_counter=loop_counter,
-                regeneration_counter=regeneration_counter,
-            )
-
-            Message.objects.create(
-                profile=profile,
-                role="assistant",
-                content=assistant_text,
-                channel=channel,
-                ollama_prompt=response_payload,
-                ollama_prompt_temperature=(
-                    selected_temperature if supports_custom_temperature else None
-                ),
-            )
-            return assistant_text
-
-        final_fallback = self._build_guided_fallback_response(
-            user_message=last_person_message.content,
+        assistant_text = strip_opening_name_if_recently_used(
+            message=assistant_text,
+            name=profile.name,
             recent_assistant_messages=recent_assistant_messages,
-            direct_guidance_request=generation_state["direct_guidance_request"],
+        )
+        assistant_text = enforce_hard_limits(assistant_text, max_sentences=4)
+
+        validation = self._candidate_should_regenerate(
+            candidate=assistant_text,
+            last_user_message=last_person_message.content,
+            recent_assistant_messages=recent_assistant_messages,
+            enforce_practical_step=enforce_practical_step,
             requires_real_help=requires_real_help,
-            allow_spiritual_context=generation_state["allow_spiritual_context"],
-            force_no_question=enforce_practical_step,
+            allow_unsolicited_spiritualization=allow_unsolicited_spiritualization,
         )
-        final_fallback = enforce_hard_limits(
-            strip_opening_name_if_recently_used(
-                message=final_fallback,
-                name=profile.name,
-                recent_assistant_messages=recent_assistant_messages,
-            ),
-            max_sentences=4,
-        )
+        if validation["rejected"]:
+            if validation["semantic_loop"]:
+                semantic_loop_regenerations = 1
+            raise RuntimeError(
+                "Generated response failed runtime validation constraints."
+            )
+
         loop_counter = 1 if generation_state["loop_detected"] else 0
         self._save_runtime_counters(
             profile=profile,
@@ -1326,33 +929,28 @@ REGRAS GERAIS:
             loop_counter=loop_counter,
             regeneration_counter=regeneration_counter,
         )
+
+        response_payload = {
+            "provider": "openai",
+            "request_params": {
+                "model": model_name,
+                "temperature": selected_temperature,
+                "max_completion_tokens": selected_max_completion_tokens,
+            },
+            "metadata": {
+                **response_metadata,
+                "regeneration_counter": regeneration_counter,
+                "semantic_loop_regenerations": semantic_loop_regenerations,
+            },
+        }
         Message.objects.create(
             profile=profile,
             role="assistant",
-            content=final_fallback,
+            content=assistant_text,
             channel=channel,
-            ollama_prompt={
-                "provider": "openai",
-                "request_params": {
-                    "model": model_name,
-                    "temperature": (
-                        selected_temperature if supports_custom_temperature else None
-                    ),
-                    "max_completion_tokens": selected_max_completion_tokens,
-                    "retry_attempt": attempts_made,
-                },
-                "metadata": {
-                    **attempt_metadata,
-                    "regeneration_counter": regeneration_counter,
-                    "semantic_loop_regenerations": semantic_loop_regenerations,
-                    "used_final_fallback": True,
-                },
-            },
-            ollama_prompt_temperature=(
-                selected_temperature if supports_custom_temperature else None
-            ),
+            ollama_prompt=response_payload,
         )
-        return final_fallback
+        return assistant_text
 
     def infer_gender(self, name: str) -> str:
         """
@@ -1368,40 +966,29 @@ REGRAS GERAIS:
         Returns:
             One of: "male", "female", or "unknown"
         """
-        try:
-            SYSTEM_PROMPT = f"""Você é um assistente que analisa nomes brasileiros.
-                Sua tarefa é inferir o gênero mais provável baseado APENAS no nome fornecido.
-                Responda SOMENTE com uma das três palavras: male, female, ou unknown.
-                - Use 'male' para nomes tipicamente masculinos
-                - Use 'female' para nomes tipicamente femininos
-                - Use 'unknown' quando não há certeza ou o nome é neutro/ambíguo
+        SYSTEM_PROMPT = f"""Você é um assistente que analisa nomes brasileiros.
+            Sua tarefa é inferir o gênero mais provável baseado APENAS no nome fornecido.
+            Responda SOMENTE com uma das três palavras: male, female, ou unknown.
+            - Use 'male' para nomes tipicamente masculinos
+            - Use 'female' para nomes tipicamente femininos
+            - Use 'unknown' quando não há certeza ou o nome é neutro/ambíguo
 
-                Responda apenas com a palavra, sem explicações.
+            Responda apenas com a palavra, sem explicações.
 
-                Nome: {name}
-            """
+            Nome: {name}
+        """
 
-            response_text = self.basic_call(
-                url_type="generate",
-                prompt=SYSTEM_PROMPT,
-                model=WACHAT_RESPONSE_MODEL,
-                temperature=0.3,
-                max_tokens=10,
-            )
+        response_text = self.basic_call(
+            url_type="generate",
+            prompt=SYSTEM_PROMPT,
+            max_tokens=10,
+        )
+        inferred = response_text.lower().strip()
+        if inferred not in ["male", "female", "unknown"]:
+            raise RuntimeError(f"Unexpected gender inference result: {inferred}")
 
-            inferred = response_text.lower()
-
-            # Validate response
-            if inferred not in ["male", "female", "unknown"]:
-                logger.warning(f"Unexpected gender inference result: {inferred}")
-                return "unknown"
-
-            logger.info(f"Gender inferred for name '{name}': {inferred}")
-            return inferred
-
-        except Exception as e:
-            logger.error(f"Error inferring gender: {str(e)}", exc_info=True)
-            return "unknown"
+        logger.info(f"Gender inferred for name '{name}': {inferred}")
+        return inferred
 
     def generate_welcome_message(self, profile: Profile, channel: str) -> Message:
 
@@ -1432,23 +1019,10 @@ REGRAS GERAIS:
             last_context = last_user_message.content[:280]
             user_prompt += f"\n\nCONTEXTO RECENTE DO USUÁRIO:\n{last_context}\n"
 
-        welcome_model = WACHAT_WELCOME_MODEL or WACHAT_RESPONSE_MODEL
-        configured_welcome_temperature = float(
-            os.environ.get("WACHAT_WELCOME_TEMPERATURE", "0.7")
-        )
-        temperature = (
-            1.0
-            if (welcome_model or "").startswith("gpt-5")
-            else configured_welcome_temperature
-        )
         response = self.basic_call(
             url_type="generate",
             prompt=user_prompt,
-            model=welcome_model,
-            temperature=temperature,
-            max_tokens=int(
-                os.environ.get("WACHAT_WELCOME_MAX_COMPLETION_TOKENS", "480")
-            ),
+            max_tokens=FIXED_WELCOME_MAX_COMPLETION_TOKENS,
             system=system_prompt,
         )
         response = (response or "").strip()
@@ -1466,7 +1040,6 @@ REGRAS GERAIS:
             content=response,
             channel=channel,
             ollama_prompt=welcome_payload,
-            ollama_prompt_temperature=temperature,
         )
 
     def build_theme_prompt(self, theme_name: str) -> str:
@@ -1553,8 +1126,6 @@ REGRAS GERAIS:
         result = self.basic_call(
             url_type="generate",
             prompt=PROMPT,
-            model=WACHAT_RESPONSE_MODEL,
-            temperature=0.7,
             max_tokens=250,
         )
 
@@ -1754,7 +1325,7 @@ REGRAS GERAIS:
             - regra anti-template dominante
             - regra anti-imposição narrativa
             - mudança obrigatória de estratégia após ambivalência
-            - fallback após 2 turnos sem avanço
+            - ação obrigatória após 2 turnos sem avanço
             - limite duro de tamanho
             - resposta direta a pedidos explícitos
 
@@ -1781,8 +1352,6 @@ REGRAS GERAIS:
         response_text = self.basic_call(
             url_type="generate",
             prompt=SYSTEM_PROMPT,
-            model=WACHAT_RESPONSE_MODEL,
-            temperature=0.45,
             max_tokens=2000,
         )
 

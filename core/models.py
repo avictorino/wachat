@@ -191,11 +191,6 @@ class Message(models.Model):
         blank=True,
         help_text="Full Ollama prompt payload sent to LLM (for observability)",
     )
-    ollama_prompt_temperature = models.FloatField(
-        null=True,
-        blank=True,
-        help_text="Temperature setting used in Ollama prompt (for observability)",
-    )
     exclude_from_context = models.BooleanField(
         default=False,
         help_text="If True, exclude this message from RAG and memory context",

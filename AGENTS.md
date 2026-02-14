@@ -97,5 +97,8 @@ If any of the above were added, remove them.
 - Do not auto-correct missing data.
 - Do not coerce invalid inputs silently.
 - If input is invalid, raise an explicit exception.
+- Do not use chained env fallbacks for model selection (for example: `A or B or C`).
+- Model configuration must use only `DEFAULT_MODEL` from environment.
+- If `DEFAULT_MODEL` is missing, raise an explicit exception.
 
 End of AGENTS.md

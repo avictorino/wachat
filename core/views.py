@@ -9,7 +9,6 @@ from faker import Faker
 
 from core.models import Message, Profile
 from services.chat_service import ChatService
-from services.llm_service import get_llm_service
 from services.simulation_service import SimulatedUserProfile, SimulationUseCase
 
 logger = logging.getLogger(__name__)
@@ -106,13 +105,11 @@ class ChatView(View):
         elif action == "new_profile":
             return self._handle_new_profile(request)
         elif action == "simulate":
-            return self._handle_simulate(request, llm_service=get_llm_service())
+            return self._handle_simulate(request)
         elif action == "analyze":
-            return self._handle_analyze(request, llm_service=get_llm_service())
+            return self._handle_analyze(request)
         elif action == "delete_and_regenerate":
-            return self._handle_delete_and_regenerate(
-                request, llm_service=get_llm_service()
-            )
+            return self._handle_delete_and_regenerate(request)
 
         # Default: redirect to GET
         return redirect("chat")
@@ -158,9 +155,7 @@ class ChatView(View):
             ollama_prompt=user_prompt_payload,
         )
 
-        ChatService(llm_service=get_llm_service()).generate_response_message(
-            profile=profile, channel="chat"
-        )
+        ChatService().generate_response_message(profile=profile, channel="chat")
 
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
@@ -183,7 +178,7 @@ class ChatView(View):
         # Redirect to chat with new profile selected
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
-    def _handle_simulate(self, request, llm_service):
+    def _handle_simulate(self, request):
         profile_id = request.POST.get("profile_id")
         emotional_profile = request.POST.get(
             "emotional_profile", SimulatedUserProfile.AMBIVALENTE.value
@@ -199,7 +194,7 @@ class ChatView(View):
         except Profile.DoesNotExist:
             return redirect(reverse("chat"))
 
-        simulation_use_case = SimulationUseCase(llm_service=llm_service)
+        simulation_use_case = SimulationUseCase()
         conversation = (
             Message.objects.filter(profile=profile)
             .exclude(role="system")
@@ -216,7 +211,17 @@ class ChatView(View):
                     theme=simulation_theme,
                 )
             )
-        except ValueError as exc:
+        except (ValueError, RuntimeError) as exc:
+            logger.exception(
+                (
+                    "Simulation failed for profile_id=%s "
+                    "(emotional_profile=%s, predefined_scenario=%s, simulation_theme=%s)"
+                ),
+                profile.id,
+                emotional_profile,
+                predefined_scenario,
+                simulation_theme,
+            )
             request.session.pop(f"pending_simulation_payload_{profile.id}", None)
             request.session.pop(f"pending_simulation_preview_{profile.id}", None)
             error_query = urlencode(
@@ -246,7 +251,7 @@ class ChatView(View):
         )
         return redirect(f"{reverse('chat')}?{query}")
 
-    def _handle_analyze(self, request, llm_service):
+    def _handle_analyze(self, request):
         """Analyze conversation emotions for selected profile."""
         profile_id = request.POST.get("profile_id")
 
@@ -259,9 +264,7 @@ class ChatView(View):
             return redirect(reverse("chat"))
 
         # Generate analysis using configured LLM service
-        analysis = ChatService(llm_service=llm_service).analyze_conversation_emotions(
-            profile=profile
-        )
+        analysis = ChatService().analyze_conversation_emotions(profile=profile)
 
         logger.info("Generated critical analysis")
 
@@ -277,7 +280,7 @@ class ChatView(View):
         # Redirect back to chat with selected profile
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
-    def _handle_delete_and_regenerate(self, request, llm_service):
+    def _handle_delete_and_regenerate(self, request):
         """Delete selected assistant message and generate a new response."""
         profile_id = request.POST.get("profile_id")
         message_id = request.POST.get("message_id")
@@ -298,9 +301,7 @@ class ChatView(View):
             return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
         message.delete()
-        ChatService(llm_service=llm_service).generate_response_message(
-            profile=profile, channel="chat"
-        )
+        ChatService().generate_response_message(profile=profile, channel="chat")
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
     def _get_conversation_context(

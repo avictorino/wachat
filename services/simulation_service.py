@@ -1,22 +1,10 @@
 """Simulation service focused on generating only the next user turn."""
 
-import os
 from enum import Enum
 from typing import Iterable, List, Union
 
 from core.models import Message, Profile
-from services.llm_service import LLMService, get_llm_service
-
-_DEFAULT_SIMULATION_MODEL = (
-    "gpt-5-mini"
-    if os.environ.get("LLM_PROVIDER", "openai").lower() == "openai"
-    else os.environ.get("OLLAMA_CHAT_MODEL", "llama3:8b")
-)
-SIMULATION_MODEL = (
-    os.environ.get("LLM_SIMULATION_MODEL")
-    or os.environ.get("OPENAI_SIMULATION_MODEL")
-    or _DEFAULT_SIMULATION_MODEL
-)
+from services.openai_service import OpenAIService
 
 
 class SimulatedUserProfile(Enum):
@@ -135,7 +123,7 @@ def simulate_next_user_message(
     theme: str = "",
 ) -> str:
     """Generate only the next user message based on recent history and emotional profile."""
-    return SimulationUseCase(llm_service=get_llm_service()).simulate_next_user_message(
+    return SimulationUseCase().simulate_next_user_message(
         conversation=conversation,
         profile=profile,
         predefined_scenario=predefined_scenario,
@@ -144,8 +132,8 @@ def simulate_next_user_message(
 
 
 class SimulationUseCase:
-    def __init__(self, llm_service: LLMService):
-        self._llm_service = llm_service
+    def __init__(self):
+        self._llm_service = OpenAIService()
 
     def simulate_next_user_message(
         self,
@@ -192,14 +180,11 @@ class SimulationUseCase:
             problem_context=problem_label,
             history_text=history_text,
         )
-        temperature = 0.9
         content = (
             self._llm_service.basic_call(
                 url_type="generate",
                 prompt=prompt,
-                model=SIMULATION_MODEL,
-                temperature=temperature,
-                max_tokens=180,
+                max_tokens=480,
             )
             or ""
         ).strip()
@@ -212,7 +197,6 @@ class SimulationUseCase:
             "content": content,
             "prompt": prompt,
             "payload": payload,
-            "temperature": temperature,
         }
 
     def handle(
@@ -244,6 +228,5 @@ class SimulationUseCase:
             channel="simulation",
             generated_by_simulator=True,
             ollama_prompt=simulation.get("payload"),
-            ollama_prompt_temperature=simulation["temperature"],
         )
         return profile.id

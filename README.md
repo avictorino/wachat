@@ -300,8 +300,7 @@ O comando gera o número especificado de mensagens alternadas (6-10, padrão 8),
 | `LLM_PROVIDER` | Provedor de LLM (`openai` ou `ollama`) | `openai` | Não |
 | `OLLAMA_BASE_URL` | URL base do servidor Ollama local | `http://localhost:11434` | Não |
 | `OLLAMA_CHAT_MODEL` | Modelo Ollama a ser usado | `llama3.1` | Não |
-| `OPENAI_API_KEY` | Chave de API da OpenAI | - | Sim (`LLM_PROVIDER=openai`) |
-| `OPENAI_MODEL` | Modelo da OpenAI | `gpt-4o-mini` | Não |
+| `OPENAI_API_KEY` | Chave de API da OpenAI | - | Sim (`LLM_PROVIDER=openai`) ||
 
 ## 🤖 Configuração do Provedor de LLM
 
@@ -313,7 +312,7 @@ O WaChat suporta OpenAI e Ollama como provedores de LLM (Large Language Model).
    ```env
    LLM_PROVIDER=openai
    OPENAI_API_KEY=sua_chave
-   OPENAI_MODEL=gpt-4o-mini
+   DEFAULT_MODEL=gpt-4o-mini
    ```
 
 ### Ollama (Local)

@@ -34,25 +34,18 @@ def get_embedding(text: str) -> List[float]:
     ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
     embed_model = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
-    try:
-        resp = requests.post(
-            f"{ollama_url.rstrip('/')}/api/embeddings",
-            json={"model": embed_model, "prompt": text},
-            timeout=60,
-        )
-        resp.raise_for_status()
+    resp = requests.post(
+        f"{ollama_url.rstrip('/')}/api/embeddings",
+        json={"model": embed_model, "prompt": text},
+        timeout=60,
+    )
+    resp.raise_for_status()
 
-        data = resp.json()
-        embedding = data.get("embedding")
-
-        if not isinstance(embedding, list):
-            raise RuntimeError(f"Invalid embedding response: {data}")
-
-        return embedding
-
-    except Exception as e:
-        logger.error(f"Error generating embedding: {str(e)}", exc_info=True)
-        raise RuntimeError(f"Failed to generate embedding: {str(e)}")
+    data = resp.json()
+    embedding = data.get("embedding")
+    if not isinstance(embedding, list):
+        raise RuntimeError(f"Invalid embedding response: {data}")
+    return embedding
 
 
 def get_rag_context(user_input: str, limit: int = 3) -> List[str]:
@@ -60,36 +53,31 @@ def get_rag_context(user_input: str, limit: int = 3) -> List[str]:
     Retrieve relevant RAG context based on semantic similarity to user input.
     """
 
-    try:
-        query_embedding = get_embedding(user_input)
+    query_embedding = get_embedding(user_input)
 
-        # 🔑 CRITICAL: cast embedding properly
-        query_vector = Value(query_embedding, output_field=VectorField())
+    # 🔑 CRITICAL: cast embedding properly
+    query_vector = Value(query_embedding, output_field=VectorField())
 
-        CHUNK_FETCH_MULTIPLIER = 2
-        MAX_DISTANCE = 0.35  # optional but strongly recommended
+    CHUNK_FETCH_MULTIPLIER = 2
+    MAX_DISTANCE = 0.35  # optional but strongly recommended
 
-        chunks = list(
-            RagChunk.objects.filter(embedding__isnull=False)
-            .annotate(distance=CosineDistance("embedding", query_vector))
-            .filter(distance__lt=MAX_DISTANCE)
-            .order_by("distance")
-            .values("text")[: limit * CHUNK_FETCH_MULTIPLIER]
-        )
+    chunks = list(
+        RagChunk.objects.filter(embedding__isnull=False)
+        .annotate(distance=CosineDistance("embedding", query_vector))
+        .filter(distance__lt=MAX_DISTANCE)
+        .order_by("distance")
+        .values("text")[: limit * CHUNK_FETCH_MULTIPLIER]
+    )
 
-        if not chunks:
-            logger.warning("No RAG chunks found after similarity filtering")
-            return []
-
-        result = [c.get("text") for c in chunks]
-
-        # logger.info(
-        #     "RAG retrieved %s chunks (behavior=%s, content=%s)",
-        #     len(result)
-        # )
-
-        return result
-
-    except Exception as ex:
-        logger.exception(f"Failed to retrieve RAG context {ex}")
+    if not chunks:
+        logger.warning("No RAG chunks found after similarity filtering")
         return []
+
+    result = [c.get("text") for c in chunks]
+
+    # logger.info(
+    #     "RAG retrieved %s chunks (behavior=%s, content=%s)",
+    #     len(result)
+    # )
+
+    return result
