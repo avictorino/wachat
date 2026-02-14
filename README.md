@@ -297,13 +297,24 @@ O comando gera o número especificado de mensagens alternadas (6-10, padrão 8),
 | `DEBUG` | Modo de debug | `True` | Não |
 | `ALLOWED_HOSTS` | Hosts permitidos (separados por vírgula) | - | Sim (produção) |
 | `DATABASE_URL` | URL de conexão com o banco de dados | SQLite local | Não |
-| `LLM_PROVIDER` | Provedor de LLM (`ollama`) | `ollama` | Não |
+| `LLM_PROVIDER` | Provedor de LLM (`openai` ou `ollama`) | `openai` | Não |
 | `OLLAMA_BASE_URL` | URL base do servidor Ollama local | `http://localhost:11434` | Não |
-| `OLLAMA_MODEL` | Modelo Ollama a ser usado | `llama3.1` | Não |
+| `OLLAMA_CHAT_MODEL` | Modelo Ollama a ser usado | `llama3.1` | Não |
+| `OPENAI_API_KEY` | Chave de API da OpenAI | - | Sim (`LLM_PROVIDER=openai`) |
+| `OPENAI_MODEL` | Modelo da OpenAI | `gpt-4o-mini` | Não |
 
 ## 🤖 Configuração do Provedor de LLM
 
-O WaChat utiliza Ollama como provedor de LLM (Large Language Model).
+O WaChat suporta OpenAI e Ollama como provedores de LLM (Large Language Model).
+
+### OpenAI
+
+1. **Configure as variáveis de ambiente:**
+   ```env
+   LLM_PROVIDER=openai
+   OPENAI_API_KEY=sua_chave
+   OPENAI_MODEL=gpt-4o-mini
+   ```
 
 ### Ollama (Local)
 
@@ -315,7 +326,7 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
    ```bash
    # Linux/macOS
    curl -fsSL https://ollama.com/install.sh | sh
-   
+
    # Ou visite: https://ollama.com/download
    ```
 
@@ -323,7 +334,7 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
    ```bash
    # Recomendado: llama3.1 (modelo padrão)
    ollama pull llama3.1
-   
+
    # Ou outros modelos:
    # ollama pull llama3
    # ollama pull mistral
@@ -340,7 +351,7 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
    ```env
    LLM_PROVIDER=ollama
    OLLAMA_BASE_URL=http://localhost:11434  # Padrão, pode ser omitido
-   OLLAMA_MODEL=llama3.1                   # Padrão, pode ser omitido
+   OLLAMA_CHAT_MODEL=llama3.1              # Padrão, pode ser omitido
    ```
 
 5. **Inicie o WaChat:**
@@ -369,7 +380,7 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
 ```env
 LLM_PROVIDER=ollama
 OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=mistral  # Usando Mistral em vez do padrão
+OLLAMA_CHAT_MODEL=mistral  # Usando Mistral em vez do padrão
 ```
 
 ## 🔒 Segurança

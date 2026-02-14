@@ -1,3 +1,5 @@
+import json
+
 from django.db import models
 from pgvector.django import VectorField
 
@@ -208,6 +210,19 @@ class Message(models.Model):
 
     class Meta:
         ordering = ["created_at"]
+
+    @property
+    def ollama_prompt_pretty_json(self) -> str:
+        """
+        Return ollama_prompt as a human-readable JSON string for UI rendering.
+
+        Keeps backward compatibility if legacy rows still contain plain text.
+        """
+        if self.ollama_prompt is None:
+            return ""
+        if isinstance(self.ollama_prompt, (dict, list)):
+            return json.dumps(self.ollama_prompt, indent=2, ensure_ascii=False)
+        return str(self.ollama_prompt)
 
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."

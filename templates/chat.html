@@ -174,6 +174,115 @@
             text-align: right;
         }
 
+        .prompt-link {
+            margin-left: 8px;
+            font-size: 10px;
+            color: #667781;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .message-action-inline {
+            display: inline;
+        }
+
+        .message-delete-btn {
+            margin-left: 8px;
+            border: none;
+            background: transparent;
+            color: #b42318;
+            font-size: 10px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .message-delete-btn:hover {
+            text-decoration: underline;
+        }
+
+        .prompt-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            padding: 20px;
+        }
+
+        .prompt-modal.open {
+            display: flex;
+        }
+
+        .prompt-modal-content {
+            background: #ffffff;
+            width: min(980px, 100%);
+            max-height: 85vh;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .prompt-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #ececec;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .prompt-modal-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .prompt-modal-copy {
+            border: 1px solid #d1d5db;
+            background: #fff;
+            color: #1f2937;
+            font-size: 12px;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        .prompt-modal-copy:hover {
+            background: #f3f4f6;
+        }
+
+        .prompt-modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #4b5563;
+        }
+
+        .prompt-modal-body {
+            padding: 14px 16px;
+            overflow: auto;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #0f172a;
+            background: #f8fafc;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .prompt-modal-body pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         /* Input area */
         .input-area {
             background-color: #f0f0f0;
@@ -182,6 +291,17 @@
             flex-direction: column;
             gap: 10px;
             align-items: stretch;
+        }
+
+        .simulate-error {
+            background: #fff1f2;
+            border: 1px solid #fecdd3;
+            color: #9f1239;
+            border-radius: 8px;
+            padding: 10px 12px;
+            font-size: 13px;
+            line-height: 1.4;
+            white-space: pre-wrap;
         }
 
         .input-area form {
@@ -409,7 +529,24 @@
                             <div class="message-time">
                                 {{ message.created_at|date:"H:i" }}
                                 {% if message.ollama_prompt %}
-                                    <a href="/admin/core/message/{{ message.id }}/change/" target="_blank" style="margin-left: 8px; font-size: 10px; color: #667781; text-decoration: none;">🔍 ver prompt</a>
+                                    <a
+                                        href="#"
+                                        class="prompt-link"
+                                        data-prompt="{{ message.ollama_prompt_pretty_json|escapejs }}"
+                                    >🔍 ver prompt</a>
+                                {% endif %}
+                                {% if message.role == "assistant" and selected_profile and message.id == last_assistant_message_id %}
+                                    <form method="post" action="/chat/" class="message-action-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="action" value="delete_and_regenerate">
+                                        <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+                                        <input type="hidden" name="message_id" value="{{ message.id }}">
+                                        <button
+                                            type="submit"
+                                            class="message-delete-btn"
+                                            title="Deletar resposta e gerar novamente"
+                                        >🗑️ refazer</button>
+                                    </form>
                                 {% endif %}
                             </div>
                         </div>
@@ -422,53 +559,80 @@
     <!-- Input area -->
     {% if selected_profile %}
     <div class="input-area">
-        <form method="post" action="/chat/" id="chatForm">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="send_message">
-            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
-            <select id="predefinedMessageSelect" style="min-width: 230px;">
-                <option value="">Mensagem pré-definida...</option>
-                <option value="Eu estou com uma angústia no peito e não consigo me acalmar, parece que tudo está pesado demais.">Angústia emocional</option>
-                <option value="Minha família está em conflito e eu me sinto no meio de tudo, sem saber como agir.">Problemas familiares</option>
-                <option value="Sinto muita culpa pelo que fiz e não consigo me perdoar, isso me prende todos os dias.">Culpa e arrependimento</option>
-                <option value="Eu caio no mesmo comportamento de novo e de novo, prometo parar e acabo repetindo.">Vício ou comportamento repetitivo</option>
-                <option value="Estou sem esperança de que as coisas mudem, parece que nada vai melhorar.">Desesperança</option>
-                <option value="Eu preciso de orientação prática agora, me diga por onde começo de forma simples.">Pedido direto de orientação</option>
-                <option value="As contas estão acumulando e estou desesperado com dinheiro, não consigo pensar direito.">Problemas financeiros</option>
-                <option value="Tenho vivido com muita ansiedade e medo, minha mente não para e eu não descanso.">Ansiedade e medo</option>
-                <option value="Pode me dar um passo simples para eu começar hoje?">Pedido simples</option>
-                <option value="Me ajuda aí, preciso de um começo bem direto porque eu tô travado.">Pedido informal</option>
-            </select>
-            <input type="text" name="message_text" placeholder="Type a message..." required autofocus>
-            <button type="submit" id="sendButton">Send</button>
-        </form>
-
+        {% if simulated_error %}
+        <div class="simulate-error">Erro no simulate: {{ simulated_error }}</div>
+        {% endif %}
         <form method="post" action="/chat/" id="simulateForm">
             {% csrf_token %}
             <input type="hidden" name="action" value="simulate">
             <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
-            <select name="emotional_profile">
-                <option value="ambivalente" selected>Ambivalente</option>
-                <option value="defensivo">Defensivo</option>
-                <option value="culpa_forte">Culpa forte</option>
-                <option value="desesperanca">Desesperança</option>
-                <option value="racional">Racional</option>
-                <option value="pedido_ajuda_implicito">Pedido de ajuda implícito</option>
-                <option value="fechamento_emocional">Fechamento emocional</option>
+            <select name="predefined_scenario">
+                <option value="" {% if not selected_predefined_scenario %}selected{% endif %}>Como me sinto</option>
+                <option value="sobrecarregado" {% if selected_predefined_scenario == "sobrecarregado" %}selected{% endif %}>Sobrecarregado(a)</option>
+                <option value="ansioso_com_medo" {% if selected_predefined_scenario == "ansioso_com_medo" %}selected{% endif %}>Ansioso(a) e com medo</option>
+                <option value="culpado_envergonhado" {% if selected_predefined_scenario == "culpado_envergonhado" %}selected{% endif %}>Culpado(a) e envergonhado(a)</option>
+                <option value="irritado_com_raiva" {% if selected_predefined_scenario == "irritado_com_raiva" %}selected{% endif %}>Irritado(a) e com raiva</option>
+                <option value="sozinho_sem_apoio" {% if selected_predefined_scenario == "sozinho_sem_apoio" %}selected{% endif %}>Sozinho(a), sem apoio</option>
+                <option value="confuso_perdido" {% if selected_predefined_scenario == "confuso_perdido" %}selected{% endif %}>Confuso(a), perdido(a)</option>
+                <option value="desanimado_sem_forca" {% if selected_predefined_scenario == "desanimado_sem_forca" %}selected{% endif %}>Desanimado(a), sem força</option>
+                <option value="sem_esperanca" {% if selected_predefined_scenario == "sem_esperanca" %}selected{% endif %}>Sem esperança</option>
             </select>
-            <select name="simulate_mode">
-                <option value="test" selected>Modo teste (não salvar)</option>
-                <option value="persist">Salvar no histórico</option>
+            <select name="emotional_profile">
+                <option value="" {% if not selected_emotional_profile %}selected{% endif %}>O que eu quero</option>
+                <option value="ambivalente" {% if selected_emotional_profile == "ambivalente" %}selected{% endif %}>Mudar, mas não consigo</option>
+                <option value="defensivo" {% if selected_emotional_profile == "defensivo" %}selected{% endif %}>Ser ouvido(a), sem julgamento</option>
+                <option value="culpa_forte" {% if selected_emotional_profile == "culpa_forte" %}selected{% endif %}>Aliviar a culpa</option>
+                <option value="desesperanca" {% if selected_emotional_profile == "desesperanca" %}selected{% endif %}>Voltar a ter esperança</option>
+                <option value="racional" {% if selected_emotional_profile == "racional" %}selected{% endif %}>Ter clareza para decidir</option>
+                <option value="pedido_ajuda_implicito" {% if selected_emotional_profile == "pedido_ajuda_implicito" %}selected{% endif %}>Receber direção prática</option>
+                <option value="fechamento_emocional" {% if selected_emotional_profile == "fechamento_emocional" %}selected{% endif %}>Sair do assunto</option>
+            </select>
+            <select name="simulation_theme">
+                <option value="" {% if not selected_simulation_theme %}selected{% endif %}>Meu problema</option>
+                <option value="relacionamento" {% if selected_simulation_theme == "relacionamento" %}selected{% endif %}>Relacionamento e família</option>
+                <option value="financeiro" {% if selected_simulation_theme == "financeiro" %}selected{% endif %}>Dinheiro e dívidas</option>
+                <option value="vicios" {% if selected_simulation_theme == "vicios" %}selected{% endif %}>Vícios e recaídas</option>
+                <option value="saude" {% if selected_simulation_theme == "saude" %}selected{% endif %}>Saúde e cansaço</option>
+                <option value="luto_perda" {% if selected_simulation_theme == "luto_perda" %}selected{% endif %}>Luto e perda</option>
+                <option value="trabalho" {% if selected_simulation_theme == "trabalho" %}selected{% endif %}>Trabalho e pressão</option>
+                <option value="solidao" {% if selected_simulation_theme == "solidao" %}selected{% endif %}>Solidão</option>
+                <option value="outros" {% if selected_simulation_theme == "outros" %}selected{% endif %}>Outro problema</option>
             </select>
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
+
+        <form method="post" action="/chat/" id="chatForm">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="send_message">
+            <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
+            <input
+                type="text"
+                name="message_text"
+                placeholder="Type a message..."
+                value="{{ simulated_preview|default_if_none:'' }}"
+                required
+                autofocus
+            >
+            <button type="submit" id="sendButton">Send</button>
+        </form>
         {% if simulated_preview %}
-        <div style="margin-top: 8px; font-size: 13px; color: #555;">
-            <strong>Prévia simulate:</strong> {{ simulated_preview }}
-        </div>
+        <input type="hidden" id="simulatedPreviewValue" value="{{ simulated_preview }}">
         {% endif %}
     </div>
     {% endif %}
+
+    <div id="promptModal" class="prompt-modal" aria-hidden="true">
+        <div class="prompt-modal-content" role="dialog" aria-modal="true" aria-label="Prompt JSON">
+            <div class="prompt-modal-header">
+                <span>Prompt Payload JSON</span>
+                <div class="prompt-modal-actions">
+                    <button id="promptModalCopy" class="prompt-modal-copy" type="button">Copiar payload</button>
+                    <button id="promptModalClose" class="prompt-modal-close" type="button" aria-label="Fechar">×</button>
+                </div>
+            </div>
+            <div id="promptModalBody" class="prompt-modal-body"></div>
+        </div>
+    </div>
 
     <script>
         // Auto-scroll to bottom on page load
@@ -490,16 +654,17 @@
             if (!form) return;
 
             const sendButton = document.getElementById('sendButton');
-            const select = document.getElementById('predefinedMessageSelect');
             const input = form.querySelector('input[name="message_text"]');
+            const simulatedPreview = document.getElementById('simulatedPreviewValue');
             let isSubmitting = false;
 
-            if (select && input) {
-                select.addEventListener('change', function() {
-                    if (!select.value) return;
-                    input.value = select.value;
-                    input.focus();
-                });
+            if (simulatedPreview && input) {
+                input.value = simulatedPreview.value || '';
+                input.focus();
+                if (typeof input.setSelectionRange === 'function') {
+                    const textLength = input.value.length;
+                    input.setSelectionRange(textLength, textLength);
+                }
             }
 
             form.addEventListener('submit', function(e) {
@@ -515,6 +680,76 @@
                 sendButton.textContent = 'Sending...';
                 sendButton.style.opacity = '0.6';
                 sendButton.style.cursor = 'not-allowed';
+            });
+        })();
+
+        (function() {
+            const modal = document.getElementById('promptModal');
+            const modalBody = document.getElementById('promptModalBody');
+            const closeButton = document.getElementById('promptModalClose');
+            const copyButton = document.getElementById('promptModalCopy');
+            if (!modal || !modalBody || !closeButton || !copyButton) return;
+            let currentPayload = '';
+
+            function decodeEscapedUnicode(text) {
+                return String(text || '').replace(/\\u([0-9a-fA-F]{4})/g, function(_, hex) {
+                    return String.fromCharCode(parseInt(hex, 16));
+                });
+            }
+
+            function normalizePromptPayload(rawPayload) {
+                const decoded = decodeEscapedUnicode(rawPayload).replace(/\\n/g, '\n');
+                try {
+                    const parsed = JSON.parse(decoded);
+                    return JSON.stringify(parsed, null, 2);
+                } catch (_) {
+                    return decoded;
+                }
+            }
+
+            function openModal(rawPayload) {
+                const normalized = normalizePromptPayload(rawPayload);
+                currentPayload = normalized;
+                modalBody.innerHTML = '';
+                const pre = document.createElement('pre');
+                pre.textContent = normalized;
+                modalBody.appendChild(pre);
+                modal.classList.add('open');
+                modal.setAttribute('aria-hidden', 'false');
+                copyButton.textContent = 'Copiar payload';
+            }
+
+            function closeModal() {
+                modal.classList.remove('open');
+                modal.setAttribute('aria-hidden', 'true');
+                modalBody.innerHTML = '';
+                currentPayload = '';
+            }
+
+            document.querySelectorAll('.prompt-link[data-prompt]').forEach(function(link) {
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    openModal(link.dataset.prompt || '');
+                });
+            });
+
+            closeButton.addEventListener('click', closeModal);
+            copyButton.addEventListener('click', async function() {
+                if (!currentPayload) return;
+                try {
+                    await navigator.clipboard.writeText(currentPayload);
+                    copyButton.textContent = 'Copiado!';
+                    setTimeout(function() {
+                        copyButton.textContent = 'Copiar payload';
+                    }, 1200);
+                } catch (_) {
+                    copyButton.textContent = 'Falhou ao copiar';
+                }
+            });
+            modal.addEventListener('click', function(event) {
+                if (event.target === modal) {
+                    closeModal();
+                }
             });
         })();
     </script>

@@ -8,7 +8,8 @@ from django.views import View
 from faker import Faker
 
 from core.models import Message, Profile
-from services.ollama_service import OllamaService
+from services.chat_service import ChatService
+from services.llm_service import get_llm_service
 from services.simulation_service import SimulatedUserProfile, SimulationUseCase
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ class ChatView(View):
         # Select profile
         selected_profile = None
         messages = []
+        last_assistant_message_id = None
 
         if selected_profile_id:
             try:
@@ -52,6 +54,13 @@ class ChatView(View):
                 messages = Message.objects.filter(profile=selected_profile).order_by(
                     "created_at"
                 )
+                last_assistant_message = (
+                    Message.objects.filter(profile=selected_profile, role="assistant")
+                    .order_by("-created_at")
+                    .first()
+                )
+                if last_assistant_message:
+                    last_assistant_message_id = last_assistant_message.id
             except Profile.DoesNotExist:
                 pass
         elif profiles.exists():
@@ -60,12 +69,30 @@ class ChatView(View):
             messages = Message.objects.filter(profile=selected_profile).order_by(
                 "created_at"
             )
+            last_assistant_message = (
+                Message.objects.filter(profile=selected_profile, role="assistant")
+                .order_by("-created_at")
+                .first()
+            )
+            if last_assistant_message:
+                last_assistant_message_id = last_assistant_message.id
 
         context = {
             "profiles": profiles,
             "selected_profile": selected_profile,
             "messages": messages,
+            "last_assistant_message_id": last_assistant_message_id,
             "simulated_preview": request.GET.get("simulated_preview", "").strip(),
+            "simulated_error": request.GET.get("simulated_error", "").strip(),
+            "selected_predefined_scenario": request.GET.get(
+                "selected_predefined_scenario", ""
+            ).strip(),
+            "selected_emotional_profile": request.GET.get(
+                "selected_emotional_profile", ""
+            ).strip(),
+            "selected_simulation_theme": request.GET.get(
+                "selected_simulation_theme", ""
+            ).strip(),
         }
 
         return render(request, "chat.html", context)
@@ -79,9 +106,13 @@ class ChatView(View):
         elif action == "new_profile":
             return self._handle_new_profile(request)
         elif action == "simulate":
-            return self._handle_simulate(request, ollama_service=OllamaService())
+            return self._handle_simulate(request, llm_service=get_llm_service())
         elif action == "analyze":
-            return self._handle_analyze(request, ollama_service=OllamaService())
+            return self._handle_analyze(request, llm_service=get_llm_service())
+        elif action == "delete_and_regenerate":
+            return self._handle_delete_and_regenerate(
+                request, llm_service=get_llm_service()
+            )
 
         # Default: redirect to GET
         return redirect("chat")
@@ -102,11 +133,34 @@ class ChatView(View):
         except Profile.DoesNotExist:
             return redirect(reverse("chat"))
 
+        pending_sim_payload_key = f"pending_simulation_payload_{profile.id}"
+        pending_sim_preview_key = f"pending_simulation_preview_{profile.id}"
+        pending_simulation_payload = request.session.get(pending_sim_payload_key)
+        pending_simulation_preview = request.session.get(pending_sim_preview_key, "")
+
+        user_prompt_payload = None
+        if pending_simulation_payload:
+            user_prompt_payload = pending_simulation_payload
+            if pending_simulation_preview:
+                user_prompt_payload = {
+                    "source": "simulation_preview",
+                    "preview": pending_simulation_preview,
+                    "payload": pending_simulation_payload,
+                }
+            request.session.pop(pending_sim_payload_key, None)
+            request.session.pop(pending_sim_preview_key, None)
+
         Message.objects.create(
-            profile=profile, role="user", content=message_text, channel="chat"
+            profile=profile,
+            role="user",
+            content=message_text,
+            channel="chat",
+            ollama_prompt=user_prompt_payload,
         )
 
-        OllamaService().generate_response_message(profile=profile, channel="chat")
+        ChatService(llm_service=get_llm_service()).generate_response_message(
+            profile=profile, channel="chat"
+        )
 
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
@@ -129,12 +183,13 @@ class ChatView(View):
         # Redirect to chat with new profile selected
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
-    def _handle_simulate(self, request, ollama_service):
+    def _handle_simulate(self, request, llm_service):
         profile_id = request.POST.get("profile_id")
         emotional_profile = request.POST.get(
             "emotional_profile", SimulatedUserProfile.AMBIVALENTE.value
         ).strip()
-        simulate_mode = request.POST.get("simulate_mode", "persist").strip().lower()
+        predefined_scenario = request.POST.get("predefined_scenario", "").strip()
+        simulation_theme = request.POST.get("simulation_theme", "").strip()
 
         if not profile_id:
             return redirect(reverse("chat"))
@@ -144,37 +199,54 @@ class ChatView(View):
         except Profile.DoesNotExist:
             return redirect(reverse("chat"))
 
-        simulation_use_case = SimulationUseCase(ollama_service=ollama_service)
-        if simulate_mode == "test":
-            conversation = (
-                Message.objects.filter(profile=profile)
-                .exclude(role="system")
-                .exclude(role="analysis")
-                .exclude(exclude_from_context=True)
-                .order_by("created_at")
-            )
-            simulated_preview = simulation_use_case.simulate_next_user_message(
-                conversation=conversation,
-                profile=emotional_profile,
-            )
-            query = urlencode(
-                {"profile_id": profile.id, "simulated_preview": simulated_preview}
-            )
-            return redirect(f"{reverse('chat')}?{query}")
-
-        selected_profile_id = simulation_use_case.handle(
-            profile_id=profile.id,
-            emotional_profile=emotional_profile,
+        simulation_use_case = SimulationUseCase(llm_service=llm_service)
+        conversation = (
+            Message.objects.filter(profile=profile)
+            .exclude(role="system")
+            .exclude(role="analysis")
+            .exclude(exclude_from_context=True)
+            .order_by("created_at")
         )
-        simulated_profile = Profile.objects.get(id=selected_profile_id)
-        OllamaService().generate_response_message(
-            profile=simulated_profile, channel="chat"
+        try:
+            simulation_result = (
+                simulation_use_case.simulate_next_user_message_with_metadata(
+                    conversation=conversation,
+                    profile=emotional_profile,
+                    predefined_scenario=predefined_scenario,
+                    theme=simulation_theme,
+                )
+            )
+        except ValueError as exc:
+            request.session.pop(f"pending_simulation_payload_{profile.id}", None)
+            request.session.pop(f"pending_simulation_preview_{profile.id}", None)
+            error_query = urlencode(
+                {
+                    "profile_id": profile.id,
+                    "simulated_error": str(exc),
+                    "selected_predefined_scenario": predefined_scenario,
+                    "selected_emotional_profile": emotional_profile,
+                    "selected_simulation_theme": simulation_theme,
+                }
+            )
+            return redirect(f"{reverse('chat')}?{error_query}")
+
+        simulated_preview = simulation_result.get("content", "").strip()
+        request.session[
+            f"pending_simulation_payload_{profile.id}"
+        ] = simulation_result.get("payload")
+        request.session[f"pending_simulation_preview_{profile.id}"] = simulated_preview
+        query = urlencode(
+            {
+                "profile_id": profile.id,
+                "simulated_preview": simulated_preview,
+                "selected_predefined_scenario": predefined_scenario,
+                "selected_emotional_profile": emotional_profile,
+                "selected_simulation_theme": simulation_theme,
+            }
         )
+        return redirect(f"{reverse('chat')}?{query}")
 
-        # Redirect to chat with simulation profile selected
-        return redirect(f"{reverse('chat')}?profile_id={selected_profile_id}")
-
-    def _handle_analyze(self, request, ollama_service):
+    def _handle_analyze(self, request, llm_service):
         """Analyze conversation emotions for selected profile."""
         profile_id = request.POST.get("profile_id")
 
@@ -186,8 +258,10 @@ class ChatView(View):
         except Profile.DoesNotExist:
             return redirect(reverse("chat"))
 
-        # Generate analysis using ollama service
-        analysis = ollama_service.analyze_conversation_emotions(profile=profile)
+        # Generate analysis using configured LLM service
+        analysis = ChatService(llm_service=llm_service).analyze_conversation_emotions(
+            profile=profile
+        )
 
         logger.info("Generated critical analysis")
 
@@ -201,6 +275,32 @@ class ChatView(View):
         )
 
         # Redirect back to chat with selected profile
+        return redirect(f"{reverse('chat')}?profile_id={profile.id}")
+
+    def _handle_delete_and_regenerate(self, request, llm_service):
+        """Delete selected assistant message and generate a new response."""
+        profile_id = request.POST.get("profile_id")
+        message_id = request.POST.get("message_id")
+
+        if not profile_id or not message_id:
+            return redirect(reverse("chat"))
+
+        try:
+            profile = Profile.objects.get(id=int(profile_id))
+        except Profile.DoesNotExist:
+            return redirect(reverse("chat"))
+
+        try:
+            message = Message.objects.get(
+                id=int(message_id), profile=profile, role="assistant"
+            )
+        except Message.DoesNotExist:
+            return redirect(f"{reverse('chat')}?profile_id={profile.id}")
+
+        message.delete()
+        ChatService(llm_service=llm_service).generate_response_message(
+            profile=profile, channel="chat"
+        )
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
     def _get_conversation_context(

@@ -14,6 +14,10 @@ BLOCKED_PATTERNS = [
     "você não está sozinho",
     "isso não é um caminho fácil",
     "eu sinto muito pelo peso",
+    "eu recebo o que você trouxe com respeito",
+    "eu continuo ao seu lado com presença e cuidado",
+    "obrigado por confiar isso aqui",
+    "você não precisa carregar esse peso sozinho neste instante",
 ]
 
 MODE_WELCOME = "WELCOME"
@@ -25,8 +29,8 @@ MODE_CULPA = "CULPA"
 MODE_ORIENTACAO = "ORIENTACAO"
 MODE_PRESENCA_PROFUNDA = "PRESENCA_PROFUNDA"
 
-MAX_SENTENCES = 3
-MAX_WORDS = 120
+MAX_SENTENCES = 4
+MAX_WORDS = 180
 MAX_QUESTIONS = 1
 SEMANTIC_LOOP_THRESHOLD = 0.85
 
@@ -91,6 +95,21 @@ _DIRECT_GUIDANCE_MARKERS = [
     "como faço",
     "me ajuda a começar",
     "qual o primeiro passo",
+]
+
+_REPETITION_COMPLAINT_MARKERS = [
+    "já falei",
+    "ja falei",
+    "já disse",
+    "ja disse",
+    "você já perguntou",
+    "voce ja perguntou",
+    "vai ficar repetindo",
+    "parar de repetir",
+    "mesma pergunta",
+    "de novo essa pergunta",
+    "não repete",
+    "nao repete",
 ]
 
 _GENERIC_EMPATHY_PATTERNS = [
@@ -175,6 +194,8 @@ _DEEP_SUFFERING_MARKERS = [
     "desespero",
     "desesperado",
     "desesperada",
+    "morte",
+    "medo da morte",
     "sem saída",
     "sem saida",
 ]
@@ -365,6 +386,11 @@ def detect_direct_guidance_request(user_message: str) -> bool:
     return any(marker in msg for marker in _DIRECT_GUIDANCE_MARKERS)
 
 
+def detect_repetition_complaint(user_message: str) -> bool:
+    msg = _normalize(user_message)
+    return any(marker in msg for marker in _REPETITION_COMPLAINT_MARKERS)
+
+
 def has_spiritual_context(user_message: str) -> bool:
     msg = _normalize(user_message)
     return any(term in msg for term in _EXPLICIT_SPIRITUAL_TERMS) or "fé" in msg
@@ -427,6 +453,31 @@ def contains_repeated_blocked_pattern(
     history = [_normalize(msg) for msg in list(recent_assistant_messages)[-3:]]
     for pattern in BLOCKED_PATTERNS:
         if pattern in candidate and any(pattern in old for old in history):
+            return True
+    return False
+
+
+def has_repeated_opening_structure(
+    assistant_message: str, recent_assistant_messages: Iterable[str]
+) -> bool:
+    candidate_first = _extract_first_sentence(assistant_message)
+    if not candidate_first:
+        return False
+
+    candidate_tokens = candidate_first.split()[:8]
+    if len(candidate_tokens) < 4:
+        return False
+
+    for old in list(recent_assistant_messages)[-3:]:
+        old_first = _extract_first_sentence(old)
+        if not old_first:
+            continue
+
+        old_tokens = old_first.split()[:8]
+        if candidate_tokens[:4] == old_tokens[:4]:
+            return True
+
+        if semantic_similarity(candidate_first, old_first) > 0.84:
             return True
     return False
 
@@ -526,6 +577,7 @@ def detect_explicit_despair(user_message: str) -> bool:
 def detect_user_signals(user_message: str) -> dict:
     return {
         "guidance_request": detect_direct_guidance_request(user_message),
+        "repetition_complaint": detect_repetition_complaint(user_message),
         "ambivalence": detect_ambivalence(user_message),
         "defensive": detect_defensiveness(user_message),
         "guilt": detect_guilt(user_message),
@@ -555,6 +607,8 @@ def choose_conversation_mode(
     ):
         return MODE_PRESENCA_PROFUNDA
     if signals.get("guidance_request"):
+        return MODE_ORIENTACAO
+    if signals.get("repetition_complaint"):
         return MODE_ORIENTACAO
     if is_first_message or previous_mode == MODE_WELCOME:
         return MODE_ACOLHIMENTO
