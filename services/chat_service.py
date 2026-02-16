@@ -1,10 +1,9 @@
 import json
 import logging
-import os
 import re
 from copy import deepcopy
 from datetime import timedelta
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from django.utils import timezone
 
@@ -20,27 +19,13 @@ from services.conversation_runtime import (
     MODE_WELCOME,
     choose_conversation_mode,
     choose_spiritual_intensity,
-    contains_generic_empathy_without_grounding,
-    contains_repeated_blocked_pattern,
-    contains_spiritual_imposition,
-    contains_spiritual_template_repetition,
-    contains_unsolicited_spiritualization,
-    contains_unverified_inference,
     detect_user_signals,
-    enforce_hard_limits,
-    has_human_support_suggestion,
     has_new_information,
-    has_practical_action_step,
-    has_repeated_opening_structure,
     has_repeated_user_pattern,
-    has_self_guided_help,
-    has_spiritual_baseline_signal,
-    is_semantic_loop,
     semantic_similarity,
-    starts_with_user_echo,
-    strip_opening_name_if_recently_used,
 )
 from services.openai_service import OpenAIService
+from services.rag_service import get_rag_context
 
 logger = logging.getLogger(__name__)
 
@@ -65,75 +50,62 @@ TOPIC_MEMORY_WINDOW_DAYS = 7
 TOPIC_MEMORY_MAX_ITEMS = 6
 TOPIC_MIN_CONFIDENCE = 0.45
 TOPIC_PROMOTE_CONFIDENCE = 0.6
-SUBSTANCE_TOPICS = {"alcool", "álcool", "drogas", "dependencia", "dependência"}
 RELATIONAL_TOPICS = {"familia", "família", "conflito", "relacionamento"}
 WACHAT_RESPONSE_MODEL = "gpt-5-mini"
 FIXED_TEMPERATURE = 1.0
 FIXED_TIMEOUT_SECONDS = 60
-FIXED_RESPONSE_MAX_COMPLETION_TOKENS = 900
-FIXED_WELCOME_MAX_COMPLETION_TOKENS = 480
+FIXED_RESPONSE_MAX_COMPLETION_TOKENS = 1800
+FIXED_WELCOME_MAX_COMPLETION_TOKENS = 1200
+FIXED_TOPIC_SIGNAL_MAX_COMPLETION_TOKENS = 1000
+FIXED_GENDER_INFERENCE_MAX_COMPLETION_TOKENS = 400
+FIXED_THEME_PROMPT_MAX_COMPLETION_TOKENS = 1200
+FIXED_EVALUATION_MAX_COMPLETION_TOKENS = 500
+EVALUATION_MODEL = "gpt-5-mini"
 
-WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com atuação de aconselhamento prático,
-emocional e espiritual, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
-
-PAPEL
-- Prioridade de atuação: pastor evangélico, depois psicólogo prático, conselheiro, coach e técnico de rotina.
-- Atue com direção espiritual cristã e também com organização prática da mente e da rotina.
-- Você pode aconselhar, sugerir práticas de fé cristã e fazer comparações religiosas curtas quando isso ajudar a pessoa.
-- Traga linguagem de fé de forma natural (Deus, Jesus, oração, Palavra, graça, misericórdia, recomeço), sem tom de sermão.
-- Nunca imponha religião. Convide com respeito.
-- Nunca se apresente como profissional de saúde mental nem faça diagnóstico clínico.
+WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com acolhimento emocional e direção espiritual prática, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
 
 ESTILO
-- Português brasileiro simples, humano, direto.
+- Português brasileiro simples, humano e direto.
+- Tom acolhedor, firme e objetivo.
 - Resposta entre 2 e 4 frases.
 - Sem emojis.
-- Tom acolhedor, firme e objetivo.
-- Evite bordões de abertura.
-- Não use sempre uma frase de acolhimento no início; entre direto no ponto concreto do último turno.
 
 OBJETIVO POR TURNO
-Escolha apenas UMA ação final:
-1) fazer 1 pergunta concreta, OU
-2) dar orientação prática imediata.
-Nunca os dois na mesma resposta.
+- Escolha apenas UMA ação final: fazer 1 pergunta concreta OU dar orientação prática imediata.
+- Nunca faça pergunta e orientação prática na mesma resposta.
+- Em modo de EXPLORAÇÃO ou INVESTIGAÇÃO, é proibido oferecer oração ou intervenção espiritual direta.
+- Nesses modos, a resposta deve priorizar aprofundamento existencial.
 
-PRIORIDADE EMOCIONAL (OBRIGATÓRIA)
-Antes de oferecer qualquer orientação prática, técnica psicológica ou sugestão espiritual estruturada:
+PRIORIDADE EMOCIONAL
+- Reflita a emoção central da última mensagem do usuário.
+- Valide o conflito interno com base em algo literal dito pela pessoa.
+- Demonstre proximidade humana antes de direcionar.
 
-1. Reflita explicitamente a emoção central expressa na última mensagem.
-2. Valide o conflito interno com base em algo literal que o usuário disse.
-3. Demonstre proximidade humana antes de direcionar.
+PROGRESSÃO ESPIRITUAL OBRIGATÓRIA
 
-É PROIBIDO iniciar resposta com lista de passos, técnicas, exercícios ou plano estruturado,
-exceto quando houver pedido explícito de "o que eu faço agora?" ou equivalente direto.
+Antes de:
+- Oferecer oração
+- Sugerir leitura bíblica
+- Declarar promessa espiritual
+- Afirmar que Jesus quer fazer algo específico
 
-Quando escolher orientação prática:
-- Só oferecer orientação após pelo menos 1 frase de presença emocional contextualizada.
-- Nunca iniciar a resposta com técnica, respiração, plano ou checklist.
-- Limitar a no máximo 2 sugestões práticas.
-- Evitar sequência estruturada tipo "passo 1, passo 2, passo 3".
-- Inclua também direção espiritual cristã aplicável (ex.: oração curta, salmo, entrega em oração, apoio da comunidade de fé).
-- Evite jargão clínico.
-- Aprofunde com base na última frase do usuário, sem generalizar.
+O assistente DEVE primeiro:
 
-REGRA ANTI-REPETIÇÃO (OBRIGATÓRIA)
-- Considere as últimas 6 mensagens (assistente + usuário).
-- É proibido repetir pergunta literal ou equivalente em sentido.
-- Se já houve 2 perguntas seguidas, a próxima resposta deve ser orientação prática (sem pergunta).
-- Varie a abertura; não reutilize o mesmo começo em turnos consecutivos.
+1. Investigar a raiz do sofrimento com pelo menos 1 pergunta de aprofundamento.
+2. Diferenciar sintoma (ansiedade, vazio, medo, culpa) de causa (frustração, propósito, perda, pecado, decepção, conflito relacional).
+3. Demonstrar compreensão do núcleo do conflito.
 
-ESPIRITUALIDADE
-- Base evangélica explícita e útil: esperança em Deus, graça de Cristo, oração, descanso no Senhor, arrependimento e recomeço.
-- Pode citar princípios bíblicos de forma curta e natural; quando útil, use referência breve (ex.: Salmo 34, Mateus 11:28, Romanos 8).
-- Pode comparar caminhos (“só força própria” vs “força + fé + comunidade”) sem tom de sermão.
-- Nunca dizer que sofrimento é punição divina.
+É PROIBIDO:
+- Oferecer oração na primeira resposta após a revelação do problema central.
+- Usar espiritualidade como substituto da investigação.
+- Encerrar com frase espiritual conclusiva antes de entender a raiz.
+
+A espiritualidade deve entrar como aprofundamento do entendimento, nunca como atalho.
 
 PROIBIÇÕES
 - Não usar linguagem clínica/técnica.
 - Não moralizar nem culpar.
-- Não fazer mais de 1 pergunta.
-- Não repetir bordões de acolhimento.
+- Não impor religião.
 
 FORMATO DE SAÍDA
 - Entregue apenas a próxima fala do assistente."""
@@ -227,7 +199,7 @@ class ChatService:
         raw = self.basic_call(
             url_type="generate",
             prompt=prompt,
-            max_tokens=120,
+            max_tokens=FIXED_TOPIC_SIGNAL_MAX_COMPLETION_TOKENS,
         )
         parsed = self._safe_parse_json(raw)
         topic = parsed.get("topic")
@@ -251,6 +223,105 @@ class ChatService:
             "topic": topic,
             "confidence": confidence,
             "keep_current": keep_current,
+        }
+
+    def _evaluate_response(
+        self, *, user_message: str, assistant_response: str
+    ) -> Dict[str, Any]:
+        client = getattr(self._llm_service, "client", None)
+        if client is None:
+            raise RuntimeError(
+                "OpenAI client is not available on configured LLM service."
+            )
+
+        evaluation_system_prompt = """
+Você é um avaliador técnico de respostas conversacionais.
+Responda SOMENTE com JSON válido no formato:
+{
+  "score": 0-10,
+  "analysis": "breve explicação técnica",
+  "improvement_prompt": "trecho curto para melhorar a próxima resposta"
+}
+
+Regras obrigatórias:
+- Não inclua texto fora do JSON.
+- score deve ser número (int ou float) entre 0 e 10.
+- analysis deve ser curta e objetiva.
+- improvement_prompt deve ser curto, no máximo 6 linhas.
+- Penalize repetição estrutural, loop ou template dominante.
+- Avalie: clareza, profundidade emocional, progressão conversacional,
+  fidelidade ao último turno do usuário e adequação espiritual ao contexto.
+""".strip()
+
+        evaluation_user_prompt = f"""
+Última mensagem do usuário:
+{user_message}
+
+Resposta do assistente para avaliar:
+{assistant_response}
+""".strip()
+
+        response = client.chat.completions.create(
+            model=EVALUATION_MODEL,
+            messages=[
+                {"role": "system", "content": evaluation_system_prompt},
+                {"role": "user", "content": evaluation_user_prompt},
+            ],
+            max_completion_tokens=FIXED_EVALUATION_MAX_COMPLETION_TOKENS,
+            reasoning_effort="low",
+            timeout=FIXED_TIMEOUT_SECONDS,
+            response_format={"type": "json_object"},
+        )
+
+        choices = getattr(response, "choices", None) or []
+        if not choices:
+            raise RuntimeError("Evaluation model returned no choices.")
+        message = getattr(choices[0], "message", None)
+        if not message:
+            raise RuntimeError("Evaluation model returned empty message.")
+        raw_content = getattr(message, "content", None)
+        if not isinstance(raw_content, str) or not raw_content.strip():
+            raise RuntimeError("Evaluation model returned empty content.")
+
+        try:
+            parsed = json.loads(raw_content.strip())
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Evaluation JSON parsing failed.") from exc
+
+        if not isinstance(parsed, dict):
+            raise RuntimeError("Evaluation payload invalid: JSON must be an object.")
+
+        score_raw = parsed.get("score")
+        try:
+            score = float(score_raw)
+        except (TypeError, ValueError):
+            raise RuntimeError("Evaluation payload invalid: score must be a number.")
+        if not 0 <= score <= 10:
+            raise RuntimeError(
+                "Evaluation payload invalid: score must be between 0 and 10."
+            )
+
+        analysis = parsed.get("analysis")
+        if not isinstance(analysis, str) or not analysis.strip():
+            raise RuntimeError(
+                "Evaluation payload invalid: analysis must be a non-empty string."
+            )
+
+        improvement_prompt = parsed.get("improvement_prompt")
+        if not isinstance(improvement_prompt, str):
+            raise RuntimeError(
+                "Evaluation payload invalid: improvement_prompt must be a string."
+            )
+        improvement_prompt = improvement_prompt.strip()
+        if len(improvement_prompt.splitlines()) > 6:
+            raise RuntimeError(
+                "Evaluation payload invalid: improvement_prompt must have up to 6 lines."
+            )
+
+        return {
+            "score": score,
+            "analysis": analysis.strip(),
+            "improvement_prompt": improvement_prompt,
         }
 
     def _active_topic_for_profile(self, profile: Profile) -> Optional[str]:
@@ -329,19 +400,6 @@ class ChatService:
             return topic_key
         return active_topic
 
-    def _is_substance_context(
-        self, user_message: str, active_topic: Optional[str]
-    ) -> bool:
-        user_norm = (user_message or "").lower()
-        if any(
-            term in user_norm
-            for term in ["beb", "alcool", "álcool", "droga", "recaída", "recaida"]
-        ):
-            return True
-        if active_topic and active_topic.lower() in SUBSTANCE_TOPICS:
-            return True
-        return False
-
     def _is_relational_topic(self, active_topic: Optional[str]) -> bool:
         if not active_topic:
             return False
@@ -364,6 +422,8 @@ class ChatService:
         context_messages: list,
         rag_contexts: list,
     ) -> str:
+        runtime_mode = MODE_ORIENTACAO if direct_guidance_request else conversation_mode
+
         mode_objective = {
             MODE_ACOLHIMENTO: "acolher com precisão e abrir espaço de continuidade",
             MODE_EXPLORACAO: "aprofundar com investigação concreta",
@@ -373,7 +433,7 @@ class ChatService:
             MODE_ORIENTACAO: "entregar orientação prática breve e acionável",
             MODE_PRESENCA_PROFUNDA: "sustentar presença, dignidade e misericórdia em sofrimento profundo",
             MODE_WELCOME: "acolhimento inicial curto",
-        }.get(conversation_mode, "avançar a conversa com precisão")
+        }.get(runtime_mode, "avançar a conversa com precisão")
 
         mode_actions = {
             MODE_ACOLHIMENTO: [
@@ -407,14 +467,16 @@ class ChatService:
             ],
             MODE_PRESENCA_PROFUNDA: [
                 "Sustente presença e dignidade sem sugerir ação concreta.",
-                "Não priorize perguntas; use no máximo 1 pergunta curta se for indispensável.",
+                "Neste turno, NÃO FAÇA pergunta.",
+                "Sustente presença sem investigar.",
+                "Se for necessário aprofundar, faça isso por reflexão, não por pergunta.",
                 "Use tom contemplativo e misericordioso.",
                 "Se houver pedido de ajuda direta, ofereça orientação concreta e segura com passos pequenos.",
             ],
             MODE_WELCOME: [
                 "Acolha com sobriedade e convide para continuidade.",
             ],
-        }.get(conversation_mode, ["Escolha a melhor função para este turno."])
+        }.get(runtime_mode, ["Escolha a melhor função para este turno."])
 
         spiritual_policy = "Mantenha base espiritual leve (esperança/propósito) sem linguagem explícita."
         if allow_spiritual_context or spiritual_intensity in {"media", "alta"}:
@@ -430,54 +492,49 @@ class ChatService:
 
         max_sentences = 4
         max_questions = 1
-        relational_topic = self._is_relational_topic(active_topic)
 
         prompt = f"""
-MODO ATUAL: {conversation_mode}
-MODO ANTERIOR: {previous_mode}
-OBJETIVO DO MODO: {mode_objective}
-INTENSIDADE ESPIRITUAL: {spiritual_intensity}
+    MODO ATUAL: {runtime_mode}
+    MODO ANTERIOR: {previous_mode}
+    OBJETIVO DO MODO: {mode_objective}
+    INTENSIDADE ESPIRITUAL: {spiritual_intensity}
 
-REGRAS GERAIS:
-        - Responda entre 2 e {max_sentences} frases.
-        - No máximo {max_questions} pergunta, e somente quando a ação final escolhida for pergunta.
-- Não comece com frase-padrão de acolhimento.
-- Validar algo específico que o usuário acabou de dizer.
-- Não repetir frases/estruturas dos últimos turnos.
-- Não repetir aberturas de acolhimento já usadas recentemente.
-- Não iniciar ecoando a frase do usuário.
-- Não inferir sentimentos não declarados.
-- {spiritual_policy}
-- Escolha apenas UMA ação final: pergunta concreta OU próximo passo simples.
-- Nunca entregue pergunta e passo simples na mesma resposta.
-- Escolha a melhor função para este turno conforme o modo atual.
-"""
-        if direct_guidance_request and conversation_mode != MODE_PRESENCA_PROFUNDA:
-            prompt += "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: resposta deve conter orientação prática direta.\n"
-        if direct_guidance_request and conversation_mode == MODE_PRESENCA_PROFUNDA:
-            prompt += "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: acolha o pedido sem converter este turno em plano de ação.\n"
-        if (
-            conversation_mode == MODE_ACOLHIMENTO
-            and previous_mode == MODE_WELCOME
-            and not direct_guidance_request
-        ):
+    REGRAS GERAIS:
+    - Responda entre 2 e {max_sentences} frases.
+    - No máximo {max_questions} pergunta.
+    - Não comece com frase-padrão de acolhimento.
+    - Validar algo específico que o usuário acabou de dizer.
+    - Não repetir frases/estruturas dos últimos turnos.
+    - Não iniciar ecoando a frase do usuário.
+    - Não inferir sentimentos não declarados.
+    - {spiritual_policy}
+    - Escolha apenas UMA ação final: pergunta concreta OU próximo passo simples.
+    - Nunca entregue pergunta e passo simples na mesma resposta.
+    - Escolha a melhor função para este turno conforme o modo atual.
+
+    TRATAMENTO OBRIGATÓRIO:
+    - Use segunda pessoa direta ("você").
+    - É proibido usar terceira pessoa ("ela", "dele", "dela").
+    """
+
+        if direct_guidance_request:
             prompt += (
-                "\nFASE INICIAL APÓS BOAS-VINDAS: "
-                "neste turno faça UMA pergunta concreta, simples e de baixo aprofundamento "
-                "para coletar mais contexto sobre o que está acontecendo. "
-                "Não entregue técnica, exercício, plano de ação ou conselho neste turno.\n"
+                "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: ação final obrigatória é orientação prática imediata. "
+                "Não finalizar com pergunta neste turno.\n"
             )
+
         if repetition_complaint:
             prompt += (
                 "\nUSUÁRIO SINALIZOU REPETIÇÃO: não repita pergunta; "
                 "entregue orientação prática nova e específica para este caso, sem pergunta ao final.\n"
             )
+
         if active_topic:
             prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
-        if conversation_mode == MODE_ACOLHIMENTO and relational_topic:
-            prompt += "\nNESTE TURNO, EVITE linguagem de ciclo, estratégia, ação imediata, proteção e passo concreto.\n"
+
         if top_topics:
             prompt += f"TÓPICOS RECENTES: {top_topics}\n"
+
         if theme_prompt:
             prompt += f"\nTEMA CONTEXTUAL:\n{theme_prompt}\n"
 
@@ -489,10 +546,12 @@ REGRAS GERAIS:
         prompt += "\nHISTÓRICO RECENTE:\n"
         for msg in context_messages:
             prompt += f"{msg.role.upper()}: {msg.content}\n"
+
         if rag_contexts:
             prompt += "\nRAG CONTEXT AUXILIAR:\n"
             for rag in rag_contexts:
                 prompt += f"- {rag}\n"
+
         prompt += "\nResponda somente com a próxima fala do assistente."
         return prompt
 
@@ -535,6 +594,20 @@ REGRAS GERAIS:
         repetition_complaint = bool(signals.get("repetition_complaint"))
         if repetition_complaint:
             direct_guidance_request = True
+        # 🔥 OVERRIDE: pedido explícito de oração tem prioridade máxima
+        prayer_request_detected = any(
+            phrase in last_user_message.lower()
+            for phrase in [
+                "ore por mim",
+                "ora por mim",
+                "preciso de oração",
+                "pode orar",
+                "oração por mim",
+            ]
+        )
+
+        if prayer_request_detected:
+            direct_guidance_request = True
         deep_presence_trigger = any(
             [
                 bool(signals.get("deep_suffering")),
@@ -573,7 +646,9 @@ REGRAS GERAIS:
             repeated_user_pattern=repeated_user_pattern,
             signals=signals,
         )
-        if force_deep_presence:
+        if prayer_request_detected:
+            conversation_mode = MODE_ORIENTACAO
+        elif force_deep_presence:
             conversation_mode = MODE_PRESENCA_PROFUNDA
         spiritual_intensity = choose_spiritual_intensity(
             mode=conversation_mode,
@@ -589,6 +664,7 @@ REGRAS GERAIS:
             "allow_spiritual_context": allow_spiritual_context,
             "loop_detected": loop_detected,
             "deep_presence_trigger": deep_presence_trigger,
+            "prayer_request_detected": prayer_request_detected,
         }
 
     def _build_response_prompt(
@@ -614,7 +690,7 @@ REGRAS GERAIS:
                     if item.get("topic")
                 ]
             )
-        # rag_contexts = get_rag_context(last_person_message.content, limit=3)
+        rag_contexts = get_rag_context(last_person_message.content, limit=3)
 
         return self._build_dynamic_runtime_prompt(
             conversation_mode=generation_state["conversation_mode"],
@@ -628,80 +704,8 @@ REGRAS GERAIS:
             last_user_message=last_person_message.content,
             theme_prompt=profile.theme.prompt if profile.theme else None,
             context_messages=context_messages,
-            rag_contexts=[],
+            rag_contexts=rag_contexts,
         )
-
-    def _candidate_should_regenerate(
-        self,
-        *,
-        candidate: str,
-        last_user_message: str,
-        recent_assistant_messages: list,
-        enforce_practical_step: bool,
-        requires_real_help: bool,
-        allow_unsolicited_spiritualization: bool,
-    ) -> Dict[str, bool]:
-        semantic_loop = False
-        if recent_assistant_messages:
-            semantic_loop = is_semantic_loop(recent_assistant_messages[-1], candidate)
-
-        blocked_template = contains_repeated_blocked_pattern(
-            candidate, recent_assistant_messages
-        )
-        has_unverified_inference = contains_unverified_inference(
-            last_user_message, candidate
-        )
-        spiritual_imposition = contains_spiritual_imposition(candidate)
-        unsolicited_spiritualization = contains_unsolicited_spiritualization(
-            last_user_message, candidate
-        )
-        if allow_unsolicited_spiritualization:
-            unsolicited_spiritualization = False
-        spiritual_template_repetition = contains_spiritual_template_repetition(
-            candidate, recent_assistant_messages
-        )
-        generic_empathy = contains_generic_empathy_without_grounding(
-            last_user_message, candidate
-        )
-        missing_spiritual_baseline = not has_spiritual_baseline_signal(candidate)
-        missing_practical_step = (
-            enforce_practical_step and not has_practical_action_step(candidate)
-        )
-        missing_real_support = (
-            enforce_practical_step
-            and requires_real_help
-            and not has_human_support_suggestion(candidate)
-            and not has_self_guided_help(candidate)
-        )
-        leading_echo = starts_with_user_echo(
-            user_message=last_user_message, assistant_message=candidate
-        )
-        repeated_opening = has_repeated_opening_structure(
-            candidate, recent_assistant_messages
-        )
-        mechanical_structure = (
-            "1." in candidate
-            or "2." in candidate
-            or "3." in candidate
-            or candidate.count(":") > 3
-        )
-
-        rejected = (
-            semantic_loop
-            or blocked_template
-            or has_unverified_inference
-            or spiritual_imposition
-            or unsolicited_spiritualization
-            or spiritual_template_repetition
-            or generic_empathy
-            or missing_spiritual_baseline
-            or missing_practical_step
-            or missing_real_support
-            or leading_echo
-            or repeated_opening
-            or mechanical_structure
-        )
-        return {"rejected": rejected, "semantic_loop": semantic_loop}
 
     def _save_runtime_counters(
         self,
@@ -779,58 +783,11 @@ REGRAS GERAIS:
 
         model_name = WACHAT_RESPONSE_MODEL
         max_completion_tokens = FIXED_RESPONSE_MAX_COMPLETION_TOKENS
-        question_first_modes = {
-            MODE_ACOLHIMENTO,
-            MODE_EXPLORACAO,
-            MODE_AMBIVALENCIA,
-            MODE_DEFENSIVO,
-        }
-        enforce_practical_step = (
-            generation_state["direct_guidance_request"]
-            and generation_state["conversation_mode"] != MODE_PRESENCA_PROFUNDA
-            and generation_state["conversation_mode"] not in question_first_modes
-        )
-        requires_real_help = bool(generation_state.get("deep_presence_trigger")) or (
-            self._is_substance_context(last_person_message.content, active_topic)
-        )
-        allow_unsolicited_spiritualization = generation_state[
-            "spiritual_intensity"
-        ] in {"media", "alta"}
-
         client = getattr(self._llm_service, "client", None)
         if client is None:
             raise RuntimeError(
                 "OpenAI client is not available on configured LLM service."
             )
-
-        def _extract_text_response(response: Any) -> str:
-            choices = getattr(response, "choices", None) or []
-            if not choices:
-                return ""
-            message = getattr(choices[0], "message", None)
-            if not message:
-                return ""
-
-            content = getattr(message, "content", None)
-            if isinstance(content, str):
-                return content.strip()
-            if isinstance(content, list):
-                chunks = []
-                for part in content:
-                    text = getattr(part, "text", None)
-                    if isinstance(text, str) and text.strip():
-                        chunks.append(text.strip())
-                        continue
-                    if isinstance(part, dict):
-                        dict_text = part.get("text")
-                        if isinstance(dict_text, str) and dict_text.strip():
-                            chunks.append(dict_text.strip())
-                return "\n".join(chunks).strip()
-
-            output_text = getattr(response, "output_text", None)
-            if isinstance(output_text, str):
-                return output_text.strip()
-            return ""
 
         def _usage_metadata(response: Any) -> Dict[str, Any]:
             usage = getattr(response, "usage", None)
@@ -858,23 +815,6 @@ REGRAS GERAIS:
                 "completion_tokens_details": completion_details,
             }
 
-        def _dev_log(metadata: Dict[str, Any]) -> None:
-            if os.environ.get("DEBUG", "false").strip().lower() not in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }:
-                return
-            print(
-                "[generate_response_message] "
-                f"finish_reason={metadata.get('finish_reason')} "
-                f"prompt_tokens={metadata.get('prompt_tokens')} "
-                f"completion_tokens={metadata.get('completion_tokens')} "
-                f"reasoning_tokens={metadata.get('reasoning_tokens')} "
-                f"accepted_prediction_tokens={metadata.get('accepted_prediction_tokens')}"
-            )
-
         selected_temperature = FIXED_TEMPERATURE
         selected_max_completion_tokens = max_completion_tokens
         regeneration_counter = 0
@@ -888,39 +828,75 @@ REGRAS GERAIS:
             "model": model_name,
             "messages": request_messages,
             "max_completion_tokens": selected_max_completion_tokens,
+            "reasoning_effort": "low",
             "timeout": FIXED_TIMEOUT_SECONDS,
             "temperature": selected_temperature,
+            "n": 2,
         }
-
         response = client.chat.completions.create(**request_kwargs)
         response_metadata = _usage_metadata(response)
-        _dev_log(response_metadata)
 
-        assistant_text = _extract_text_response(response).strip()
-        if not assistant_text:
-            raise RuntimeError("OpenAI returned empty assistant content.")
+        choices = getattr(response, "choices", None) or []
+        if len(choices) < 2:
+            raise RuntimeError("OpenAI did not return the expected 2 candidates.")
 
-        assistant_text = strip_opening_name_if_recently_used(
-            message=assistant_text,
-            name=profile.name,
-            recent_assistant_messages=recent_assistant_messages,
-        )
-        assistant_text = enforce_hard_limits(assistant_text, max_sentences=4)
+        def _extract_text_from_choice(choice: Any) -> str:
+            message = getattr(choice, "message", None)
+            if not message:
+                return ""
+            content = getattr(message, "content", None)
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                chunks = []
+                for part in content:
+                    text = getattr(part, "text", None)
+                    if isinstance(text, str) and text.strip():
+                        chunks.append(text.strip())
+                        continue
+                    if isinstance(part, dict):
+                        dict_text = part.get("text")
+                        if isinstance(dict_text, str) and dict_text.strip():
+                            chunks.append(dict_text.strip())
+                return "\n".join(chunks).strip()
+            return ""
 
-        validation = self._candidate_should_regenerate(
-            candidate=assistant_text,
-            last_user_message=last_person_message.content,
-            recent_assistant_messages=recent_assistant_messages,
-            enforce_practical_step=enforce_practical_step,
-            requires_real_help=requires_real_help,
-            allow_unsolicited_spiritualization=allow_unsolicited_spiritualization,
-        )
-        if validation["rejected"]:
-            if validation["semantic_loop"]:
-                semantic_loop_regenerations = 1
-            raise RuntimeError(
-                "Generated response failed runtime validation constraints."
+        attempts: List[Dict[str, Any]] = []
+        for attempt_number, choice in enumerate(choices[:2], start=1):
+            assistant_text_candidate = _extract_text_from_choice(choice)
+            logger.info(
+                "Raw assistant response received profile_id=%s channel=%s content=%r",
+                profile.id,
+                channel,
+                assistant_text_candidate,
             )
+            if not assistant_text_candidate:
+                raise RuntimeError("OpenAI returned empty assistant content.")
+
+            evaluation = self._evaluate_response(
+                user_message=last_person_message.content,
+                assistant_response=assistant_text_candidate,
+            )
+            score = evaluation["score"]
+            analysis = evaluation["analysis"]
+            improvement_prompt = evaluation["improvement_prompt"]
+            logger.info("Evaluation attempt %s | score=%s", attempt_number, score)
+            logger.info("Improvement prompt: %s", improvement_prompt)
+
+            attempts.append(
+                {
+                    "response": assistant_text_candidate,
+                    "score": score,
+                    "analysis": analysis,
+                    "improvement_prompt": improvement_prompt,
+                }
+            )
+
+        best_attempt = max(attempts, key=lambda x: x["score"])
+        assistant_text = best_attempt["response"]
+        best_score = best_attempt["score"]
+        selected_runtime_prompt = prompt_aux
+        logger.info("Selected best score=%s", best_score)
 
         loop_counter = 1 if generation_state["loop_detected"] else 0
         self._save_runtime_counters(
@@ -937,10 +913,23 @@ REGRAS GERAIS:
                 "temperature": selected_temperature,
                 "max_completion_tokens": selected_max_completion_tokens,
             },
+            "prompts": {
+                "system_prompt": WACHAT_RESPONSE_SYSTEM_PROMPT,
+                "runtime_prompt": selected_runtime_prompt,
+            },
+            "payload": {
+                "messages": request_messages,
+                "reasoning_effort": "low",
+                "timeout": FIXED_TIMEOUT_SECONDS,
+            },
             "metadata": {
                 **response_metadata,
                 "regeneration_counter": regeneration_counter,
                 "semantic_loop_regenerations": semantic_loop_regenerations,
+            },
+            "evaluation": {
+                "attempts": attempts,
+                "best_score": best_score,
             },
         }
         Message.objects.create(
@@ -981,7 +970,7 @@ REGRAS GERAIS:
         response_text = self.basic_call(
             url_type="generate",
             prompt=SYSTEM_PROMPT,
-            max_tokens=10,
+            max_tokens=FIXED_GENDER_INFERENCE_MAX_COMPLETION_TOKENS,
         )
         inferred = response_text.lower().strip()
         if inferred not in ["male", "female", "unknown"]:
@@ -1126,7 +1115,7 @@ REGRAS GERAIS:
         result = self.basic_call(
             url_type="generate",
             prompt=PROMPT,
-            max_tokens=250,
+            max_tokens=FIXED_THEME_PROMPT_MAX_COMPLETION_TOKENS,
         )
 
         return result

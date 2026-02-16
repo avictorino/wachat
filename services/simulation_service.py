@@ -6,6 +6,8 @@ from typing import Iterable, List, Union
 from core.models import Message, Profile
 from services.openai_service import OpenAIService
 
+SIMULATION_MAX_COMPLETION_TOKENS = 1200
+
 
 class SimulatedUserProfile(Enum):
     AMBIVALENTE = "ambivalente"
@@ -105,7 +107,8 @@ def _build_simple_simulation_prompt(
         {history_text if history_text else "Sem histórico relevante."}
 
         Regras obrigatórias:
-        - Responda com uma única mensagem curta, com 1 ou 2 frases no máximo.
+        - Responda com uma única mensagem curta, com 1 frase preferencialmente (no máximo 2).
+        - Limite total: até 30 palavras.
         - Não use listas.
         - Não copie literalmente os textos de contexto acima.
         - Não explique a situação de forma abstrata.
@@ -184,7 +187,7 @@ class SimulationUseCase:
             self._llm_service.basic_call(
                 url_type="generate",
                 prompt=prompt,
-                max_tokens=480,
+                max_tokens=SIMULATION_MAX_COMPLETION_TOKENS,
             )
             or ""
         ).strip()

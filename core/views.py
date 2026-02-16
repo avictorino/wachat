@@ -81,6 +81,7 @@ class ChatView(View):
             "selected_profile": selected_profile,
             "messages": messages,
             "last_assistant_message_id": last_assistant_message_id,
+            "chat_error": request.GET.get("chat_error", "").strip(),
             "simulated_preview": request.GET.get("simulated_preview", "").strip(),
             "simulated_error": request.GET.get("simulated_error", "").strip(),
             "selected_predefined_scenario": request.GET.get(
@@ -155,7 +156,17 @@ class ChatView(View):
             ollama_prompt=user_prompt_payload,
         )
 
-        ChatService().generate_response_message(profile=profile, channel="chat")
+        chat_service = ChatService()
+        try:
+            chat_service.generate_response_message(profile=profile, channel="chat")
+        except RuntimeError as exc:
+            logger.exception(
+                "Chat generation failed for profile_id=%s, channel=chat: %s",
+                profile.id,
+                exc,
+            )
+            query_params = urlencode({"profile_id": profile.id, "chat_error": str(exc)})
+            return redirect(f"{reverse('chat')}?{query_params}")
 
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 

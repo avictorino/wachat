@@ -4,9 +4,8 @@ from typing import Any, Dict, Literal, Optional, Union
 from openai import OpenAI
 
 GPT5_MODEL = "gpt-5-mini"
-GPT5_TEMPERATURE = 1.0
 OPENAI_TIMEOUT_SECONDS = 60
-DEFAULT_MAX_COMPLETION_TOKENS = 900
+DEFAULT_MAX_COMPLETION_TOKENS = 1000
 
 
 class OpenAIService:
@@ -24,23 +23,17 @@ class OpenAIService:
     def basic_call(
         self,
         prompt: Union[str, list],
-        max_tokens: int = 100,
+        max_tokens: int = DEFAULT_MAX_COMPLETION_TOKENS,
         url_type: str = Literal["chat", "generate"],
         num_ctx: int = None,
         system: Optional[str] = None,
     ) -> str:
         selected_model = self.default_model
-        resolved_temperature = GPT5_TEMPERATURE
         messages = self._build_messages(prompt=prompt, system=system)
-        resolved_max_tokens = self._resolve_max_completion_tokens(
-            messages=messages,
-            requested_max_tokens=max_tokens,
-        )
         request_payload = self._build_request_payload(
             model=selected_model,
             messages=messages,
-            temperature=resolved_temperature,
-            max_completion_tokens=resolved_max_tokens,
+            max_completion_tokens=max_tokens,
             timeout=OPENAI_TIMEOUT_SECONDS,
         )
 
@@ -49,9 +42,8 @@ class OpenAIService:
             "url_type": url_type,
             "request_params": {
                 "model": selected_model,
-                "temperature": resolved_temperature,
-                "max_tokens": resolved_max_tokens,
-                "max_completion_tokens": resolved_max_tokens,
+                "max_tokens": max_tokens,
+                "max_completion_tokens": max_tokens,
                 "num_ctx": num_ctx,
                 "system": system,
             },
@@ -79,25 +71,17 @@ class OpenAIService:
             messages.append({"role": "user", "content": str(prompt)})
         return messages
 
-    def _resolve_max_completion_tokens(
-        self, messages: list, requested_max_tokens: int
-    ) -> int:
-        if requested_max_tokens and requested_max_tokens > 0:
-            return requested_max_tokens
-        return DEFAULT_MAX_COMPLETION_TOKENS
-
     def _build_request_payload(
         self,
         model: str,
         messages: list,
-        temperature: float,
         max_completion_tokens: int,
         timeout: int,
     ) -> Dict[str, Any]:
         payload: Dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": temperature,
+            "reasoning_effort": "low",
             "max_completion_tokens": max_completion_tokens,
             "timeout": timeout,
         }
@@ -110,7 +94,7 @@ class OpenAIService:
             "model": payload.get("model"),
             "temperature": payload.get("temperature"),
             "max_completion_tokens": payload.get("max_completion_tokens"),
-            "max_tokens": payload.get("max_tokens"),
+            "max_tokens": payload.get("max_completion_tokens"),
             "timeout": payload.get("timeout"),
             "message_roles": [m.get("role") for m in payload.get("messages", [])],
         }
