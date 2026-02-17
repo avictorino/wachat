@@ -5,7 +5,6 @@ This module provides functions to retrieve relevant context from the RAG chunks
 stored in the database based on semantic similarity.
 """
 
-import logging
 import os
 from typing import List
 
@@ -14,8 +13,6 @@ from django.db.models import Value
 from pgvector.django import CosineDistance, VectorField
 
 from core.models import RagChunk
-
-logger = logging.getLogger(__name__)
 
 
 def get_embedding(text: str) -> List[float]:
@@ -48,36 +45,34 @@ def get_embedding(text: str) -> List[float]:
     return embedding
 
 
-def get_rag_context(user_input: str, limit: int = 3) -> List[str]:
-    """
-    Retrieve relevant RAG context based on semantic similarity to user input.
-    """
-
-    query_embedding = get_embedding(user_input)
-
-    # 🔑 CRITICAL: cast embedding properly
-    query_vector = Value(query_embedding, output_field=VectorField())
-
+class RAGService:
     CHUNK_FETCH_MULTIPLIER = 2
-    MAX_DISTANCE = 0.35  # optional but strongly recommended
+    MAX_DISTANCE = 0.35
 
-    chunks = list(
-        RagChunk.objects.filter(embedding__isnull=False)
-        .annotate(distance=CosineDistance("embedding", query_vector))
-        .filter(distance__lt=MAX_DISTANCE)
-        .order_by("distance")
-        .values("text")[: limit * CHUNK_FETCH_MULTIPLIER]
-    )
+    def retrieve(self, query: str, theme_id: str, limit: int = 3) -> List[str]:
+        """
+        Retrieve relevant RAG context by similarity, constrained to one theme.
+        """
+        chunks_queryset = RagChunk.objects.filter(
+            theme_id=theme_id,
+            embedding__isnull=False,
+        )
+        if not chunks_queryset.exists():
+            raise RuntimeError(f"No RAG chunks found for theme '{theme_id}'.")
 
-    if not chunks:
-        logger.warning("No RAG chunks found after similarity filtering")
-        return []
+        query_embedding = get_embedding(query)
+        query_vector = Value(query_embedding, output_field=VectorField())
 
-    result = [c.get("text") for c in chunks]
+        chunks = list(
+            chunks_queryset.annotate(distance=CosineDistance("embedding", query_vector))
+            .filter(distance__lt=self.MAX_DISTANCE)
+            .order_by("distance")
+            .values("text")[: limit * self.CHUNK_FETCH_MULTIPLIER]
+        )
 
-    # logger.info(
-    #     "RAG retrieved %s chunks (behavior=%s, content=%s)",
-    #     len(result)
-    # )
+        if not chunks:
+            raise RuntimeError(
+                f"No RAG chunks found after similarity filtering for theme '{theme_id}'."
+            )
 
-    return result
+        return [chunk.get("text") for chunk in chunks]

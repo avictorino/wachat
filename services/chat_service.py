@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from django.utils import timezone
 
-from core.models import Message, Profile
+from core.models import Message, Profile, ThemeV2
 from services.conversation_runtime import (
     MODE_ACOLHIMENTO,
     MODE_AMBIVALENCIA,
@@ -25,7 +25,8 @@ from services.conversation_runtime import (
     semantic_similarity,
 )
 from services.openai_service import OpenAIService
-from services.rag_service import get_rag_context
+from services.rag_service import RAGService
+from services.theme_classifier import ThemeClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,8 @@ class ChatService:
 
     def __init__(self):
         self._llm_service = OpenAIService()
+        self._rag_service = RAGService()
+        self._theme_classifier = ThemeClassifier()
 
     def basic_call(self, *args, **kwargs) -> str:
         return self._llm_service.basic_call(*args, **kwargs)
@@ -675,6 +678,7 @@ Resposta do assistente para avaliar:
         last_person_message: Message,
         generation_state: Dict[str, Any],
         active_topic: Optional[str],
+        theme_id: str,
     ) -> str:
         context_messages = queryset.exclude(id=last_person_message.id).order_by(
             "-created_at"
@@ -690,7 +694,11 @@ Resposta do assistente para avaliar:
                     if item.get("topic")
                 ]
             )
-        rag_contexts = get_rag_context(last_person_message.content, limit=3)
+        rag_contexts = self._rag_service.retrieve(
+            query=last_person_message.content,
+            theme_id=theme_id,
+            limit=3,
+        )
 
         return self._build_dynamic_runtime_prompt(
             conversation_mode=generation_state["conversation_mode"],
@@ -779,6 +787,7 @@ Resposta do assistente para avaliar:
             last_person_message=last_person_message,
             generation_state=generation_state,
             active_topic=active_topic,
+            theme_id=self._classify_and_persist_message_theme(last_person_message),
         )
 
         model_name = WACHAT_RESPONSE_MODEL
@@ -940,6 +949,16 @@ Resposta do assistente para avaliar:
             ollama_prompt=response_payload,
         )
         return assistant_text
+
+    def _classify_and_persist_message_theme(self, message: Message) -> str:
+        theme_id = self._theme_classifier.classify(message.content)
+        theme = ThemeV2.objects.filter(id=theme_id).first()
+        if not theme:
+            raise RuntimeError(f"Theme '{theme_id}' not found in database.")
+        if message.theme_id != theme.id:
+            message.theme = theme
+            message.save(update_fields=["theme"])
+        return theme.id
 
     def infer_gender(self, name: str) -> str:
         """

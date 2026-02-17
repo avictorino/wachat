@@ -3,7 +3,7 @@
 from enum import Enum
 from typing import Iterable, List, Union
 
-from core.models import Message, Profile
+from core.models import Message, Profile, ThemeV2
 from services.openai_service import OpenAIService
 
 SIMULATION_MAX_COMPLETION_TOKENS = 1200
@@ -50,17 +50,12 @@ PREDEFINED_SCENARIOS = {
     "sem_esperanca": "se sente sem esperança",
 }
 
-THEME_OPTIONS = {
-    "": "não ficou claro",
-    "relacionamento": "conflitos em relacionamento e família",
-    "financeiro": "dificuldades com dinheiro e dívidas",
-    "vicios": "vícios e recaídas",
-    "saude": "saúde fragilizada e cansaço",
-    "luto_perda": "luto e perdas recentes",
-    "trabalho": "pressão e desgaste no trabalho",
-    "solidao": "solidão e falta de suporte",
-    "outros": "um problema importante ainda não nomeado",
-}
+
+def _theme_options_from_db() -> dict:
+    options = {"": "não ficou claro"}
+    for theme in ThemeV2.objects.all().order_by("name"):
+        options[theme.id] = theme.name
+    return options
 
 
 def _to_recent_history(conversation: Iterable, limit: int = 5) -> List[dict]:
@@ -164,11 +159,13 @@ class SimulationUseCase:
         selected_scenario = (
             predefined_scenario if predefined_scenario in PREDEFINED_SCENARIOS else ""
         )
-        selected_theme = theme if theme in THEME_OPTIONS else ""
+        available_theme_ids = set(ThemeV2.objects.values_list("id", flat=True))
+        selected_theme = theme if theme in available_theme_ids else ""
+        theme_options = _theme_options_from_db()
         feeling_label = PREDEFINED_SCENARIOS.get(
             selected_scenario, "está emocionalmente abalada"
         )
-        problem_label = THEME_OPTIONS.get(selected_theme, "não ficou claro")
+        problem_label = theme_options.get(selected_theme, "não ficou claro")
         recent_history = _to_recent_history(conversation=conversation, limit=5)
         history_text = ""
         for message in recent_history:

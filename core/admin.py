@@ -3,7 +3,7 @@ import json
 from django.contrib import admin
 from django.utils.html import format_html
 
-from core.models import Message, Profile, RagChunk, Theme
+from core.models import BibleTextFlat, Message, Profile, RagChunk, ThemeV2
 
 
 class MessageInline(admin.TabularInline):
@@ -17,9 +17,9 @@ class MessageInline(admin.TabularInline):
 
     model = Message
     extra = 0
-    readonly_fields = ["role", "content", "channel", "created_at"]
+    readonly_fields = ["role", "content", "channel", "theme", "created_at"]
     can_delete = False
-    fields = ["role", "channel", "content", "created_at"]
+    fields = ["role", "channel", "theme", "content", "created_at"]
     ordering = ["-created_at"]
 
     def has_add_permission(self, request, obj=None):
@@ -31,14 +31,17 @@ class MessageInline(admin.TabularInline):
 class MessageAdmin(admin.ModelAdmin):
     """Admin interface for Message model."""
 
-    list_display = ["id", "profile", "role", "content_preview", "created_at"]
-    list_filter = ["role", "channel", "created_at"]
+    list_display = ["id", "profile", "role", "theme", "content_preview", "created_at"]
+    list_filter = ["role", "channel", "theme", "created_at"]
     search_fields = ["content", "profile__name"]
     readonly_fields = ["created_at", "ollama_prompt_display"]
     ordering = ["-created_at"]
 
     fieldsets = (
-        ("Message Info", {"fields": ("profile", "role", "content", "channel")}),
+        (
+            "Message Info",
+            {"fields": ("profile", "role", "content", "channel", "theme")},
+        ),
         (
             "Ollama Prompt",
             {"fields": ("ollama_prompt_display",), "classes": ("collapse",)},
@@ -112,8 +115,16 @@ class ProfileAdmin(admin.ModelAdmin):
 class RagChunkAdmin(admin.ModelAdmin):
     """Admin interface for RagChunk model."""
 
-    list_display = ["id", "source", "page", "chunk_index", "type", "created_at"]
-    list_filter = ["type", "source", "created_at"]
+    list_display = [
+        "id",
+        "source",
+        "page",
+        "chunk_index",
+        "type",
+        "theme",
+        "created_at",
+    ]
+    list_filter = ["type", "theme", "source", "created_at"]
     search_fields = ["id", "source", "raw_text", "text"]
     readonly_fields = ["id", "created_at", "conversations_display"]
     ordering = ["source", "page", "chunk_index"]
@@ -122,7 +133,10 @@ class RagChunkAdmin(admin.ModelAdmin):
     exclude = ["embedding"]
 
     fieldsets = (
-        ("Identification", {"fields": ("id", "source", "page", "chunk_index", "type")}),
+        (
+            "Identification",
+            {"fields": ("id", "source", "page", "chunk_index", "type", "theme")},
+        ),
         ("Content", {"fields": ("raw_text", "conversations_display", "text")}),
         ("Metadata", {"fields": ("created_at",)}),
     )
@@ -140,12 +154,31 @@ class RagChunkAdmin(admin.ModelAdmin):
     conversations_display.short_description = "Conversations (Formatted)"
 
 
-@admin.register(Theme)
-class ThemeAdmin(admin.ModelAdmin):
-    """Admin interface for Theme model."""
+@admin.register(ThemeV2)
+class ThemeV2Admin(admin.ModelAdmin):
+    """Admin interface for ThemeV2 model."""
 
-    list_display = ["name", "role", "prompt_short"]
+    list_display = ["id", "name", "prompt_short"]
+    search_fields = ["id", "name", "prompt"]
 
     def prompt_short(self, obj):
         """Show truncated prompt in list view."""
         return obj.prompt[:50] + "..." if len(obj.prompt) > 50 else obj.prompt
+
+
+@admin.register(BibleTextFlat)
+class BibleTextFlatAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "translation",
+        "testament",
+        "book",
+        "chapter",
+        "verse",
+        "reference",
+        "theme",
+    ]
+    list_filter = ["translation", "testament", "book", "chapter", "theme"]
+    search_fields = ["reference", "text", "book"]
+    ordering = ["book_order", "chapter", "verse"]
+    readonly_fields = ["embedding"]

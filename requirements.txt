@@ -15,6 +15,7 @@ isort==6.1.0
 pre-commit==4.3.0
 gunicorn==23.0.0
 pymupdf==1.26.5
+pdfminer.six==20231228
 pgvector==0.4.2
 Faker==34.0.1
 openai==1.109.1

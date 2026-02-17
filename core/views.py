@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.views import View
 from faker import Faker
 
-from core.models import Message, Profile
+from core.models import Message, Profile, ThemeV2
 from services.chat_service import ChatService
 from services.simulation_service import SimulatedUserProfile, SimulationUseCase
 
@@ -93,6 +93,7 @@ class ChatView(View):
             "selected_simulation_theme": request.GET.get(
                 "selected_simulation_theme", ""
             ).strip(),
+            "simulation_theme_choices": ThemeV2.objects.all().order_by("name"),
         }
 
         return render(request, "chat.html", context)

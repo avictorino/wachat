@@ -601,14 +601,9 @@
             </select>
             <select name="simulation_theme">
                 <option value="" {% if not selected_simulation_theme %}selected{% endif %}>Meu problema</option>
-                <option value="relacionamento" {% if selected_simulation_theme == "relacionamento" %}selected{% endif %}>Relacionamento e família</option>
-                <option value="financeiro" {% if selected_simulation_theme == "financeiro" %}selected{% endif %}>Dinheiro e dívidas</option>
-                <option value="vicios" {% if selected_simulation_theme == "vicios" %}selected{% endif %}>Vícios e recaídas</option>
-                <option value="saude" {% if selected_simulation_theme == "saude" %}selected{% endif %}>Saúde e cansaço</option>
-                <option value="luto_perda" {% if selected_simulation_theme == "luto_perda" %}selected{% endif %}>Luto e perda</option>
-                <option value="trabalho" {% if selected_simulation_theme == "trabalho" %}selected{% endif %}>Trabalho e pressão</option>
-                <option value="solidao" {% if selected_simulation_theme == "solidao" %}selected{% endif %}>Solidão</option>
-                <option value="outros" {% if selected_simulation_theme == "outros" %}selected{% endif %}>Outro problema</option>
+                {% for theme in simulation_theme_choices %}
+                <option value="{{ theme.id }}" {% if selected_simulation_theme == theme.id %}selected{% endif %}>{{ theme.name }}</option>
+                {% endfor %}
             </select>
             <button type="submit" class="secondary">🎭 Simulate</button>
         </form>
