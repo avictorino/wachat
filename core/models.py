@@ -2,7 +2,6 @@ import json
 
 from django.db import models
 from pgvector.django import VectorField
-from pgvector.django.indexes import HnswIndex
 
 
 class ThemeV2(models.Model):
@@ -272,7 +271,7 @@ class RagChunk(models.Model):
 
     # Vector embedding based on conversational text
     embedding = VectorField(
-        dimensions=768,
+        dimensions=3072,
         help_text="Vector embedding derived from the conversational text",
     )
 
@@ -306,7 +305,7 @@ class RagChunk(models.Model):
 
 class BibleTextFlat(models.Model):
     id = models.AutoField(primary_key=True)
-    translation = models.CharField(max_length=50)
+    translation = models.CharField(max_length=50, db_index=True)
     testament = models.CharField(max_length=2)
     book = models.CharField(max_length=100)
     book_order = models.IntegerField()
@@ -314,7 +313,7 @@ class BibleTextFlat(models.Model):
     verse = models.IntegerField()
     reference = models.CharField(max_length=30)
     text = models.TextField()
-    embedding = VectorField(dimensions=768)
+    embedding = VectorField(dimensions=3072)
     theme = models.ForeignKey(
         ThemeV2,
         on_delete=models.PROTECT,
@@ -325,11 +324,4 @@ class BibleTextFlat(models.Model):
     class Meta:
         indexes = [
             models.Index(fields=["book", "chapter", "verse"], name="bible_bcv_idx"),
-            HnswIndex(
-                name="bible_embedding_hnsw_idx",
-                fields=["embedding"],
-                m=16,
-                ef_construction=64,
-                opclasses=["vector_cosine_ops"],
-            ),
         ]

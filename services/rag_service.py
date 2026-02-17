@@ -1,47 +1,31 @@
-"""
-RAG (Retrieval-Augmented Generation) service for semantic search.
-
-This module provides functions to retrieve relevant context from the RAG chunks
-stored in the database based on semantic similarity.
-"""
-
+import logging
 import os
 from typing import List
 
-import requests
 from django.db.models import Value
+from openai import OpenAI
 from pgvector.django import CosineDistance, VectorField
 
 from core.models import RagChunk
 
+logger = logging.getLogger(__name__)
+
+EMBEDDING_MODEL = "text-embedding-3-large"
+
 
 def get_embedding(text: str) -> List[float]:
-    """
-    Generate embedding for text using Ollama API.
+    openai_api_key = os.environ.get("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is required for RAG embeddings.")
 
-    Args:
-        text: The text to embed
-
-    Returns:
-        List of float values representing the embedding vector
-
-    Raises:
-        RuntimeError: If embedding generation fails
-    """
-    ollama_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-    embed_model = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
-
-    resp = requests.post(
-        f"{ollama_url.rstrip('/')}/api/embeddings",
-        json={"model": embed_model, "prompt": text},
-        timeout=60,
+    client = OpenAI(api_key=openai_api_key)
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text,
     )
-    resp.raise_for_status()
-
-    data = resp.json()
-    embedding = data.get("embedding")
+    embedding = response.data[0].embedding
     if not isinstance(embedding, list):
-        raise RuntimeError(f"Invalid embedding response: {data}")
+        raise RuntimeError("Invalid embedding response from OpenAI.")
     return embedding
 
 
@@ -58,10 +42,11 @@ class RAGService:
             embedding__isnull=False,
         )
         if not chunks_queryset.exists():
-            raise RuntimeError(f"No RAG chunks found for theme '{theme_id}'.")
+            logger.warning(f"No RAG chunks found for theme '{theme_id}'.")
+            return []
 
         query_embedding = get_embedding(query)
-        query_vector = Value(query_embedding, output_field=VectorField())
+        query_vector = Value(query_embedding, output_field=VectorField(dimensions=3072))
 
         chunks = list(
             chunks_queryset.annotate(distance=CosineDistance("embedding", query_vector))

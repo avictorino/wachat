@@ -1,21 +1,23 @@
 import csv
 import hashlib
+import os
 from typing import Dict
 
 import requests
 from django.core.management.base import BaseCommand, CommandError
+from openai import OpenAI
 
 from core.models import RagChunk, ThemeV2
 
 THEME_RELACIONAMENTO = "relacionamento"
 REQUEST_TIMEOUT_SECONDS = 60
+EMBEDDING_MODEL = "text-embedding-3-large"
 
 """
 python3 manage.py ingest_goodreads_csv_to_rag \
   --csv-path ./relationships_quotes.csv \
   --ollama-url http://localhost:11434 \
   --translate-model llama3:8b \
-  --embed-model nomic-embed-text \
   --source goodreads_relationships
 """
 
@@ -53,32 +55,21 @@ def _translate_to_pt_br(
     return translated
 
 
-def _embed_text(
-    *,
-    ollama_url: str,
-    model: str,
-    text: str,
-):
-    response = requests.post(
-        f"{ollama_url.rstrip('/')}/api/embeddings",
-        json={
-            "model": model,
-            "prompt": text,
-        },
-        timeout=REQUEST_TIMEOUT_SECONDS,
+def _embed_text(*, client: OpenAI, text: str):
+    response = client.embeddings.create(
+        model=EMBEDDING_MODEL,
+        input=text,
     )
-    response.raise_for_status()
-    payload = response.json()
-    embedding = payload.get("embedding")
+    embedding = response.data[0].embedding
     if not isinstance(embedding, list):
-        raise CommandError("Ollama embeddings response is invalid.")
+        raise CommandError("OpenAI embeddings response is invalid.")
     return embedding
 
 
 class Command(BaseCommand):
     help = (
         "Import Goodreads quotes CSV into RagChunk with theme='relacionamento', "
-        "translating to pt-BR and generating embeddings via local Ollama."
+        "translating to pt-BR and generating embeddings via OpenAI."
     )
 
     def add_arguments(self, parser):
@@ -96,11 +87,6 @@ class Command(BaseCommand):
             "--translate-model",
             required=True,
             help="Ollama model name used for translation to pt-BR.",
-        )
-        parser.add_argument(
-            "--embed-model",
-            required=True,
-            help="Ollama model name used for embeddings.",
         )
         parser.add_argument(
             "--source",
@@ -123,9 +109,9 @@ class Command(BaseCommand):
         csv_path = str(options["csv_path"]).strip()
         ollama_url = str(options["ollama_url"]).strip()
         translate_model = str(options["translate_model"]).strip()
-        embed_model = str(options["embed_model"]).strip()
         source = str(options["source"]).strip()
         chunk_type = str(options["chunk_type"]).strip()
+        openai_api_key = os.environ.get("OPENAI_API_KEY")
 
         if not csv_path:
             raise CommandError("--csv-path is required.")
@@ -133,10 +119,12 @@ class Command(BaseCommand):
             raise CommandError("--ollama-url is required.")
         if not translate_model:
             raise CommandError("--translate-model is required.")
-        if not embed_model:
-            raise CommandError("--embed-model is required.")
         if not source:
             raise CommandError("--source is required.")
+        if not openai_api_key:
+            raise CommandError("OPENAI_API_KEY is required.")
+
+        openai_client = OpenAI(api_key=openai_api_key)
 
         page_counters: Dict[int, int] = {}
         total_created = 0
@@ -185,8 +173,7 @@ class Command(BaseCommand):
                 )
                 rag_text = f"{translated_text} (Autor: {author})"
                 embedding = _embed_text(
-                    ollama_url=ollama_url,
-                    model=embed_model,
+                    client=openai_client,
                     text=rag_text,
                 )
 

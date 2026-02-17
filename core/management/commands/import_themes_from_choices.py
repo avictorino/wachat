@@ -25,6 +25,7 @@ def _generate_theme_prompt_partial(
         "- 1 linha de estado emocional do tema\n"
         "- 3 proibições objetivas\n"
         "- 3 exigências operacionais para a próxima resposta\n"
+        "- 4 Resultado em Portugues brasileiro\n"
         "Seja direto e acionável.\n\n"
         f"Tema id: {theme_id}\n"
         f"Tema nome: {theme_name}\n"
