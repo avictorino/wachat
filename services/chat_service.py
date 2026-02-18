@@ -15,6 +15,7 @@ from services.conversation_runtime import (
     MODE_DEFENSIVO,
     MODE_EXPLORACAO,
     MODE_ORIENTACAO,
+    MODE_PASTOR_INSTITUCIONAL,
     MODE_PRESENCA_PROFUNDA,
     MODE_WELCOME,
     choose_conversation_mode,
@@ -39,6 +40,7 @@ VALID_CONVERSATION_MODES = {
     MODE_CULPA,
     MODE_ORIENTACAO,
     MODE_PRESENCA_PROFUNDA,
+    MODE_PASTOR_INSTITUCIONAL,
 }
 
 LEGACY_MODE_MAP = {
@@ -62,27 +64,34 @@ FIXED_GENDER_INFERENCE_MAX_COMPLETION_TOKENS = 400
 FIXED_THEME_PROMPT_MAX_COMPLETION_TOKENS = 1200
 FIXED_EVALUATION_MAX_COMPLETION_TOKENS = 500
 EVALUATION_MODEL = "gpt-5-mini"
+MULTI_MESSAGE_MIN_PARTS = 3
+MULTI_MESSAGE_MAX_PARTS = 4
+LOW_SCORE_REFINEMENT_THRESHOLD = 5.0
+TARGET_RESPONSE_SCORE = 8.0
+MAX_SCORE_REFINEMENT_ROUNDS = 3
 
 WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com acolhimento emocional e direção espiritual prática, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
 
 ESTILO
 - Português brasileiro simples, humano e direto.
-- Tom acolhedor, firme e objetivo.
-- Resposta entre 2 e 4 frases.
+- Tom pastoral firme, responsável e acolhedor.
+- Quando necessário, pode estruturar a resposta em múltiplos parágrafos.
+- Pode explicar processos institucionais com clareza.
 - Sem emojis.
 
 OBJETIVO POR TURNO
-- Escolha apenas UMA ação final: fazer 1 pergunta concreta OU dar orientação prática imediata.
-- Nunca faça pergunta e orientação prática na mesma resposta.
-- Em modo de EXPLORAÇÃO ou INVESTIGAÇÃO, é proibido oferecer oração ou intervenção espiritual direta.
-- Nesses modos, a resposta deve priorizar aprofundamento existencial.
+- Escolha a melhor forma de avançar a conversa.
+- Pode combinar explicação, orientação prática e pergunta estratégica quando necessário.
+- Quando o usuário pedir instrução formal ou explicação de processo, priorize resposta estruturada e orientadora.
+- Em modo de EXPLORAÇÃO, é proibido oferecer oração ou intervenção espiritual direta.
+- Nesse modo, a resposta deve priorizar aprofundamento existencial.
 
 PRIORIDADE EMOCIONAL
 - Reflita a emoção central da última mensagem do usuário.
 - Valide o conflito interno com base em algo literal dito pela pessoa.
 - Demonstre proximidade humana antes de direcionar.
 
-PROGRESSÃO ESPIRITUAL OBRIGATÓRIA
+PROGRESSÃO ESPIRITUAL
 
 Antes de:
 - Oferecer oração
@@ -102,6 +111,8 @@ O assistente DEVE primeiro:
 - Encerrar com frase espiritual conclusiva antes de entender a raiz.
 
 A espiritualidade deve entrar como aprofundamento do entendimento, nunca como atalho.
+- Em modo institucional, a explicação do processo pode preceder investigação emocional.
+- A espiritualidade pode acompanhar a orientação sem necessidade de etapa investigativa prévia.
 
 PROIBIÇÕES
 - Não usar linguagem clínica/técnica.
@@ -168,6 +179,72 @@ class ChatService:
                     "LLM output did not contain a valid JSON object."
                 ) from exc
             return json.loads(match.group(0))
+
+    def _split_sentences(self, text: str) -> List[str]:
+        normalized = re.sub(r"\s+", " ", (text or "").strip())
+        if not normalized:
+            return []
+        sentences = [
+            item.strip()
+            for item in re.split(r"(?<=[.!?])\s+", normalized)
+            if item.strip()
+        ]
+        return sentences
+
+    def _build_assistant_message_chunks(
+        self, *, text: str, conversation_mode: str
+    ) -> List[str]:
+        sentences = self._split_sentences(text)
+        if not sentences:
+            return []
+
+        if (
+            conversation_mode != MODE_PASTOR_INSTITUCIONAL
+            or len(sentences) < MULTI_MESSAGE_MIN_PARTS
+        ):
+            return [" ".join(sentences)]
+
+        target_parts = min(MULTI_MESSAGE_MAX_PARTS, len(sentences))
+        if target_parts < MULTI_MESSAGE_MIN_PARTS:
+            return [" ".join(sentences)]
+
+        total = len(sentences)
+        base_size = total // target_parts
+        remainder = total % target_parts
+        chunks = []
+        cursor = 0
+        for index in range(target_parts):
+            chunk_size = base_size + (1 if index < remainder else 0)
+            if chunk_size <= 0:
+                continue
+            chunk = " ".join(
+                sentences[cursor : cursor + chunk_size]  # noqa: E203
+            ).strip()  # noqa: E203
+            if chunk:
+                chunks.append(chunk)
+            cursor += chunk_size
+
+        return chunks or [" ".join(sentences)]
+
+    def _build_refinement_runtime_prompt(
+        self,
+        *,
+        base_runtime_prompt: str,
+        round_number: int,
+        score: float,
+        analysis: str,
+        improvement_prompt: str,
+    ) -> str:
+        return (
+            f"{base_runtime_prompt}\n\n"
+            f"REFINAMENTO DA RESPOSTA (RODADA {round_number}):\n"
+            f"- Score anterior: {score}\n"
+            f"- Análise crítica: {analysis}\n"
+            f"- Instrução de melhoria: {improvement_prompt}\n"
+            "- Gere uma nova resposta incorporando integralmente a instrução de melhoria.\n"
+            "- Evite os problemas apontados na análise.\n"
+            "- Não mencione avaliação, score, análise ou refinamento na resposta final.\n"
+        )
 
     def _extract_topic_signal(
         self,
@@ -254,6 +331,8 @@ Regras obrigatórias:
 - Penalize repetição estrutural, loop ou template dominante.
 - Avalie: clareza, profundidade emocional, progressão conversacional,
   fidelidade ao último turno do usuário e adequação espiritual ao contexto.
+- Valorize respostas estruturadas quando o usuário pedir instrução formal.
+- Não penalize respostas mais longas quando houver pedido de explicação processual.
 """.strip()
 
         evaluation_user_prompt = f"""
@@ -413,6 +492,7 @@ Resposta do assistente para avaliar:
         self,
         *,
         conversation_mode: str,
+        derived_mode: str,
         previous_mode: str,
         spiritual_intensity: str,
         allow_spiritual_context: bool,
@@ -421,11 +501,13 @@ Resposta do assistente para avaliar:
         active_topic: Optional[str],
         top_topics: str,
         last_user_message: str,
+        selected_theme_id: str,
+        selected_theme_name: str,
         theme_prompt: Optional[str],
         context_messages: list,
         rag_contexts: list,
     ) -> str:
-        runtime_mode = MODE_ORIENTACAO if direct_guidance_request else conversation_mode
+        runtime_mode = MODE_PASTOR_INSTITUCIONAL
 
         mode_objective = {
             MODE_ACOLHIMENTO: "acolher com precisão e abrir espaço de continuidade",
@@ -435,10 +517,17 @@ Resposta do assistente para avaliar:
             MODE_CULPA: "separar identidade de comportamento e propor reparo possível",
             MODE_ORIENTACAO: "entregar orientação prática breve e acionável",
             MODE_PRESENCA_PROFUNDA: "sustentar presença, dignidade e misericórdia em sofrimento profundo",
+            MODE_PASTOR_INSTITUCIONAL: "fornecer orientação institucional estruturada, com clareza processual e autoridade pastoral",
             MODE_WELCOME: "acolhimento inicial curto",
         }.get(runtime_mode, "avançar a conversa com precisão")
 
-        mode_actions = {
+        base_mode_actions = [
+            "Explique o processo de forma clara e estruturada.",
+            "Diferencie esferas espiritual e civil quando aplicável.",
+            "Oriente passos concretos dentro da igreja.",
+            "Finalize com uma pergunta estratégica que ajude a avançar.",
+        ]
+        derived_mode_actions = {
             MODE_ACOLHIMENTO: [
                 "Valide um elemento específico da fala atual.",
                 "Reconheça a posição delicada da pessoa sem pressionar solução.",
@@ -471,7 +560,6 @@ Resposta do assistente para avaliar:
             MODE_PRESENCA_PROFUNDA: [
                 "Sustente presença e dignidade sem sugerir ação concreta.",
                 "Neste turno, NÃO FAÇA pergunta.",
-                "Sustente presença sem investigar.",
                 "Se for necessário aprofundar, faça isso por reflexão, não por pergunta.",
                 "Use tom contemplativo e misericordioso.",
                 "Se houver pedido de ajuda direta, ofereça orientação concreta e segura com passos pequenos.",
@@ -479,10 +567,21 @@ Resposta do assistente para avaliar:
             MODE_WELCOME: [
                 "Acolha com sobriedade e convide para continuidade.",
             ],
-        }.get(runtime_mode, ["Escolha a melhor função para este turno."])
+        }
+        mode_actions = list(base_mode_actions)
+        mode_actions.extend(
+            derived_mode_actions.get(
+                derived_mode, ["Escolha a melhor função para este turno."]
+            )
+        )
 
         spiritual_policy = "Mantenha base espiritual leve (esperança/propósito) sem linguagem explícita."
-        if allow_spiritual_context or spiritual_intensity in {"media", "alta"}:
+        if derived_mode == MODE_EXPLORACAO:
+            spiritual_policy = (
+                "Não ofereça oração/intervenção espiritual direta neste turno; "
+                "mantenha foco em investigação concreta."
+            )
+        elif allow_spiritual_context or spiritual_intensity in {"media", "alta"}:
             spiritual_policy = (
                 "Use 1 ou 2 frases espirituais claras e respeitosas, com menção explícita a Deus "
                 "e, quando couber, a Jesus, oração ou Palavra, sem imposição."
@@ -493,13 +592,14 @@ Resposta do assistente para avaliar:
                 "concreta, sem moralizar."
             )
 
-        max_sentences = 4
-        max_questions = 1
+        max_sentences = 12
+        max_questions = 2
 
         prompt = f"""
     MODO ATUAL: {runtime_mode}
+    MODO DERIVADO: {derived_mode}
     MODO ANTERIOR: {previous_mode}
-    OBJETIVO DO MODO: {mode_objective}
+    OBJETIVO DO MODO BASE: {mode_objective}
     INTENSIDADE ESPIRITUAL: {spiritual_intensity}
 
     REGRAS GERAIS:
@@ -511,8 +611,7 @@ Resposta do assistente para avaliar:
     - Não iniciar ecoando a frase do usuário.
     - Não inferir sentimentos não declarados.
     - {spiritual_policy}
-    - Escolha apenas UMA ação final: pergunta concreta OU próximo passo simples.
-    - Nunca entregue pergunta e passo simples na mesma resposta.
+    - Combine explicação, orientação e pergunta quando fizer sentido natural.
     - Escolha a melhor função para este turno conforme o modo atual.
 
     TRATAMENTO OBRIGATÓRIO:
@@ -520,7 +619,7 @@ Resposta do assistente para avaliar:
     - É proibido usar terceira pessoa ("ela", "dele", "dela").
     """
 
-        if direct_guidance_request:
+        if direct_guidance_request and derived_mode != MODE_PASTOR_INSTITUCIONAL:
             prompt += (
                 "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: ação final obrigatória é orientação prática imediata. "
                 "Não finalizar com pergunta neste turno.\n"
@@ -538,8 +637,12 @@ Resposta do assistente para avaliar:
         if top_topics:
             prompt += f"TÓPICOS RECENTES: {top_topics}\n"
 
+        prompt += (
+            f"\nTEMA IDENTIFICADO DA MENSAGEM DO USUÁRIO: "
+            f"{selected_theme_name} ({selected_theme_id})\n"
+        )
         if theme_prompt:
-            prompt += f"\nTEMA CONTEXTUAL:\n{theme_prompt}\n"
+            prompt += f"\nINSTRUÇÃO TEMÁTICA:\n{theme_prompt}\n"
 
         prompt += "\nFUNÇÕES PRIORITÁRIAS DESTE TURNO:\n"
         for action in mode_actions:
@@ -649,7 +752,21 @@ Resposta do assistente para avaliar:
             repeated_user_pattern=repeated_user_pattern,
             signals=signals,
         )
-        if prayer_request_detected:
+        institutional_request = any(
+            phrase in last_user_message.lower()
+            for phrase in [
+                "como fazer",
+                "como realizar",
+                "me instrua",
+                "qual o processo",
+                "como funciona",
+                "preciso saber como",
+                "me explique o processo",
+            ]
+        )
+        if institutional_request:
+            conversation_mode = MODE_PASTOR_INSTITUCIONAL
+        elif prayer_request_detected:
             conversation_mode = MODE_ORIENTACAO
         elif force_deep_presence:
             conversation_mode = MODE_PRESENCA_PROFUNDA
@@ -658,9 +775,11 @@ Resposta do assistente para avaliar:
             spiritual_context=explicit_spiritual_context,
             high_spiritual_need=high_spiritual_need,
         )
+        derived_mode = conversation_mode
         return {
             "previous_mode": previous_mode,
-            "conversation_mode": conversation_mode,
+            "conversation_mode": MODE_PASTOR_INSTITUCIONAL,
+            "derived_mode": derived_mode,
             "spiritual_intensity": spiritual_intensity,
             "direct_guidance_request": direct_guidance_request,
             "repetition_complaint": repetition_complaint,
@@ -678,7 +797,7 @@ Resposta do assistente para avaliar:
         last_person_message: Message,
         generation_state: Dict[str, Any],
         active_topic: Optional[str],
-        theme_id: str,
+        selected_theme: ThemeV2,
     ) -> str:
         context_messages = queryset.exclude(id=last_person_message.id).order_by(
             "-created_at"
@@ -696,12 +815,13 @@ Resposta do assistente para avaliar:
             )
         rag_contexts = self._rag_service.retrieve(
             query=last_person_message.content,
-            theme_id=theme_id,
+            theme_id=selected_theme.id,
             limit=3,
         )
 
         return self._build_dynamic_runtime_prompt(
             conversation_mode=generation_state["conversation_mode"],
+            derived_mode=generation_state["derived_mode"],
             previous_mode=generation_state["previous_mode"],
             spiritual_intensity=generation_state["spiritual_intensity"],
             allow_spiritual_context=generation_state["allow_spiritual_context"],
@@ -710,7 +830,9 @@ Resposta do assistente para avaliar:
             active_topic=active_topic,
             top_topics=top_topics,
             last_user_message=last_person_message.content,
-            theme_prompt=profile.theme.prompt if profile.theme else None,
+            selected_theme_id=selected_theme.id,
+            selected_theme_name=selected_theme.name,
+            theme_prompt=selected_theme.prompt,
             context_messages=context_messages,
             rag_contexts=rag_contexts,
         )
@@ -781,13 +903,14 @@ Resposta do assistente para avaliar:
             recent_user_messages=recent_user_messages,
             recent_assistant_messages=recent_assistant_messages,
         )
+        selected_theme = self._classify_and_persist_message_theme(last_person_message)
         prompt_aux = self._build_response_prompt(
             profile=profile,
             queryset=queryset,
             last_person_message=last_person_message,
             generation_state=generation_state,
             active_topic=active_topic,
-            theme_id=self._classify_and_persist_message_theme(last_person_message),
+            selected_theme=selected_theme,
         )
 
         model_name = WACHAT_RESPONSE_MODEL
@@ -833,6 +956,13 @@ Resposta do assistente para avaliar:
             {"role": "system", "content": WACHAT_RESPONSE_SYSTEM_PROMPT},
             {"role": "user", "content": prompt_aux},
         ]
+        system_messages_count = sum(
+            1 for item in request_messages if item.get("role") == "system"
+        )
+        if system_messages_count != 1:
+            raise RuntimeError(
+                "Invalid OpenAI request: expected exactly one system message."
+            )
         request_kwargs = {
             "model": model_name,
             "messages": request_messages,
@@ -844,10 +974,8 @@ Resposta do assistente para avaliar:
         }
         response = client.chat.completions.create(**request_kwargs)
         response_metadata = _usage_metadata(response)
-
-        choices = getattr(response, "choices", None) or []
-        if len(choices) < 2:
-            raise RuntimeError("OpenAI did not return the expected 2 candidates.")
+        response_metadata["round"] = 1
+        response_rounds_metadata = [response_metadata]
 
         def _extract_text_from_choice(choice: Any) -> str:
             message = getattr(choice, "message", None)
@@ -871,40 +999,112 @@ Resposta do assistente para avaliar:
             return ""
 
         attempts: List[Dict[str, Any]] = []
-        for attempt_number, choice in enumerate(choices[:2], start=1):
-            assistant_text_candidate = _extract_text_from_choice(choice)
-            logger.info(
-                "Raw assistant response received profile_id=%s channel=%s content=%r",
-                profile.id,
-                channel,
-                assistant_text_candidate,
-            )
-            if not assistant_text_candidate:
-                raise RuntimeError("OpenAI returned empty assistant content.")
+        best_attempt: Optional[Dict[str, Any]] = None
+        selected_runtime_prompt = prompt_aux
+        selected_response_metadata = response_metadata
 
-            evaluation = self._evaluate_response(
-                user_message=last_person_message.content,
-                assistant_response=assistant_text_candidate,
-            )
-            score = evaluation["score"]
-            analysis = evaluation["analysis"]
-            improvement_prompt = evaluation["improvement_prompt"]
-            logger.info("Evaluation attempt %s | score=%s", attempt_number, score)
-            logger.info("Improvement prompt: %s", improvement_prompt)
+        current_runtime_prompt = prompt_aux
+        for round_number in range(1, MAX_SCORE_REFINEMENT_ROUNDS + 2):
+            if round_number == 1:
+                current_response = response
+                current_metadata = response_metadata
+            else:
+                if not best_attempt:
+                    raise RuntimeError(
+                        "Cannot refine response without evaluated attempts."
+                    )
+                current_runtime_prompt = self._build_refinement_runtime_prompt(
+                    base_runtime_prompt=prompt_aux,
+                    round_number=round_number,
+                    score=float(best_attempt["score"]),
+                    analysis=str(best_attempt["analysis"]),
+                    improvement_prompt=str(best_attempt["improvement_prompt"]),
+                )
+                refined_messages = [
+                    {"role": "system", "content": WACHAT_RESPONSE_SYSTEM_PROMPT},
+                    {"role": "user", "content": current_runtime_prompt},
+                ]
+                refined_system_count = sum(
+                    1 for item in refined_messages if item.get("role") == "system"
+                )
+                if refined_system_count != 1:
+                    raise RuntimeError(
+                        "Invalid OpenAI refinement request: expected exactly one system message."
+                    )
+                refined_kwargs = {
+                    "model": model_name,
+                    "messages": refined_messages,
+                    "max_completion_tokens": selected_max_completion_tokens,
+                    "reasoning_effort": "low",
+                    "timeout": FIXED_TIMEOUT_SECONDS,
+                    "temperature": selected_temperature,
+                    "n": 2,
+                }
+                current_response = client.chat.completions.create(**refined_kwargs)
+                current_metadata = _usage_metadata(current_response)
+                current_metadata["round"] = round_number
+                response_rounds_metadata.append(current_metadata)
+                regeneration_counter += 1
 
-            attempts.append(
-                {
+            choices = getattr(current_response, "choices", None) or []
+            if len(choices) < 2:
+                raise RuntimeError("OpenAI did not return the expected 2 candidates.")
+
+            for attempt_number, choice in enumerate(choices[:2], start=1):
+                assistant_text_candidate = _extract_text_from_choice(choice)
+                logger.info(
+                    "Raw assistant response received profile_id=%s channel=%s round=%s content=%r",
+                    profile.id,
+                    channel,
+                    round_number,
+                    assistant_text_candidate,
+                )
+                if not assistant_text_candidate:
+                    raise RuntimeError("OpenAI returned empty assistant content.")
+
+                evaluation = self._evaluate_response(
+                    user_message=last_person_message.content,
+                    assistant_response=assistant_text_candidate,
+                )
+                score = evaluation["score"]
+                analysis = evaluation["analysis"]
+                improvement_prompt = evaluation["improvement_prompt"]
+                logger.info(
+                    "Evaluation round %s attempt %s | score=%s",
+                    round_number,
+                    attempt_number,
+                    score,
+                )
+                logger.info("Improvement prompt: %s", improvement_prompt)
+
+                attempt = {
+                    "round": round_number,
+                    "attempt": attempt_number,
                     "response": assistant_text_candidate,
                     "score": score,
                     "analysis": analysis,
                     "improvement_prompt": improvement_prompt,
                 }
-            )
+                attempts.append(attempt)
+                if not best_attempt or score > float(best_attempt["score"]):
+                    best_attempt = attempt
+                    selected_runtime_prompt = current_runtime_prompt
+                    selected_response_metadata = current_metadata
 
-        best_attempt = max(attempts, key=lambda x: x["score"])
+            if not best_attempt:
+                raise RuntimeError("No evaluated attempts were produced.")
+            if float(best_attempt["score"]) >= TARGET_RESPONSE_SCORE:
+                break
+            if (
+                float(best_attempt["score"]) > LOW_SCORE_REFINEMENT_THRESHOLD
+                and round_number >= 1
+            ):
+                break
+
+        if not best_attempt:
+            raise RuntimeError("No attempts available for response selection.")
         assistant_text = best_attempt["response"]
         best_score = best_attempt["score"]
-        selected_runtime_prompt = prompt_aux
         logger.info("Selected best score=%s", best_score)
 
         loop_counter = 1 if generation_state["loop_detected"] else 0
@@ -915,6 +1115,9 @@ Resposta do assistente para avaliar:
             regeneration_counter=regeneration_counter,
         )
 
+        chunks = self._build_assistant_message_chunks(
+            text=assistant_text, conversation_mode=generation_state["conversation_mode"]
+        )
         response_payload = {
             "provider": "openai",
             "request_params": {
@@ -925,32 +1128,48 @@ Resposta do assistente para avaliar:
             "prompts": {
                 "system_prompt": WACHAT_RESPONSE_SYSTEM_PROMPT,
                 "runtime_prompt": selected_runtime_prompt,
+                "selected_theme": {
+                    "id": selected_theme.id,
+                    "name": selected_theme.name,
+                },
             },
             "payload": {
-                "messages": request_messages,
+                "messages": [
+                    {"role": "system", "content_ref": "prompts.system_prompt"},
+                    {"role": "user", "content_ref": "prompts.runtime_prompt"},
+                ],
+                "message_roles": [m.get("role") for m in request_messages],
                 "reasoning_effort": "low",
                 "timeout": FIXED_TIMEOUT_SECONDS,
             },
             "metadata": {
-                **response_metadata,
+                **selected_response_metadata,
                 "regeneration_counter": regeneration_counter,
                 "semantic_loop_regenerations": semantic_loop_regenerations,
+                "response_rounds": response_rounds_metadata,
             },
             "evaluation": {
                 "attempts": attempts,
                 "best_score": best_score,
             },
+            "delivery": {
+                "parts_count": len(chunks),
+                "mode": ("multi_message" if len(chunks) > 1 else "single_message"),
+            },
         }
-        Message.objects.create(
-            profile=profile,
-            role="assistant",
-            content=assistant_text,
-            channel=channel,
-            ollama_prompt=response_payload,
-        )
+        for index, chunk in enumerate(chunks):
+            payload = response_payload if index == 0 else None
+            Message.objects.create(
+                profile=profile,
+                role="assistant",
+                content=chunk,
+                channel=channel,
+                ollama_prompt=payload,
+                theme=selected_theme,
+            )
         return assistant_text
 
-    def _classify_and_persist_message_theme(self, message: Message) -> str:
+    def _classify_and_persist_message_theme(self, message: Message) -> ThemeV2:
         theme_id = self._theme_classifier.classify(message.content)
         theme = ThemeV2.objects.filter(id=theme_id).first()
         if not theme:
@@ -958,7 +1177,10 @@ Resposta do assistente para avaliar:
         if message.theme_id != theme.id:
             message.theme = theme
             message.save(update_fields=["theme"])
-        return theme.id
+        return theme
+
+    def classify_and_persist_message_theme(self, message: Message) -> ThemeV2:
+        return self._classify_and_persist_message_theme(message)
 
     def infer_gender(self, name: str) -> str:
         """

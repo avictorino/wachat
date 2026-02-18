@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List
+from typing import List, Optional
 
 from django.db.models import Value
 from openai import OpenAI
@@ -31,18 +31,25 @@ def get_embedding(text: str) -> List[float]:
 
 class RAGService:
     CHUNK_FETCH_MULTIPLIER = 2
-    MAX_DISTANCE = 0.35
 
-    def retrieve(self, query: str, theme_id: str, limit: int = 3) -> List[str]:
+    def retrieve(
+        self,
+        query: str,
+        theme_id: Optional[str],
+        limit: int = 3,
+    ) -> List[str]:
         """
-        Retrieve relevant RAG context by similarity, constrained to one theme.
+        Retrieve relevant RAG context by similarity.
         """
-        chunks_queryset = RagChunk.objects.filter(
-            theme_id=theme_id,
-            embedding__isnull=False,
-        )
+        chunks_queryset = RagChunk.objects.filter(embedding__isnull=False)
+        if theme_id:
+            chunks_queryset = chunks_queryset.filter(theme_id=theme_id)
+
         if not chunks_queryset.exists():
-            logger.warning(f"No RAG chunks found for theme '{theme_id}'.")
+            logger.warning(
+                "No RAG chunks found for theme='%s'.",
+                theme_id,
+            )
             return []
 
         query_embedding = get_embedding(query)
@@ -50,14 +57,8 @@ class RAGService:
 
         chunks = list(
             chunks_queryset.annotate(distance=CosineDistance("embedding", query_vector))
-            .filter(distance__lt=self.MAX_DISTANCE)
             .order_by("distance")
             .values("text")[: limit * self.CHUNK_FETCH_MULTIPLIER]
         )
-
-        if not chunks:
-            raise RuntimeError(
-                f"No RAG chunks found after similarity filtering for theme '{theme_id}'."
-            )
 
         return [chunk.get("text") for chunk in chunks]

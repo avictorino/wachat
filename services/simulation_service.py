@@ -5,6 +5,7 @@ from typing import Iterable, List, Union
 
 from core.models import Message, Profile, ThemeV2
 from services.openai_service import OpenAIService
+from services.theme_classifier import ThemeClassifier
 
 SIMULATION_MAX_COMPLETION_TOKENS = 1200
 
@@ -132,6 +133,7 @@ def simulate_next_user_message(
 class SimulationUseCase:
     def __init__(self):
         self._llm_service = OpenAIService()
+        self._theme_classifier = ThemeClassifier()
 
     def simulate_next_user_message(
         self,
@@ -220,6 +222,10 @@ class SimulationUseCase:
             predefined_scenario=predefined_scenario,
             theme=theme,
         )
+        theme_id = self._theme_classifier.classify(simulation["content"])
+        selected_theme = ThemeV2.objects.filter(id=theme_id).first()
+        if not selected_theme:
+            raise RuntimeError(f"Theme '{theme_id}' not found in database.")
 
         Message.objects.create(
             profile=profile,
@@ -228,5 +234,6 @@ class SimulationUseCase:
             channel="simulation",
             generated_by_simulator=True,
             ollama_prompt=simulation.get("payload"),
+            theme=selected_theme,
         )
         return profile.id

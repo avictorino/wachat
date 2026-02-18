@@ -50,8 +50,10 @@ class ChatView(View):
             try:
                 selected_profile = Profile.objects.get(id=selected_profile_id)
                 # Get messages for this profile
-                messages = Message.objects.filter(profile=selected_profile).order_by(
-                    "created_at"
+                messages = (
+                    Message.objects.filter(profile=selected_profile)
+                    .select_related("profile", "theme")
+                    .order_by("created_at")
                 )
                 last_assistant_message = (
                     Message.objects.filter(profile=selected_profile, role="assistant")
@@ -65,8 +67,10 @@ class ChatView(View):
         elif profiles.exists():
             # Select most recent profile by default
             selected_profile = profiles.first()
-            messages = Message.objects.filter(profile=selected_profile).order_by(
-                "created_at"
+            messages = (
+                Message.objects.filter(profile=selected_profile)
+                .select_related("profile", "theme")
+                .order_by("created_at")
             )
             last_assistant_message = (
                 Message.objects.filter(profile=selected_profile, role="assistant")
@@ -149,7 +153,7 @@ class ChatView(View):
             request.session.pop(pending_sim_payload_key, None)
             request.session.pop(pending_sim_preview_key, None)
 
-        Message.objects.create(
+        user_message = Message.objects.create(
             profile=profile,
             role="user",
             content=message_text,
@@ -159,6 +163,7 @@ class ChatView(View):
 
         chat_service = ChatService()
         try:
+            chat_service.classify_and_persist_message_theme(user_message)
             chat_service.generate_response_message(profile=profile, channel="chat")
         except RuntimeError as exc:
             logger.exception(

@@ -89,6 +89,8 @@ If any of the above were added, remove them.
 - Avoid nested conditionals deeper than 2 levels.
 - Avoid chained inline expressions.
 - Do not use one-liners if they reduce clarity.
+- Do not add * as functions parameters unless explicitly requested.
+   def build_theme_prompt_partial(*, model: str, theme_name: str) -> str:
 
 
 ## No Silent Defaults
@@ -98,7 +100,7 @@ If any of the above were added, remove them.
 - Do not coerce invalid inputs silently.
 - If input is invalid, raise an explicit exception.
 - Do not use chained env fallbacks for model selection (for example: `A or B or C`).
-- Model configuration must use only `DEFAULT_MODEL` from environment.
-- If `DEFAULT_MODEL` is missing, raise an explicit exception.
+- Model configuration must use only `OPENAI_MODEL` from environment.
+- If `OPENAI_MODEL` is missing, raise an explicit exception.
 
 End of AGENTS.md

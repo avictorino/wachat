@@ -535,6 +535,9 @@
                             <div class="message-content">{{ message.content }}</div>
                             <div class="message-time">
                                 {{ message.created_at|date:"H:i" }}
+                                {% if message.theme %}
+                                    <span>• tema: {{ message.theme.name }}</span>
+                                {% endif %}
                                 {% if message.ollama_prompt %}
                                     <a
                                         href="#"

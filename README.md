@@ -297,9 +297,6 @@ O comando gera o número especificado de mensagens alternadas (6-10, padrão 8),
 | `DEBUG` | Modo de debug | `True` | Não |
 | `ALLOWED_HOSTS` | Hosts permitidos (separados por vírgula) | - | Sim (produção) |
 | `DATABASE_URL` | URL de conexão com o banco de dados | SQLite local | Não |
-| `LLM_PROVIDER` | Provedor de LLM (`openai` ou `ollama`) | `openai` | Não |
-| `OLLAMA_BASE_URL` | URL base do servidor Ollama local | `http://localhost:11434` | Não |
-| `OLLAMA_CHAT_MODEL` | Modelo Ollama a ser usado | `llama3.1` | Não |
 | `OPENAI_API_KEY` | Chave de API da OpenAI | - | Sim (`LLM_PROVIDER=openai`) ||
 
 ## 🤖 Configuração do Provedor de LLM
@@ -310,9 +307,8 @@ O WaChat suporta OpenAI e Ollama como provedores de LLM (Large Language Model).
 
 1. **Configure as variáveis de ambiente:**
    ```env
-   LLM_PROVIDER=openai
    OPENAI_API_KEY=sua_chave
-   DEFAULT_MODEL=gpt-4o-mini
+   OPENAI_MODEL=gpt-4o-mini
    ```
 
 ### Ollama (Local)
@@ -346,12 +342,6 @@ O Ollama permite executar modelos LLM localmente, sem dependência de APIs exter
    # O servidor será iniciado em http://localhost:11434
    ```
 
-4. **Configure as variáveis de ambiente:**
-   ```env
-   LLM_PROVIDER=ollama
-   OLLAMA_BASE_URL=http://localhost:11434  # Padrão, pode ser omitido
-   OLLAMA_CHAT_MODEL=llama3.1              # Padrão, pode ser omitido
-   ```
 
 5. **Inicie o WaChat:**
    ```bash

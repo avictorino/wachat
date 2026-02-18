@@ -1,9 +1,10 @@
 import json
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils.html import format_html
 
 from core.models import BibleTextFlat, Message, Profile, RagChunk, ThemeV2
+from core.theme_prompt_generation import build_theme_prompt_partial
 
 
 class MessageInline(admin.TabularInline):
@@ -160,10 +161,26 @@ class ThemeV2Admin(admin.ModelAdmin):
 
     list_display = ["id", "name", "prompt_short"]
     search_fields = ["id", "name", "prompt"]
+    actions = ["regenerate_prompts_from_runtime"]
 
     def prompt_short(self, obj):
         """Show truncated prompt in list view."""
         return obj.prompt[:50] + "..." if len(obj.prompt) > 50 else obj.prompt
+
+    @admin.action(description="Regenerar prompt dos temas selecionados (runtime)")
+    def regenerate_prompts_from_runtime(self, request, queryset):
+        updated_count = 0
+        for theme in queryset:
+            theme.prompt = build_theme_prompt_partial(
+                theme_name=theme.name,
+            )
+            theme.save(update_fields=["prompt"])
+            updated_count += 1
+        self.message_user(
+            request,
+            f"{updated_count} tema(s) atualizados com prompt gerado.",
+            level=messages.SUCCESS,
+        )
 
 
 @admin.register(BibleTextFlat)

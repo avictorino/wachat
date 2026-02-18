@@ -19,3 +19,4 @@ pdfminer.six==20231228
 pgvector==0.4.2
 Faker==34.0.1
 openai==1.109.1
+beautifulsoup4==4.14.3

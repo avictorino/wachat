@@ -406,9 +406,9 @@ class Command(BaseCommand):
     help = "Importa a Bíblia porbr2018 por scraping HTML e salva em BibleTextFlat."
 
     def handle(self, *args, **options):
-        default_model = os.environ.get("DEFAULT_MODEL")
+        default_model = os.environ.get("OPENAI_MODEL")
         if not default_model:
-            raise CommandError("Variável DEFAULT_MODEL é obrigatória.")
+            raise CommandError("Variável OPENAI_MODEL é obrigatória.")
         openai_api_key = os.environ.get("OPENAI_API_KEY")
         if not openai_api_key:
             raise CommandError("Variável OPENAI_API_KEY é obrigatória.")
