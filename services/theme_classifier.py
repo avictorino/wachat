@@ -19,11 +19,18 @@ class ThemeClassifier:
         if client is None:
             raise RuntimeError("OpenAI client is not available for theme classifier.")
 
-        allowed_theme_ids = list(
-            Theme.objects.values_list("id", flat=True).order_by("id")
+        allowed_themes = list(
+            Theme.objects.all().order_by("id").values("id", "name", "slug")
         )
-        if not allowed_theme_ids:
+        if not allowed_themes:
             raise RuntimeError("No themes found in database for classification.")
+        allowed_theme_ids = [theme["id"] for theme in allowed_themes]
+        allowed_theme_catalog_lines = []
+        for theme in allowed_themes:
+            allowed_theme_catalog_lines.append(
+                f"{theme['id']} | nome={theme.get('name') or ''} | slug={theme.get('slug') or ''}"
+            )
+        allowed_theme_catalog = "\n".join(allowed_theme_catalog_lines)
 
         response = client.chat.completions.create(
             model=THEME_CLASSIFIER_MODEL,
@@ -31,17 +38,27 @@ class ThemeClassifier:
                 {
                     "role": "system",
                     "content": (
-                        "You are a strict classifier.\n"
-                        "Return ONLY one theme from the allowed list.\n\n"
-                        f"Allowed themes:\n{allowed_theme_ids}"
+                        "Você é um classificador estrito.\n"
+                        "Retorne APENAS um tema da lista permitida.\n\n"
+                        "Classifique pelo núcleo emocional predominante, não por contexto incidental.\n"
+                        "Quando houver ambiguidade, use esta prioridade de desempate:\n"
+                        "1) Emoção/sofrimento nomeado explicitamente\n"
+                        "2) Estado interno persistente\n"
+                        "3) Contexto externo (trabalho, dinheiro, relacionamentos)\n"
+                        "Se houver termos como 'ansioso/ansiosa/ansiedade/pânico', prefira tema de Ansiedade.\n"
+                        "Se houver termos de gasto, dívida, boleto, conta, cartão ou compulsão financeira, prefira Dinheiro e dívidas.\n"
+                        "Use Luto e perda apenas quando houver evidência explícita de luto/perda/morte/saudade de alguém.\n"
+                        "Não explique sua escolha.\n\n"
+                        f"Temas permitidos (id | nome | slug):\n{allowed_theme_catalog}"
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Classify the predominant emotional or life theme "
-                        f'of this message:\n"{text}"\n\n'
-                        "Return only the numeric theme id."
+                        "Classifique o tema emocional ou de vida predominante desta mensagem.\n"
+                        "Foque no que está causando a maior carga emocional agora.\n\n"
+                        f'Mensagem:\n"{text}"\n\n'
+                        "Retorne apenas o id numérico do tema."
                     ),
                 },
             ],

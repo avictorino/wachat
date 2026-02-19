@@ -27,6 +27,7 @@ MODE_CULPA = "CULPA"
 MODE_ORIENTACAO = "ORIENTACAO"
 MODE_PRESENCA_PROFUNDA = "PRESENCA_PROFUNDA"
 MODE_PASTOR_INSTITUCIONAL = "pastor_institucional"
+MODE_VULNERABILIDADE_INICIAL = "vulnerabilidade_inicial"
 
 MAX_SENTENCES = 4
 MAX_WORDS = 180
@@ -439,6 +440,13 @@ def choose_conversation_mode(
     repeated_user_pattern: bool,
     signals: dict,
 ) -> str:
+    if is_first_message and (
+        signals.get("deep_suffering")
+        or signals.get("repetitive_guilt")
+        or signals.get("family_conflict_impotence")
+        or signals.get("explicit_despair")
+    ):
+        return MODE_VULNERABILIDADE_INICIAL
     if (
         signals.get("deep_suffering")
         or signals.get("repetitive_guilt")

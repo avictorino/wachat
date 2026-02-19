@@ -17,6 +17,7 @@ from services.conversation_runtime import (
     MODE_ORIENTACAO,
     MODE_PASTOR_INSTITUCIONAL,
     MODE_PRESENCA_PROFUNDA,
+    MODE_VULNERABILIDADE_INICIAL,
     MODE_WELCOME,
     choose_conversation_mode,
     choose_spiritual_intensity,
@@ -41,6 +42,7 @@ VALID_CONVERSATION_MODES = {
     MODE_ORIENTACAO,
     MODE_PRESENCA_PROFUNDA,
     MODE_PASTOR_INSTITUCIONAL,
+    MODE_VULNERABILIDADE_INICIAL,
 }
 
 LEGACY_MODE_MAP = {
@@ -63,12 +65,47 @@ FIXED_TOPIC_SIGNAL_MAX_COMPLETION_TOKENS = 1000
 FIXED_GENDER_INFERENCE_MAX_COMPLETION_TOKENS = 400
 FIXED_THEME_PROMPT_MAX_COMPLETION_TOKENS = 1200
 FIXED_EVALUATION_MAX_COMPLETION_TOKENS = 500
+FIXED_SIMULATION_ANALYSIS_MAX_COMPLETION_TOKENS = 3200
 EVALUATION_MODEL = "gpt-5-mini"
 MULTI_MESSAGE_MIN_PARTS = 3
 MULTI_MESSAGE_MAX_PARTS = 4
 LOW_SCORE_REFINEMENT_THRESHOLD = 5.0
 TARGET_RESPONSE_SCORE = 8.0
 MAX_SCORE_REFINEMENT_ROUNDS = 3
+LOOP_SIMILARITY_THRESHOLD = 0.85
+LOOP_PRACTICAL_COOLDOWN_TURNS = 3
+PROGRESS_STATE_IDENTIFICACAO = "IDENTIFICACAO"
+PROGRESS_STATE_ACAO_PRATICA = "ACAO_PRATICA"
+PROGRESS_STATE_CONFIRMACAO = "CONFIRMACAO"
+PROGRESS_STATE_FECHAMENTO = "FECHAMENTO"
+VALID_PROGRESS_STATES = {
+    PROGRESS_STATE_IDENTIFICACAO,
+    PROGRESS_STATE_ACAO_PRATICA,
+    PROGRESS_STATE_CONFIRMACAO,
+    PROGRESS_STATE_FECHAMENTO,
+}
+PRAYER_REQUEST_MARKERS = (
+    "ore por mim",
+    "ora por mim",
+    "ore comigo",
+    "ora comigo",
+    "reze por mim",
+    "reze comigo",
+    "preciso de oração",
+    "pode orar",
+    "oração por mim",
+)
+LIVE_SUPPORT_REQUEST_MARKERS = (
+    "posso te ligar",
+    "você pode me ligar",
+    "voce pode me ligar",
+    "me liga",
+    "me ligue",
+    "me manda mensagem",
+    "me mande mensagem",
+    "fique comigo",
+    "fica comigo",
+)
 
 WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com acolhimento emocional e direção espiritual prática, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
 
@@ -80,9 +117,10 @@ ESTILO
 - Sem emojis.
 
 OBJETIVO POR TURNO
-- Escolha a melhor forma de avançar a conversa.
-- Pode combinar explicação, orientação prática e pergunta estratégica quando necessário.
-- Quando o usuário pedir instrução formal ou explicação de processo, priorize resposta estruturada e orientadora.
+- Escolha UMA linha dominante de ação: acolher, explorar, orientar ou organizar.
+- Evite combinar múltiplas estruturas formais no mesmo turno.
+- Só explique processo institucional quando o usuário pedir explicitamente.
+- Em momentos de vulnerabilidade inicial, priorize presença humana antes de estrutura.
 - Em modo de EXPLORAÇÃO, é proibido oferecer oração ou intervenção espiritual direta.
 - Nesse modo, a resposta deve priorizar aprofundamento existencial.
 
@@ -111,7 +149,7 @@ O assistente DEVE primeiro:
 - Encerrar com frase espiritual conclusiva antes de entender a raiz.
 
 A espiritualidade deve entrar como aprofundamento do entendimento, nunca como atalho.
-- Em modo institucional, a explicação do processo pode preceder investigação emocional.
+- Mesmo em modo institucional, se houver dor emocional explícita, priorize validação antes de qualquer explicação estrutural.
 - A espiritualidade pode acompanhar a orientação sem necessidade de etapa investigativa prévia.
 
 PROIBIÇÕES
@@ -120,9 +158,17 @@ PROIBIÇÕES
 - Não impor religião.
 - Não sugerir, convidar ou encaminhar para encontro presencial/online por iniciativa própria.
 - Mantenha todo acolhimento, orientação e escuta no canal atual de mensagem, com calor humano e proximidade.
+- Nunca ofereça visita presencial, ida ao local ou acompanhamento físico.
+- Quando houver pedido de acompanhamento, mantenha tudo em mensagem/ligação online.
 
 FORMATO DE SAÍDA
-- Entregue apenas a próxima fala do assistente."""
+- Entregue apenas a próxima fala do assistente.
+
+FLUIDEZ CONVERSACIONAL
+- Prefira naturalidade em vez de formalidade.
+- Evite linguagem de manual, protocolo ou roteiro.
+- Não anuncie etapas como se estivesse abrindo um procedimento.
+- A conversa deve soar orgânica, não institucional."""
 
 
 # Helper constant for gender context in Portuguese
@@ -200,16 +246,35 @@ class ChatService:
         if not sentences:
             return []
 
+        if conversation_mode == MODE_VULNERABILIDADE_INICIAL:
+            return [" ".join(sentences)]
+
+        if conversation_mode == MODE_ORIENTACAO:
+            if len(sentences) < 2:
+                return [" ".join(sentences)]
+            if len(sentences) <= 4:
+                return [" ".join(sentences[:2]), " ".join(sentences[2:])]
+            return [
+                " ".join(sentences[:2]),
+                " ".join(sentences[2:4]),
+                " ".join(sentences[4:]),
+            ]
+
         if (
             conversation_mode != MODE_PASTOR_INSTITUCIONAL
             or len(sentences) < MULTI_MESSAGE_MIN_PARTS
         ):
-            return [" ".join(sentences)]
+            if len(sentences) <= 2:
+                return [" ".join(sentences)]
+            if len(sentences) <= 6:
+                return [" ".join(sentences[:3]), " ".join(sentences[3:])]
+            return [
+                " ".join(sentences[:3]),
+                " ".join(sentences[3:6]),
+                " ".join(sentences[6:]),
+            ]
 
         target_parts = min(MULTI_MESSAGE_MAX_PARTS, len(sentences))
-        if target_parts < MULTI_MESSAGE_MIN_PARTS:
-            return [" ".join(sentences)]
-
         total = len(sentences)
         base_size = total // target_parts
         remainder = total % target_parts
@@ -340,6 +405,14 @@ Regras obrigatórias:
   fidelidade ao último turno do usuário e adequação espiritual ao contexto.
 - Valorize respostas estruturadas quando o usuário pedir instrução formal.
 - Não penalize respostas mais longas quando houver pedido de explicação processual.
+- Penalize fortemente quando o assistente ignorar pedido explícito do usuário.
+- Se o usuário pedir oração explicitamente, a resposta deve incluir oração breve
+  ou explicar de forma direta e respeitosa por que não pode orar naquele turno.
+- Penalize quando o usuário pedir artefato concreto (ex.: mensagem pronta)
+  e o assistente responder com pergunta redundante sem entregar o conteúdo.
+- Penalize repetição de oração ou frases pastorais nos 2 turnos subsequentes.
+- Penalize quando pedido operacional explícito não traz duas alternativas práticas
+  quando o canal não permite executar diretamente.
 """.strip()
 
         evaluation_user_prompt = f"""
@@ -501,10 +574,16 @@ Resposta do assistente para avaliar:
         conversation_mode: str,
         derived_mode: str,
         previous_mode: str,
+        progress_state: str,
+        previous_progress_state: str,
         spiritual_intensity: str,
         allow_spiritual_context: bool,
         direct_guidance_request: bool,
         repetition_complaint: bool,
+        prayer_request_detected: bool,
+        live_support_request_detected: bool,
+        practical_mode_forced: bool,
+        practical_mode_cooldown_remaining: int,
         active_topic: Optional[str],
         top_topics: str,
         last_user_message: str,
@@ -524,15 +603,15 @@ Resposta do assistente para avaliar:
             MODE_CULPA: "separar identidade de comportamento e propor reparo possível",
             MODE_ORIENTACAO: "entregar orientação prática breve e acionável",
             MODE_PRESENCA_PROFUNDA: "sustentar presença, dignidade e misericórdia em sofrimento profundo",
+            MODE_VULNERABILIDADE_INICIAL: "validar dor inicial com presença humana e abertura simples",
             MODE_PASTOR_INSTITUCIONAL: "fornecer orientação institucional estruturada, com clareza processual e autoridade pastoral",
             MODE_WELCOME: "acolhimento inicial curto",
-        }.get(runtime_mode, "avançar a conversa com precisão")
+        }.get(derived_mode, "avançar a conversa com precisão")
 
         base_mode_actions = [
-            "Explique o processo de forma clara e estruturada.",
-            "Diferencie esferas espiritual e civil quando aplicável.",
+            "Só explique processo institucional se o usuário pedir orientação formal explícita.",
+            "Em caso de vulnerabilidade emocional, priorize validação e presença antes de qualquer estrutura.",
             "Oriente passos concretos dentro da igreja.",
-            "Finalize com uma pergunta estratégica que ajude a avançar.",
         ]
         derived_mode_actions = {
             MODE_ACOLHIMENTO: [
@@ -571,6 +650,13 @@ Resposta do assistente para avaliar:
                 "Use tom contemplativo e misericordioso.",
                 "Se houver pedido de ajuda direta, ofereça orientação concreta e segura com passos pequenos.",
             ],
+            MODE_VULNERABILIDADE_INICIAL: [
+                "Não explicar processo.",
+                "Não diferenciar esferas.",
+                "Não encaminhar.",
+                "Não estruturar etapas.",
+                "Apenas validar + permitir + 1 pergunta aberta simples.",
+            ],
             MODE_WELCOME: [
                 "Acolha com sobriedade e convide para continuidade.",
             ],
@@ -598,45 +684,188 @@ Resposta do assistente para avaliar:
                 " Intensidade alta: linguagem de fé mais presente e pastoral, com esperança evangélica "
                 "concreta, sem moralizar."
             )
+        if practical_mode_forced:
+            spiritual_policy = (
+                "Modo prático anti-loop ativo: priorize orientação concreta e objetiva. "
+                "Evite linguagem religiosa explícita; se usuário pedir oração, use no máximo 1 frase curta."
+            )
 
-        max_sentences = 6
+        max_sentences = 9
         max_questions = 3
+        max_words = 140
+        if (
+            direct_guidance_request
+            or prayer_request_detected
+            or live_support_request_detected
+        ):
+            max_sentences = 6
+            max_questions = 1
+            max_words = 110
 
         prompt = f"""
     MODO ATUAL: {runtime_mode}
     MODO DERIVADO: {derived_mode}
     MODO ANTERIOR: {previous_mode}
+    ESTADO DE PROGRESSO: {progress_state}
+    ESTADO ANTERIOR: {previous_progress_state}
     OBJETIVO DO MODO BASE: {mode_objective}
     INTENSIDADE ESPIRITUAL: {spiritual_intensity}
 
     REGRAS GERAIS:
-    - Responda entre 2 e {max_sentences} frases.
+    - Responda entre 3 e {max_sentences} frases.
+    - Limite de até {max_words} palavras.
     - No máximo {max_questions} pergunta.
     - Não comece com frase-padrão de acolhimento.
     - Validar algo específico que o usuário acabou de dizer.
     - Não repetir frases/estruturas dos últimos turnos.
     - Não iniciar ecoando a frase do usuário.
     - Não inferir sentimentos não declarados.
+    - Evite parafrasear o usuário em bloco; use no máximo 1 detalhe literal e avance para ação útil.
+    - Evite aberturas repetidas como "vejo que", "percebo que", "entendo que".
+    - Evite ecoar literalmente expressões do usuário (ex.: "por mensagem") na frase seguinte.
+    - Prefira variações naturais de proximidade no canal atual (ex.: "aqui com você", "neste espaço", "agora com você").
     - {spiritual_policy}
-    - Combine explicação, orientação e pergunta quando fizer sentido natural.
     - Escolha a melhor função para este turno conforme o modo atual.
+
+    AÇÃO FINAL:
+    - Se o usuário estiver em vulnerabilidade emocional, finalize com 1 pergunta simples e humana.
+    - Se o usuário pedir orientação prática direta, finalize com orientação clara sem pergunta.
+    - Nunca imponha pergunta obrigatória.
 
     TRATAMENTO OBRIGATÓRIO:
     - Use segunda pessoa direta ("você").
     - É proibido usar terceira pessoa ("ela", "dele", "dela").
+    - Em oração, também use "você" (nunca "ele(a)").
     """
 
-        if direct_guidance_request and derived_mode != MODE_PASTOR_INSTITUCIONAL:
+        if practical_mode_forced:
             prompt += (
-                "\nPEDIDO EXPLÍCITO DE AJUDA DETECTADO: ação final obrigatória é orientação prática imediata. "
-                "Não finalizar com pergunta neste turno.\n"
+                f"\nMODO PRÁTICO ANTI-LOOP ATIVO ({practical_mode_cooldown_remaining} turnos restantes):\n"
+                "- Entregue passo concreto neste turno.\n"
+                "- Evite repetição de consolo religioso.\n"
+                "- Não use mais de 1 frase espiritual curta.\n"
+            )
+
+        if progress_state == PROGRESS_STATE_IDENTIFICACAO:
+            prompt += (
+                "\nESTRATÉGIA DE PROGRESSO (IDENTIFICAÇÃO):\n"
+                "- Faça 1 pergunta concreta de contexto OU confirme 1 obstáculo específico.\n"
+            )
+        elif progress_state == PROGRESS_STATE_ACAO_PRATICA:
+            prompt += (
+                "\nESTRATÉGIA DE PROGRESSO (AÇÃO PRÁTICA):\n"
+                "- Entregue uma ação executável agora (mensagem pronta, roteiro curto ou próximo passo explícito).\n"
+            )
+        elif progress_state == PROGRESS_STATE_CONFIRMACAO:
+            prompt += (
+                "\nESTRATÉGIA DE PROGRESSO (CONFIRMAÇÃO):\n"
+                "- Confirmar o plano em 1 frase e definir 1 check-in objetivo.\n"
+            )
+        elif progress_state == PROGRESS_STATE_FECHAMENTO:
+            prompt += (
+                "\nESTRATÉGIA DE PROGRESSO (FECHAMENTO):\n"
+                "- Encerrar com resumo breve e próximo ponto opcional, sem abrir novos tópicos.\n"
+            )
+
+        if (
+            direct_guidance_request
+            or prayer_request_detected
+            or live_support_request_detected
+        ):
+            prompt += (
+                "\nPEDIDO EXPLÍCITO DETECTADO:\n"
+                "- Responda ao pedido explícito antes de investigar causas.\n"
+                "- Se houver pedido de oração, inclua oração breve de 1-2 frases neste turno.\n"
+                "- Se houver pedido de ligação/mensagem em tempo real, diga claramente o limite do canal e ofereça 2 alternativas práticas distintas.\n"
+                "- Depois da resposta direta, ofereça no máximo 1 próximo passo prático.\n"
+                "- Ao responder limite de canal, não repita de forma literal a expressão do usuário; use redação mais humana e próxima.\n"
+            )
+
+        presencial_request_markers = [
+            "visita",
+            "visitar",
+            "ir comigo",
+            "presencial",
+            "pessoalmente",
+            "na minha casa",
+        ]
+        has_presencial_request = any(
+            marker in (last_user_message or "").lower()
+            for marker in presencial_request_markers
+        )
+        if has_presencial_request:
+            prompt += (
+                "\nLIMITE DE CANAL (ONLINE-ONLY):\n"
+                "- Não ofereça visita presencial, ida ao local ou acompanhamento físico.\n"
+                "- Responda com limite claro e acolhedor: apoio apenas por mensagem/ligação online.\n"
+                "- Ofereça 1 alternativa online concreta e imediata.\n"
+            )
+
+        actionable_artifact_markers = [
+            "escreva",
+            "rascunh",
+            "mensagem",
+            "texto",
+            "modelo",
+            "pronto para copiar",
+        ]
+        explicit_artifact_request = any(
+            marker in (last_user_message or "").lower()
+            for marker in actionable_artifact_markers
+        )
+        if explicit_artifact_request:
+            prompt += (
+                "\nPEDIDO DE ARTEFATO DETECTADO:\n"
+                "- Entregue o artefato solicitado neste turno (ex.: mensagem pronta para copiar).\n"
+                "- Não faça pergunta de preferência se já houver informação suficiente para executar.\n"
+                "- Se faltar dado essencial, assuma um padrão útil e sinalize que pode ajustar depois.\n"
+            )
+
+        prompt += (
+            "\nANTILOOP DE CONTEÚDO:\n"
+            "- Se uma frase já apareceu nos últimos 2 turnos do assistente, não repita literal nem com variação mínima.\n"
+            "- Não repita oração em turnos consecutivos, exceto se o usuário pedir oração de novo explicitamente.\n"
+            '- Evite rotular padrão psicológico sem validação; use formulação condicional (ex.: "isso pode indicar...") ou peça confirmação.\n'
+            "- Após 2 turnos sem avanço prático, entregue 1 ação operacional nova e objetiva neste turno.\n"
+        )
+
+        distress_markers = [
+            "chor",
+            "desmoron",
+            "arrasad",
+            "não aguento",
+            "nao aguento",
+            "peito apertado",
+            "desespero",
+        ]
+        has_high_distress = any(
+            marker in (last_user_message or "").lower() for marker in distress_markers
+        )
+        if has_high_distress:
+            prompt += (
+                "\nSENSIBILIDADE DE ABERTURA:\n"
+                '- Não use abertura celebratória ou potencialmente minimizadora (ex.: "que bom", "é bom saber").\n'
+                "- Comece validando a dor concreta do usuário com linguagem sóbria.\n"
             )
 
         if repetition_complaint:
             prompt += (
                 "\nUSUÁRIO SINALIZOU REPETIÇÃO: não repita pergunta; "
-                "entregue orientação prática nova e específica para este caso, sem pergunta ao final.\n"
+                "entregue orientação prática nova e específica para este caso.\n"
             )
+
+        assistant_openers = []
+        for msg in context_messages:
+            if msg.role != "assistant":
+                continue
+            first_sentence = self._split_sentences(msg.content)
+            if not first_sentence:
+                continue
+            assistant_openers.append(first_sentence[0].strip())
+        if assistant_openers:
+            prompt += "\nEVITE REPETIR ABERTURAS RECENTES DO ASSISTENTE:\n"
+            for opener in assistant_openers[-3:]:
+                prompt += f"- {opener}\n"
 
         if active_topic:
             prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
@@ -686,6 +915,66 @@ Resposta do assistente para avaliar:
             "recent_context_messages": recent_context_messages,
         }
 
+    def _last_assistant_runtime_metadata(self, queryset) -> Dict[str, Any]:
+        last_assistant = (
+            queryset.filter(role="assistant").order_by("-created_at").first()
+        )
+        if not last_assistant:
+            return {}
+        payload = getattr(last_assistant, "ollama_prompt", None)
+        if not isinstance(payload, dict):
+            return {}
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, dict):
+            return {}
+        return metadata
+
+    def _detect_progress_state(
+        self,
+        *,
+        last_user_message: str,
+        previous_progress_state: str,
+        direct_guidance_request: bool,
+    ) -> str:
+        normalized = (last_user_message or "").lower()
+        if direct_guidance_request:
+            return PROGRESS_STATE_ACAO_PRATICA
+
+        closing_markers = [
+            "obrigado",
+            "obrigada",
+            "já ajudou",
+            "ja ajudou",
+            "era isso",
+            "vamos encerrar",
+            "pode encerrar",
+            "tá bom por hoje",
+            "ta bom por hoje",
+        ]
+        if any(marker in normalized for marker in closing_markers):
+            return PROGRESS_STATE_FECHAMENTO
+
+        confirmation_markers = [
+            "sim",
+            "aceito",
+            "topo",
+            "vou fazer",
+            "vou tentar",
+            "combinado",
+            "fechado",
+            "pode ser",
+        ]
+        if any(marker in normalized for marker in confirmation_markers):
+            if previous_progress_state in {
+                PROGRESS_STATE_ACAO_PRATICA,
+                PROGRESS_STATE_CONFIRMACAO,
+            }:
+                return PROGRESS_STATE_CONFIRMACAO
+
+        if previous_progress_state in VALID_PROGRESS_STATES:
+            return previous_progress_state
+        return PROGRESS_STATE_IDENTIFICACAO
+
     def _determine_generation_state(
         self,
         *,
@@ -701,6 +990,21 @@ Resposta do assistente para avaliar:
         if previous_mode not in VALID_CONVERSATION_MODES:
             previous_mode = MODE_WELCOME
 
+        last_runtime_metadata = self._last_assistant_runtime_metadata(queryset)
+        previous_progress_state = str(
+            last_runtime_metadata.get("progress_state", PROGRESS_STATE_IDENTIFICACAO)
+        )
+        if previous_progress_state not in VALID_PROGRESS_STATES:
+            previous_progress_state = PROGRESS_STATE_IDENTIFICACAO
+        previous_practical_cooldown = last_runtime_metadata.get(
+            "practical_mode_cooldown_remaining", 0
+        )
+        try:
+            previous_practical_cooldown = int(previous_practical_cooldown)
+        except (TypeError, ValueError):
+            previous_practical_cooldown = 0
+        practical_mode_cooldown_remaining = max(previous_practical_cooldown - 1, 0)
+
         is_first_message = queryset.filter(role="assistant").count() == 0
         signals = detect_user_signals(last_user_message)
         direct_guidance_request = bool(signals.get("guidance_request"))
@@ -709,17 +1013,14 @@ Resposta do assistente para avaliar:
             direct_guidance_request = True
         # 🔥 OVERRIDE: pedido explícito de oração tem prioridade máxima
         prayer_request_detected = any(
+            phrase in last_user_message.lower() for phrase in PRAYER_REQUEST_MARKERS
+        )
+        live_support_request_detected = any(
             phrase in last_user_message.lower()
-            for phrase in [
-                "ore por mim",
-                "ora por mim",
-                "preciso de oração",
-                "pode orar",
-                "oração por mim",
-            ]
+            for phrase in LIVE_SUPPORT_REQUEST_MARKERS
         )
 
-        if prayer_request_detected:
+        if prayer_request_detected or live_support_request_detected:
             direct_guidance_request = True
         deep_presence_trigger = any(
             [
@@ -743,13 +1044,25 @@ Resposta do assistente para avaliar:
         allow_spiritual_context = explicit_spiritual_context or high_spiritual_need
         new_information = has_new_information(recent_user_messages)
         loop_detected = ambivalence_or_repeated
+        assistant_similarity_loop = False
         if len(recent_assistant_messages) >= 2:
-            loop_detected = loop_detected or (
+            assistant_similarity_loop = (
                 semantic_similarity(
                     recent_assistant_messages[-1], recent_assistant_messages[-2]
                 )
-                > 0.85
+                > LOOP_SIMILARITY_THRESHOLD
             )
+            loop_detected = loop_detected or assistant_similarity_loop
+
+        if assistant_similarity_loop:
+            practical_mode_cooldown_remaining = LOOP_PRACTICAL_COOLDOWN_TURNS
+        practical_mode_forced = practical_mode_cooldown_remaining > 0
+
+        progress_state = self._detect_progress_state(
+            last_user_message=last_user_message,
+            previous_progress_state=previous_progress_state,
+            direct_guidance_request=direct_guidance_request,
+        )
 
         conversation_mode = choose_conversation_mode(
             previous_mode=previous_mode,
@@ -773,27 +1086,45 @@ Resposta do assistente para avaliar:
         )
         if institutional_request:
             conversation_mode = MODE_PASTOR_INSTITUCIONAL
-        elif prayer_request_detected:
+        elif prayer_request_detected or live_support_request_detected:
             conversation_mode = MODE_ORIENTACAO
         elif force_deep_presence:
             conversation_mode = MODE_PRESENCA_PROFUNDA
+        if practical_mode_forced:
+            conversation_mode = MODE_ORIENTACAO
+            direct_guidance_request = True
+            progress_state = PROGRESS_STATE_ACAO_PRATICA
+            allow_spiritual_context = False
         spiritual_intensity = choose_spiritual_intensity(
             mode=conversation_mode,
             spiritual_context=explicit_spiritual_context,
             high_spiritual_need=high_spiritual_need,
         )
+        if (
+            progress_state == PROGRESS_STATE_ACAO_PRATICA
+            and not prayer_request_detected
+        ):
+            spiritual_intensity = "leve"
+        if practical_mode_forced:
+            spiritual_intensity = "leve"
         derived_mode = conversation_mode
         return {
             "previous_mode": previous_mode,
-            "conversation_mode": MODE_PASTOR_INSTITUCIONAL,
+            "conversation_mode": conversation_mode,
             "derived_mode": derived_mode,
+            "progress_state": progress_state,
+            "previous_progress_state": previous_progress_state,
             "spiritual_intensity": spiritual_intensity,
             "direct_guidance_request": direct_guidance_request,
             "repetition_complaint": repetition_complaint,
             "allow_spiritual_context": allow_spiritual_context,
             "loop_detected": loop_detected,
+            "assistant_similarity_loop": assistant_similarity_loop,
+            "practical_mode_forced": practical_mode_forced,
+            "practical_mode_cooldown_remaining": practical_mode_cooldown_remaining,
             "deep_presence_trigger": deep_presence_trigger,
             "prayer_request_detected": prayer_request_detected,
+            "live_support_request_detected": live_support_request_detected,
         }
 
     def _build_response_prompt(
@@ -830,10 +1161,20 @@ Resposta do assistente para avaliar:
             conversation_mode=generation_state["conversation_mode"],
             derived_mode=generation_state["derived_mode"],
             previous_mode=generation_state["previous_mode"],
+            progress_state=generation_state["progress_state"],
+            previous_progress_state=generation_state["previous_progress_state"],
             spiritual_intensity=generation_state["spiritual_intensity"],
             allow_spiritual_context=generation_state["allow_spiritual_context"],
             direct_guidance_request=generation_state["direct_guidance_request"],
             repetition_complaint=generation_state["repetition_complaint"],
+            prayer_request_detected=generation_state["prayer_request_detected"],
+            live_support_request_detected=generation_state[
+                "live_support_request_detected"
+            ],
+            practical_mode_forced=generation_state["practical_mode_forced"],
+            practical_mode_cooldown_remaining=generation_state[
+                "practical_mode_cooldown_remaining"
+            ],
             active_topic=active_topic,
             top_topics=top_topics,
             last_user_message=last_person_message.content,
@@ -869,7 +1210,12 @@ Resposta do assistente para avaliar:
             ]
         )
 
-    def generate_response_message(self, profile: Profile, channel: str) -> str:
+    def generate_response_message(
+        self,
+        profile: Profile,
+        channel: str,
+        forced_theme: Optional[Theme] = None,
+    ) -> str:
         if not profile.welcome_message_sent:
             welcome_message = self.generate_welcome_message(
                 profile=profile, channel=channel
@@ -910,7 +1256,15 @@ Resposta do assistente para avaliar:
             recent_user_messages=recent_user_messages,
             recent_assistant_messages=recent_assistant_messages,
         )
-        selected_theme = self._classify_and_persist_message_theme(last_person_message)
+        if forced_theme is not None:
+            selected_theme = forced_theme
+            if last_person_message.theme_id != forced_theme.id:
+                last_person_message.theme = forced_theme
+                last_person_message.save(update_fields=["theme"])
+        else:
+            selected_theme = self._classify_and_persist_message_theme(
+                last_person_message
+            )
         prompt_aux = self._build_response_prompt(
             profile=profile,
             queryset=queryset,
@@ -1123,7 +1477,7 @@ Resposta do assistente para avaliar:
         )
 
         chunks = self._build_assistant_message_chunks(
-            text=assistant_text, conversation_mode=generation_state["conversation_mode"]
+            text=assistant_text, conversation_mode=generation_state["derived_mode"]
         )
         response_payload = {
             "provider": "openai",
@@ -1154,6 +1508,12 @@ Resposta do assistente para avaliar:
                 "regeneration_counter": regeneration_counter,
                 "semantic_loop_regenerations": semantic_loop_regenerations,
                 "response_rounds": response_rounds_metadata,
+                "progress_state": generation_state["progress_state"],
+                "previous_progress_state": generation_state["previous_progress_state"],
+                "practical_mode_forced": generation_state["practical_mode_forced"],
+                "practical_mode_cooldown_remaining": generation_state[
+                    "practical_mode_cooldown_remaining"
+                ],
             },
             "evaluation": {
                 "attempts": attempts,
@@ -1599,7 +1959,7 @@ Resposta do assistente para avaliar:
         response_text = self.basic_call(
             url_type="generate",
             prompt=SYSTEM_PROMPT,
-            max_tokens=2000,
+            max_tokens=FIXED_SIMULATION_ANALYSIS_MAX_COMPLETION_TOKENS,
         )
 
         analysis = response_text

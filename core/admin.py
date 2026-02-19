@@ -194,7 +194,7 @@ class ThemeAdmin(admin.ModelAdmin):
 
     list_display = ["id", "slug", "name", "score"]
     search_fields = ["id", "slug", "name", "meta_prompt"]
-    readonly_fields = ["score", "improvement"]
+    readonly_fields = ["id", "score", "improvement"]
     fields = ["id", "slug", "name", "meta_prompt", "score", "improvement"]
     actions = ["regenerate_prompts_from_runtime"]
 

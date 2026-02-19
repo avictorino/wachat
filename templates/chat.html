@@ -366,10 +366,67 @@
             cursor: not-allowed;
         }
 
+        .mobile-toggle {
+            display: none !important;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
+            body {
+                font-size: 18px;
+            }
+
+            .mobile-toggle {
+                display: inline-flex !important;
+                align-items: center;
+                justify-content: center;
+                width: 42px;
+                height: 42px;
+                border: none;
+                border-radius: 999px;
+                background: rgba(7, 94, 84, 0.92);
+                color: #fff;
+                font-size: 20px;
+                cursor: pointer;
+                position: fixed;
+                z-index: 10050;
+                box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+            }
+
+            .mobile-toggle-header {
+                top: 10px;
+                left: 10px;
+            }
+
+            .mobile-toggle-toolbar {
+                right: 12px;
+                bottom: 12px;
+            }
+
+            body.header-collapsed .header {
+                display: none;
+            }
+
+            body.toolbar-collapsed .input-area {
+                display: none;
+            }
+
             .message-bubble {
                 max-width: 80%;
+            }
+
+            .message-content {
+                font-size: 19px;
+                line-height: 1.68;
+            }
+
+            .message-sender {
+                font-size: 16px;
+            }
+
+            .message-time,
+            .message-score {
+                font-size: 14px;
             }
 
             .header {
@@ -385,6 +442,7 @@
             .header button,
             .header input[type="text"] {
                 width: 100%;
+                font-size: 18px;
             }
 
             .input-area {
@@ -405,6 +463,23 @@
             #simulateForm select,
             #chatForm input[type="text"] {
                 width: 100%;
+                font-size: 18px;
+            }
+
+            .analysis-panel {
+                max-width: 96%;
+                padding: 14px;
+            }
+
+            .analysis-content {
+                font-size: 16px;
+                line-height: 1.65;
+            }
+
+            .analysis-content th,
+            .analysis-content td {
+                font-size: 15px;
+                padding: 9px 10px;
             }
         }
 
@@ -436,6 +511,7 @@
             font-size: 13px;
             line-height: 1.6;
             white-space: pre-wrap;
+            overflow-x: auto;
         }
 
         /* Destaque para seções */
@@ -443,14 +519,43 @@
             color: #facc15; /* amarelo */
         }
 
-        /* Tabela textual */
-        .analysis-content table,
         .analysis-content pre {
             background-color: #020617;
             border-radius: 6px;
             padding: 12px;
             margin: 12px 0;
             overflow-x: auto;
+            white-space: pre;
+            font-variant-ligatures: none;
+        }
+
+        .analysis-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            background-color: #020617;
+            border: 1px solid #334155;
+            table-layout: fixed;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .analysis-content th,
+        .analysis-content td {
+            border: 1px solid #334155;
+            padding: 8px 10px;
+            vertical-align: top;
+            min-width: 90px;
+            white-space: normal;
+            word-break: break-word;
+        }
+
+        .analysis-content th {
+            background-color: #0b1224;
+            color: #f8fafc;
+            position: sticky;
+            top: 0;
+            z-index: 1;
         }
 
         /* Falhas críticas */
@@ -463,9 +568,28 @@
         .analysis-content .recommend {
             color: #4ade80; /* verde */
         }
+
     </style>
 </head>
-<body>
+<body class="header-collapsed toolbar-collapsed">
+    <button
+        id="mobileToggleHeader"
+        class="mobile-toggle mobile-toggle-header"
+        type="button"
+        aria-label="Mostrar ou esconder menu superior"
+        aria-expanded="false"
+        title="Menu superior"
+    >☰</button>
+
+    <button
+        id="mobileToggleToolbar"
+        class="mobile-toggle mobile-toggle-toolbar"
+        type="button"
+        aria-label="Mostrar ou esconder barra inferior"
+        aria-expanded="false"
+        title="Barra inferior"
+    >☰</button>
+
     <!-- Header with controls -->
     <div class="header">
         <h1>💬 Chat Simulation</h1>
@@ -502,12 +626,6 @@
 
     <!-- Chat messages area -->
     <div class="chat-container" id="chatContainer">
-        {% if selected_profile and selected_profile.last_simulation_report %}
-            <details class="analysis-panel">
-                <summary class="analysis-header">📋 Último relatório salvo no perfil</summary>
-                <div class="analysis-content markdown-body" data-markdown="{{ selected_profile.last_simulation_report }}"></div>
-            </details>
-        {% endif %}
         {% if not selected_profile %}
             <div class="empty-state">
                 <h2>Welcome to Chat Simulation</h2>
@@ -657,12 +775,80 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         });
 
-         window.addEventListener('load', () => {
+        function normalizeScoreboardMarkdown(md) {
+            if (!md || !md.includes('TURNO')) {
+                return md;
+            }
+
+            const lines = md.split('\n');
+            const output = [];
+            let inScoreboard = false;
+            let insertedSeparator = false;
+
+            for (const line of lines) {
+                const trimmed = line.trimStart();
+                const isScoreHeader =
+                    trimmed.startsWith('TURNO | RESUMO') ||
+                    trimmed.startsWith('TURNO\tRESUMO');
+                const isNextSection = /^\d+\.\s+/.test(trimmed) && !trimmed.includes('|');
+                const isScoreRow = /^\d+\s*\|/.test(trimmed) || /^\d+\s*\t/.test(trimmed);
+
+                function toMarkdownColumns(value) {
+                    if (value.includes('|')) {
+                        return value;
+                    }
+                    if (value.includes('\t')) {
+                        const cols = value.split(/\t+/).map(part => part.trim());
+                        return cols.join(' | ');
+                    }
+                    return value;
+                }
+
+                if (!inScoreboard && isScoreHeader) {
+                    inScoreboard = true;
+                    insertedSeparator = false;
+                    output.push(toMarkdownColumns(trimmed));
+                    continue;
+                }
+
+                if (inScoreboard && isNextSection) {
+                    inScoreboard = false;
+                    output.push(line);
+                    continue;
+                }
+
+                if (inScoreboard && !insertedSeparator && !trimmed) {
+                    continue;
+                }
+
+                if (inScoreboard && !insertedSeparator && isScoreRow) {
+                    const normalizedHeader = output[output.length - 1] || '';
+                    const columnCount = normalizedHeader.includes('|')
+                        ? normalizedHeader.split('|').length
+                        : toMarkdownColumns(trimmed).split('|').length;
+                    const separator = Array.from({ length: columnCount }, () => '---').join(' | ');
+                    output.push(separator);
+                    insertedSeparator = true;
+                }
+
+                if (inScoreboard && (trimmed.includes('|') || trimmed.includes('\t'))) {
+                    output.push(toMarkdownColumns(trimmed));
+                    continue;
+                }
+
+                output.push(line);
+            }
+
+            return output.join('\n');
+        }
+
+        window.addEventListener('load', () => {
             document.querySelectorAll('[data-markdown]').forEach(el => {
-              const md = el.getAttribute('data-markdown');
-              el.innerHTML = marked.parse(md);
+              const rawMd = el.getAttribute('data-markdown');
+              const normalizedMd = normalizeScoreboardMarkdown(rawMd);
+              el.innerHTML = marked.parse(normalizedMd);
             });
-          });
+        });
 
         // Prevent concurrent submissions
         (function() {
@@ -767,6 +953,38 @@
                     closeModal();
                 }
             });
+        })();
+
+        (function() {
+            const isMobile = window.matchMedia('(max-width: 768px)').matches;
+            if (!isMobile) return;
+
+            const body = document.body;
+            const headerBtn = document.getElementById('mobileToggleHeader');
+            const toolbarBtn = document.getElementById('mobileToggleToolbar');
+            if (!headerBtn || !toolbarBtn) return;
+
+            body.classList.add('header-collapsed');
+            body.classList.add('toolbar-collapsed');
+
+            function syncAriaState() {
+                const headerExpanded = !body.classList.contains('header-collapsed');
+                const toolbarExpanded = !body.classList.contains('toolbar-collapsed');
+                headerBtn.setAttribute('aria-expanded', headerExpanded ? 'true' : 'false');
+                toolbarBtn.setAttribute('aria-expanded', toolbarExpanded ? 'true' : 'false');
+            }
+
+            headerBtn.addEventListener('click', function() {
+                body.classList.toggle('header-collapsed');
+                syncAriaState();
+            });
+
+            toolbarBtn.addEventListener('click', function() {
+                body.classList.toggle('toolbar-collapsed');
+                syncAriaState();
+            });
+
+            syncAriaState();
         })();
     </script>
 </body>

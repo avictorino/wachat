@@ -100,7 +100,22 @@ def _build_simple_simulation_prompt(
     desire_context: str,
     problem_context: str,
     history_text: str,
+    last_assistant_message: str,
+    grammatical_gender: str,
+    should_avoid_explicit_spiritual_request: bool,
+    force_context_expansion: bool,
 ) -> str:
+    spiritual_request_rule = (
+        "- Neste turno, não peça oração, leitura bíblica ou prática espiritual explícita; foque em desabafo e contexto concreto.\n"
+        if should_avoid_explicit_spiritual_request
+        else "- Se fizer sentido pelo contexto, pode pedir oração ou apoio espiritual de forma natural.\n"
+    )
+    context_expansion_rule = (
+        "- Neste turno, continue explicando melhor seu problema e obstáculos; ainda não assuma compromisso de hábito específico.\n"
+        "- Se o bot perguntar por uma mudança prática, responda com contexto adicional (gatilho/obstáculo) antes de fechar tarefa.\n"
+        if force_context_expansion
+        else "- Se já houver contexto suficiente, pode avançar para um compromisso prático simples.\n"
+    )
 
     return f"""
         Gere UMA única frase simulando a mensagem de uma pessoa real, escrita como em uma conversa de WhatsApp.
@@ -109,14 +124,17 @@ def _build_simple_simulation_prompt(
         - Como me sinto: {feeling_context}
         - O que eu quero: {desire_context}
         - Meu problema: {problem_context}
-        - Procura apoio espiritual
+        - Concordância gramatical obrigatória: {grammatical_gender}
 
         Histórico recente da conversa (use apenas como referência):
         {history_text if history_text else "Sem histórico relevante."}
 
+        Última fala do bot (você deve responder a ela):
+        {last_assistant_message if last_assistant_message else "Sem fala recente do bot."}
+
         Regras obrigatórias:
-        - Responda com uma única mensagem curta, com 1 frase preferencialmente (no máximo 2).
-        - Limite total: até 30 palavras.
+        - Responda com uma única mensagem natural, com 2 a 4 frases.
+        - Limite total: até 70 palavras.
         - Não use listas.
         - Não copie literalmente os textos de contexto acima.
         - Não explique a situação de forma abstrata.
@@ -124,6 +142,17 @@ def _build_simple_simulation_prompt(
         - Evite clichês e frases genéricas.
         - Mostre a situação por sentimentos, pensamentos ou comportamentos concretos.
         - Use tom de confissão para alguém de confiança da igreja, sem mencionar explicitamente "pastor".
+        {spiritual_request_rule}
+        {context_expansion_rule}
+        - A resposta deve continuar a conversa de forma coerente com a ÚLTIMA fala do bot.
+        - Se o bot fizer pergunta, responda pelo menos uma parte da pergunta com detalhe concreto.
+        - Se o bot pedir escolha direta (ex.: "formal ou pessoal"), responda objetivamente essa escolha na primeira frase.
+        - Se o bot oferecer ação prática ("posso escrever agora"), avance com execução imediata em vez de repetir desabafo.
+        - Se o bot sugerir passos práticos, reaja a pelo menos um passo (aceitando, recusando, pedindo ajuda para executar).
+        - Não reinicie o assunto do zero; avance a conversa com base no que o bot acabou de dizer.
+        - Evite repetir as mesmas expressões dos dois últimos turnos do usuário (ex.: "estou quebrado", "choro todas as noites").
+        - Cada nova fala deve adicionar 1 informação nova (gatilho, horário, contexto, obstáculo ou pedido objetivo).
+        - Não peça visita presencial, ida ao local ou acompanhamento físico; peça apenas apoio por mensagem/ligação online.
         """
 
 
@@ -132,6 +161,8 @@ def simulate_next_user_message(
     profile: SimulatedUserProfile,
     predefined_scenario: str = "",
     theme: Union[int, str, None] = None,
+    inferred_gender: Optional[str] = None,
+    force_context_expansion: bool = False,
 ) -> str:
     """Generate only the next user message based on recent history and emotional profile."""
     return SimulationUseCase().simulate_next_user_message(
@@ -139,6 +170,8 @@ def simulate_next_user_message(
         profile=profile,
         predefined_scenario=predefined_scenario,
         theme=theme,
+        inferred_gender=inferred_gender,
+        force_context_expansion=force_context_expansion,
     )
 
 
@@ -153,12 +186,16 @@ class SimulationUseCase:
         profile: SimulatedUserProfile,
         predefined_scenario: str = "",
         theme: Union[int, str, None] = None,
+        inferred_gender: Optional[str] = None,
+        force_context_expansion: bool = False,
     ) -> str:
         result = self.simulate_next_user_message_with_metadata(
             conversation=conversation,
             profile=profile,
             predefined_scenario=predefined_scenario,
             theme=theme,
+            inferred_gender=inferred_gender,
+            force_context_expansion=force_context_expansion,
         )
         return result["content"]
 
@@ -168,6 +205,8 @@ class SimulationUseCase:
         profile: SimulatedUserProfile,
         predefined_scenario: str = "",
         theme: Union[int, str, None] = None,
+        inferred_gender: Optional[str] = None,
+        force_context_expansion: bool = False,
     ) -> dict:
         selected_profile = _parse_profile(profile)
         selected_scenario = (
@@ -184,8 +223,21 @@ class SimulationUseCase:
         problem_label = theme_options.get(selected_theme, "não ficou claro")
         recent_history = _to_recent_history(conversation=conversation, limit=5)
         history_text = ""
+        last_assistant_message = ""
+        assistant_messages_count = 0
         for message in recent_history:
             history_text += f"{message['role'].upper()}: {message['content']}\n"
+            if message["role"] == "assistant":
+                last_assistant_message = message["content"]
+                assistant_messages_count += 1
+
+        grammatical_gender = "feminino"
+        if inferred_gender == "male":
+            grammatical_gender = "masculino"
+        elif inferred_gender == "unknown":
+            grammatical_gender = "neutro, evitando adjetivos com marca de gênero"
+
+        should_avoid_explicit_spiritual_request = assistant_messages_count <= 1
 
         desire_label = PROFILE_LABELS.get(
             selected_profile, selected_profile.value.replace("_", " ")
@@ -195,6 +247,10 @@ class SimulationUseCase:
             desire_context=desire_label,
             problem_context=problem_label,
             history_text=history_text,
+            last_assistant_message=last_assistant_message,
+            grammatical_gender=grammatical_gender,
+            should_avoid_explicit_spiritual_request=should_avoid_explicit_spiritual_request,
+            force_context_expansion=force_context_expansion,
         )
         content = (
             self._llm_service.basic_call(
@@ -221,6 +277,7 @@ class SimulationUseCase:
         emotional_profile: Union[SimulatedUserProfile, str],
         predefined_scenario: str = "",
         theme: Union[int, str, None] = None,
+        force_context_expansion: bool = False,
     ) -> int:
         profile = Profile.objects.get(id=profile_id)
         conversation = (
@@ -235,6 +292,8 @@ class SimulationUseCase:
             profile=_parse_profile(emotional_profile),
             predefined_scenario=predefined_scenario,
             theme=theme,
+            inferred_gender=profile.inferred_gender,
+            force_context_expansion=force_context_expansion,
         )
         theme_id = self._theme_classifier.classify(simulation["content"])
         selected_theme = Theme.objects.filter(id=theme_id).first()

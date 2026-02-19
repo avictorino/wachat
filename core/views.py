@@ -254,6 +254,7 @@ class ChatView(View):
                     profile=emotional_profile,
                     predefined_scenario=predefined_scenario,
                     theme=simulation_theme,
+                    inferred_gender=profile.inferred_gender,
                 )
             )
         except (ValueError, RuntimeError) as exc:
@@ -334,6 +335,25 @@ class ChatView(View):
             profile.save(update_fields=["welcome_message_sent", "updated_at"])
             request.session.pop(f"pending_simulation_payload_{profile.id}", None)
             request.session.pop(f"pending_simulation_preview_{profile.id}", None)
+            initial_simulation_theme = (
+                Theme.objects.filter(
+                    Q(slug="nao_identificado")
+                    | Q(name__iexact="Não identificado")
+                    | Q(name__iexact="Nao identificado")
+                    | Q(name__iexact="nao_identificado")
+                )
+                .order_by("id")
+                .first()
+            )
+            if not initial_simulation_theme:
+                raise RuntimeError(
+                    "Theme 'nao_identificado' not found for initial simulation message."
+                )
+            locked_conversation_theme = (
+                Theme.objects.filter(id=simulation_theme).first()
+                if simulation_theme is not None
+                else None
+            )
 
             for turn in range(1, turns_total + 1):
                 if turn == 1:
@@ -356,7 +376,13 @@ class ChatView(View):
                             conversation=conversation,
                             profile=emotional_profile,
                             predefined_scenario=predefined_scenario,
-                            theme=simulation_theme,
+                            theme=(
+                                locked_conversation_theme.id
+                                if locked_conversation_theme is not None
+                                else simulation_theme
+                            ),
+                            inferred_gender=profile.inferred_gender,
+                            force_context_expansion=turn <= 3,
                         )
                     )
                     user_text = simulation_result.get("content", "").strip()
@@ -383,12 +409,33 @@ class ChatView(View):
                     channel="simulation",
                     generated_by_simulator=True,
                     ollama_prompt=user_payload,
+                    theme=(
+                        initial_simulation_theme
+                        if turn == 1
+                        else locked_conversation_theme
+                    ),
                 )
                 user_message.block_root = user_message
                 user_message.save(update_fields=["block_root"])
 
-                chat_service.classify_and_persist_message_theme(user_message)
-                chat_service.generate_response_message(profile=profile, channel="chat")
+                if turn != 1 and locked_conversation_theme is None:
+                    locked_conversation_theme = (
+                        chat_service.classify_and_persist_message_theme(user_message)
+                    )
+
+                if (
+                    turn != 1
+                    and locked_conversation_theme is not None
+                    and user_message.theme_id != locked_conversation_theme.id
+                ):
+                    user_message.theme = locked_conversation_theme
+                    user_message.save(update_fields=["theme"])
+
+                chat_service.generate_response_message(
+                    profile=profile,
+                    channel="chat",
+                    forced_theme=locked_conversation_theme if turn != 1 else None,
+                )
 
             report = chat_service.analyze_conversation_emotions(profile=profile)
             profile.last_simulation_report = report
