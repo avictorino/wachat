@@ -1,9 +1,9 @@
 """Simulation service focused on generating only the next user turn."""
 
 from enum import Enum
-from typing import Iterable, List, Union
+from typing import Iterable, List, Optional, Union
 
-from core.models import Message, Profile, ThemeV2
+from core.models import Message, Profile, Theme
 from services.openai_service import OpenAIService
 from services.theme_classifier import ThemeClassifier
 
@@ -53,10 +53,22 @@ PREDEFINED_SCENARIOS = {
 
 
 def _theme_options_from_db() -> dict:
-    options = {"": "não ficou claro"}
-    for theme in ThemeV2.objects.all().order_by("name"):
+    options = {}
+    for theme in Theme.objects.all().order_by("name"):
         options[theme.id] = theme.name
     return options
+
+
+def _parse_optional_theme_id(theme: Union[int, str, None]) -> Optional[int]:
+    if theme is None:
+        return None
+    raw = str(theme).strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid simulation theme id: '{raw}'.") from exc
 
 
 def _to_recent_history(conversation: Iterable, limit: int = 5) -> List[dict]:
@@ -119,7 +131,7 @@ def simulate_next_user_message(
     conversation,
     profile: SimulatedUserProfile,
     predefined_scenario: str = "",
-    theme: str = "",
+    theme: Union[int, str, None] = None,
 ) -> str:
     """Generate only the next user message based on recent history and emotional profile."""
     return SimulationUseCase().simulate_next_user_message(
@@ -140,7 +152,7 @@ class SimulationUseCase:
         conversation,
         profile: SimulatedUserProfile,
         predefined_scenario: str = "",
-        theme: str = "",
+        theme: Union[int, str, None] = None,
     ) -> str:
         result = self.simulate_next_user_message_with_metadata(
             conversation=conversation,
@@ -155,14 +167,16 @@ class SimulationUseCase:
         conversation,
         profile: SimulatedUserProfile,
         predefined_scenario: str = "",
-        theme: str = "",
+        theme: Union[int, str, None] = None,
     ) -> dict:
         selected_profile = _parse_profile(profile)
         selected_scenario = (
             predefined_scenario if predefined_scenario in PREDEFINED_SCENARIOS else ""
         )
-        available_theme_ids = set(ThemeV2.objects.values_list("id", flat=True))
-        selected_theme = theme if theme in available_theme_ids else ""
+        available_theme_ids = set(Theme.objects.values_list("id", flat=True))
+        selected_theme = _parse_optional_theme_id(theme)
+        if selected_theme is not None and selected_theme not in available_theme_ids:
+            raise ValueError(f"Theme '{selected_theme}' not found for simulation.")
         theme_options = _theme_options_from_db()
         feeling_label = PREDEFINED_SCENARIOS.get(
             selected_scenario, "está emocionalmente abalada"
@@ -206,7 +220,7 @@ class SimulationUseCase:
         profile_id: int,
         emotional_profile: Union[SimulatedUserProfile, str],
         predefined_scenario: str = "",
-        theme: str = "",
+        theme: Union[int, str, None] = None,
     ) -> int:
         profile = Profile.objects.get(id=profile_id)
         conversation = (
@@ -223,11 +237,11 @@ class SimulationUseCase:
             theme=theme,
         )
         theme_id = self._theme_classifier.classify(simulation["content"])
-        selected_theme = ThemeV2.objects.filter(id=theme_id).first()
+        selected_theme = Theme.objects.filter(id=theme_id).first()
         if not selected_theme:
             raise RuntimeError(f"Theme '{theme_id}' not found in database.")
 
-        Message.objects.create(
+        message = Message.objects.create(
             profile=profile,
             role="user",
             content=simulation["content"],
@@ -236,4 +250,6 @@ class SimulationUseCase:
             ollama_prompt=simulation.get("payload"),
             theme=selected_theme,
         )
+        message.block_root = message
+        message.save(update_fields=["block_root"])
         return profile.id

@@ -35,7 +35,7 @@ class RAGService:
     def retrieve(
         self,
         query: str,
-        theme_id: Optional[str],
+        theme_id: Optional[int],
         limit: int = 3,
     ) -> List[str]:
         """

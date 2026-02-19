@@ -8,7 +8,7 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from openai import OpenAI
 
-from core.models import BibleTextFlat, ThemeV2
+from core.models import BibleTextFlat, Theme
 
 BASE_URL = "https://ebible.org/porbr2018/"
 TRANSLATION = "porbr2018"
@@ -357,25 +357,25 @@ def classify_theme(
     client: OpenAI,
     model: str,
     text: str,
-    allowed_themes: list[str],
-) -> str:
-    allowed = ", ".join(allowed_themes)
+    allowed_themes: list[int],
+) -> int:
+    allowed = ", ".join(str(item) for item in allowed_themes)
     response = client.chat.completions.create(
         model=model,
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "Classifique versos bíblicos em uma única chave de tema. "
-                    "Retorne somente a chave."
+                    "Classifique versos bíblicos em um único id de tema. "
+                    "Retorne somente o número do id."
                 ),
             },
             {
                 "role": "user",
                 "content": (
-                    "Classifique o verso bíblico em exatamente uma chave.\n"
-                    f"Chaves permitidas: {allowed}\n"
-                    "Responda apenas com a chave, sem explicação.\n"
+                    "Classifique o verso bíblico em exatamente um id.\n"
+                    f"IDs permitidos: {allowed}\n"
+                    "Responda apenas com o número do id, sem explicação.\n"
                     f"Verso: {text}"
                 ),
             },
@@ -384,7 +384,10 @@ def classify_theme(
     content = response.choices[0].message.content
     if content is None:
         raise RuntimeError("Classificação de tema sem conteúdo.")
-    theme = content.strip()
+    try:
+        theme = int(content.strip())
+    except ValueError as exc:
+        raise RuntimeError(f"Tema inválido retornado: '{content.strip()}'.") from exc
     if theme not in allowed_themes:
         raise RuntimeError(f"Tema inválido: {theme}")
     return theme
@@ -413,11 +416,9 @@ class Command(BaseCommand):
         if not openai_api_key:
             raise CommandError("Variável OPENAI_API_KEY é obrigatória.")
 
-        allowed_themes = list(
-            ThemeV2.objects.values_list("id", flat=True).order_by("id")
-        )
+        allowed_themes = list(Theme.objects.values_list("id", flat=True).order_by("id"))
         if not allowed_themes:
-            raise CommandError("Nenhum tema encontrado em ThemeV2.")
+            raise CommandError("Nenhum tema encontrado em Theme.")
 
         openai_client = OpenAI(api_key=openai_api_key)
         session = requests.Session()

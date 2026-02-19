@@ -8,7 +8,7 @@ from typing import Dict, List, Optional, Tuple
 from django.core.management.base import BaseCommand, CommandError
 from openai import OpenAI
 
-from core.models import RagChunk, ThemeV2
+from core.models import RagChunk, Theme
 from services.crawlers.gotquestions_marriage_crawler import (
     GotQuestionsMarriageCrawler,
     QuestionAnswerPair,
@@ -34,7 +34,7 @@ class ProcessedPair:
     final_answer_pt: str
     final_text_for_embedding: str
     verses: List[str]
-    theme_id: str
+    theme_id: int
     theme_confidence: float
 
 
@@ -95,10 +95,10 @@ class RagChunkProcessor:
     def extract_theme(
         self,
         text_pt: str,
-        allowed_themes: Dict[str, str],
-    ) -> Tuple[str, float]:
+        allowed_themes: Dict[int, str],
+    ) -> Tuple[int, float]:
         if not allowed_themes:
-            raise RuntimeError("No ThemeV2 records found for theme extraction.")
+            raise RuntimeError("No Theme records found for theme extraction.")
 
         choices_text = "\\n".join(
             [
@@ -110,7 +110,7 @@ class RagChunkProcessor:
         prompt = (
             "Classifique o tema predominante do conteúdo abaixo usando APENAS um theme_id da lista permitida.\\n"
             "Retorne SOMENTE JSON válido no formato:\\n"
-            '{"theme_id":"id_existente","confidence":0-1}\\n'
+            '{"theme_id":123,"confidence":0-1}\\n'
             "Sem texto adicional.\\n\\n"
             f"Temas permitidos:\\n{choices_text}\\n\\n"
             f"Conteúdo:\\n{text_pt}"
@@ -129,7 +129,10 @@ class RagChunkProcessor:
             raise RuntimeError("Theme extraction returned empty response.")
 
         parsed = json.loads(content)
-        theme_id = str(parsed.get("theme_id", "")).strip()
+        try:
+            theme_id = int(parsed.get("theme_id"))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Invalid integer theme_id returned by LLM.") from exc
         confidence = float(parsed.get("confidence"))
 
         if theme_id not in allowed_themes:
@@ -234,10 +237,10 @@ class Command(BaseCommand):
         if not openai_model:
             raise CommandError("OPENAI_MODEL is required.")
 
-        allowed_themes = dict(ThemeV2.objects.values_list("id", "name"))
+        allowed_themes = dict(Theme.objects.values_list("id", "name"))
         if not allowed_themes:
             raise CommandError(
-                "ThemeV2 table is empty. Configure themes before ingestion."
+                "Theme table is empty. Configure themes before ingestion."
             )
 
         crawler = GotQuestionsMarriageCrawler()

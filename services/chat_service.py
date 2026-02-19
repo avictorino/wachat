@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from django.utils import timezone
 
-from core.models import Message, Profile, ThemeV2
+from core.models import Message, Profile, Theme
 from services.conversation_runtime import (
     MODE_ACOLHIMENTO,
     MODE_AMBIVALENCIA,
@@ -118,6 +118,8 @@ PROIBIÇÕES
 - Não usar linguagem clínica/técnica.
 - Não moralizar nem culpar.
 - Não impor religião.
+- Não sugerir, convidar ou encaminhar para encontro presencial/online por iniciativa própria.
+- Mantenha todo acolhimento, orientação e escuta no canal atual de mensagem, com calor humano e proximidade.
 
 FORMATO DE SAÍDA
 - Entregue apenas a próxima fala do assistente."""
@@ -281,6 +283,7 @@ class ChatService:
             prompt=prompt,
             max_tokens=FIXED_TOPIC_SIGNAL_MAX_COMPLETION_TOKENS,
         )
+
         parsed = self._safe_parse_json(raw)
         topic = parsed.get("topic")
         confidence = parsed.get("confidence", 0)
@@ -298,6 +301,10 @@ class ChatService:
                 topic = None
         else:
             topic = None
+
+        logger.info(
+            f"Extracted topic signal: topic={topic} confidence={confidence} keep_current={keep_current}"
+        )
 
         return {
             "topic": topic,
@@ -501,7 +508,7 @@ Resposta do assistente para avaliar:
         active_topic: Optional[str],
         top_topics: str,
         last_user_message: str,
-        selected_theme_id: str,
+        selected_theme_id: int,
         selected_theme_name: str,
         theme_prompt: Optional[str],
         context_messages: list,
@@ -592,8 +599,8 @@ Resposta do assistente para avaliar:
                 "concreta, sem moralizar."
             )
 
-        max_sentences = 12
-        max_questions = 2
+        max_sentences = 6
+        max_questions = 3
 
         prompt = f"""
     MODO ATUAL: {runtime_mode}
@@ -797,7 +804,7 @@ Resposta do assistente para avaliar:
         last_person_message: Message,
         generation_state: Dict[str, Any],
         active_topic: Optional[str],
-        selected_theme: ThemeV2,
+        selected_theme: Theme,
     ) -> str:
         context_messages = queryset.exclude(id=last_person_message.id).order_by(
             "-created_at"
@@ -832,7 +839,7 @@ Resposta do assistente para avaliar:
             last_user_message=last_person_message.content,
             selected_theme_id=selected_theme.id,
             selected_theme_name=selected_theme.name,
-            theme_prompt=selected_theme.prompt,
+            theme_prompt=selected_theme.meta_prompt,
             context_messages=context_messages,
             rag_contexts=rag_contexts,
         )
@@ -1157,21 +1164,28 @@ Resposta do assistente para avaliar:
                 "mode": ("multi_message" if len(chunks) > 1 else "single_message"),
             },
         }
+        first_message = None
         for index, chunk in enumerate(chunks):
             payload = response_payload if index == 0 else None
-            Message.objects.create(
+            message = Message.objects.create(
                 profile=profile,
                 role="assistant",
                 content=chunk,
                 channel=channel,
                 ollama_prompt=payload,
+                score=float(best_score),
                 theme=selected_theme,
+                block_root=first_message,
             )
+            if first_message is None:
+                first_message = message
+                message.block_root = message
+                message.save(update_fields=["block_root"])
         return assistant_text
 
-    def _classify_and_persist_message_theme(self, message: Message) -> ThemeV2:
+    def _classify_and_persist_message_theme(self, message: Message) -> Theme:
         theme_id = self._theme_classifier.classify(message.content)
-        theme = ThemeV2.objects.filter(id=theme_id).first()
+        theme = Theme.objects.filter(id=theme_id).first()
         if not theme:
             raise RuntimeError(f"Theme '{theme_id}' not found in database.")
         if message.theme_id != theme.id:
@@ -1179,7 +1193,7 @@ Resposta do assistente para avaliar:
             message.save(update_fields=["theme"])
         return theme
 
-    def classify_and_persist_message_theme(self, message: Message) -> ThemeV2:
+    def classify_and_persist_message_theme(self, message: Message) -> Theme:
         return self._classify_and_persist_message_theme(message)
 
     def infer_gender(self, name: str) -> str:
@@ -1264,13 +1278,16 @@ Resposta do assistente para avaliar:
         profile.conversation_mode = MODE_WELCOME
         profile.save(update_fields=["welcome_message_sent", "conversation_mode"])
 
-        return Message.objects.create(
+        message = Message.objects.create(
             profile=profile,
             role="assistant",
             content=response,
             channel=channel,
             ollama_prompt=welcome_payload,
         )
+        message.block_root = message
+        message.save(update_fields=["block_root"])
+        return message
 
     def build_theme_prompt(self, theme_name: str) -> str:
 

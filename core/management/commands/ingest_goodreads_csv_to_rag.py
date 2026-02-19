@@ -7,9 +7,10 @@ import requests
 from django.core.management.base import BaseCommand, CommandError
 from openai import OpenAI
 
-from core.models import RagChunk, ThemeV2
+from core.models import RagChunk, Theme
+from core.themes import THEME_SLUG_TO_ID
 
-THEME_RELACIONAMENTO = "relacionamento"
+THEME_RELACIONAMENTO_ID = THEME_SLUG_TO_ID["relacionamento"]
 REQUEST_TIMEOUT_SECONDS = 60
 EMBEDDING_MODEL = "text-embedding-3-large"
 
@@ -68,7 +69,7 @@ def _embed_text(*, client: OpenAI, text: str):
 
 class Command(BaseCommand):
     help = (
-        "Import Goodreads quotes CSV into RagChunk with theme='relacionamento', "
+        "Import Goodreads quotes CSV into RagChunk with theme_id de relacionamento, "
         "translating to pt-BR and generating embeddings via OpenAI."
     )
 
@@ -101,9 +102,9 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if not ThemeV2.objects.filter(id=THEME_RELACIONAMENTO).exists():
+        if not Theme.objects.filter(id=THEME_RELACIONAMENTO_ID).exists():
             raise CommandError(
-                "Theme 'relacionamento' is not configured in ThemeV2 table."
+                "Theme de relacionamento não está configurado na tabela Theme."
             )
 
         csv_path = str(options["csv_path"]).strip()
@@ -201,7 +202,7 @@ class Command(BaseCommand):
                         "text": rag_text,
                         "embedding": embedding,
                         "type": chunk_type,
-                        "theme_id": THEME_RELACIONAMENTO,
+                        "theme_id": THEME_RELACIONAMENTO_ID,
                     },
                 )
                 if created:
@@ -220,7 +221,7 @@ class Command(BaseCommand):
                     total_rows,
                     total_created,
                     total_updated,
-                    THEME_RELACIONAMENTO,
+                    THEME_RELACIONAMENTO_ID,
                 )
             )
         )

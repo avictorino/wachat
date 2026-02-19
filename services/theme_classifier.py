@@ -1,4 +1,4 @@
-from core.models import ThemeV2
+from core.models import Theme
 from services.openai_service import OpenAIService
 
 THEME_CLASSIFIER_MODEL = "gpt-4o-mini"
@@ -11,7 +11,7 @@ class ThemeClassifier:
     def __init__(self):
         self._llm_service = OpenAIService()
 
-    def classify(self, text: str) -> str:
+    def classify(self, text: str) -> int:
         if not text or not text.strip():
             raise ValueError("Text is required for theme classification.")
 
@@ -20,7 +20,7 @@ class ThemeClassifier:
             raise RuntimeError("OpenAI client is not available for theme classifier.")
 
         allowed_theme_ids = list(
-            ThemeV2.objects.values_list("id", flat=True).order_by("id")
+            Theme.objects.values_list("id", flat=True).order_by("id")
         )
         if not allowed_theme_ids:
             raise RuntimeError("No themes found in database for classification.")
@@ -41,7 +41,7 @@ class ThemeClassifier:
                     "content": (
                         "Classify the predominant emotional or life theme "
                         f'of this message:\n"{text}"\n\n'
-                        "Return only the theme keyword."
+                        "Return only the numeric theme id."
                     ),
                 },
             ],
@@ -62,7 +62,13 @@ class ThemeClassifier:
         if not isinstance(content, str) or not content.strip():
             raise RuntimeError("Theme classifier returned empty content.")
 
-        theme = content.strip().lower()
+        try:
+            theme = int(content.strip())
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Invalid non-integer theme returned by classifier: '{content.strip()}'"
+            ) from exc
+
         if theme not in allowed_theme_ids:
             raise RuntimeError(f"Invalid theme returned by classifier: '{theme}'")
 

@@ -502,6 +502,12 @@
 
     <!-- Chat messages area -->
     <div class="chat-container" id="chatContainer">
+        {% if selected_profile and selected_profile.last_simulation_report %}
+            <details class="analysis-panel">
+                <summary class="analysis-header">📋 Último relatório salvo no perfil</summary>
+                <div class="analysis-content markdown-body" data-markdown="{{ selected_profile.last_simulation_report }}"></div>
+            </details>
+        {% endif %}
         {% if not selected_profile %}
             <div class="empty-state">
                 <h2>Welcome to Chat Simulation</h2>
@@ -575,11 +581,10 @@
     {% if selected_profile %}
     <div class="input-area">
         {% if simulated_error %}
-        <div class="simulate-error">Erro no simulate: {{ simulated_error }}</div>
+        <div class="simulate-error">Erro na simulação: {{ simulated_error }}</div>
         {% endif %}
         <form method="post" action="/chat/" id="simulateForm">
             {% csrf_token %}
-            <input type="hidden" name="action" value="simulate">
             <input type="hidden" name="profile_id" value="{{ selected_profile.id }}">
             <select name="predefined_scenario">
                 <option value="" {% if not selected_predefined_scenario %}selected{% endif %}>Como me sinto</option>
@@ -605,10 +610,11 @@
             <select name="simulation_theme">
                 <option value="" {% if not selected_simulation_theme %}selected{% endif %}>Meu problema</option>
                 {% for theme in simulation_theme_choices %}
-                <option value="{{ theme.id }}" {% if selected_simulation_theme == theme.id %}selected{% endif %}>{{ theme.name }}</option>
+                <option value="{{ theme.id }}" {% if selected_simulation_theme == theme.id|stringformat:"s" %}selected{% endif %}>{{ theme.name }}</option>
                 {% endfor %}
             </select>
-            <button type="submit" class="secondary">🎭 Simulate</button>
+            <button type="submit" class="secondary" name="action" value="simulate">🎭 Simulate Sentence</button>
+            <button type="submit" class="secondary" name="action" value="simulate_conversation">🧪 Simulador de conversa</button>
         </form>
 
         <form method="post" action="/chat/" id="chatForm">

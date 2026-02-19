@@ -2,12 +2,13 @@ import logging
 import random
 from urllib.parse import urlencode
 
+from django.db.models import Q
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views import View
 from faker import Faker
 
-from core.models import Message, Profile, ThemeV2
+from core.models import Message, Profile, Theme
 from services.chat_service import ChatService
 from services.simulation_service import SimulatedUserProfile, SimulationUseCase
 
@@ -22,6 +23,16 @@ GENDER_FEMALE = "female"
 # Constants for simulation timing
 MESSAGE_DELAY_SECONDS = 0.6  # Delay between conversation messages
 OVERVIEW_DELAY_SECONDS = 1.0  # Delay between overview messages
+
+
+def _parse_optional_theme_id(raw_value: str):
+    normalized = (raw_value or "").strip()
+    if not normalized:
+        return None
+    try:
+        return int(normalized)
+    except ValueError as exc:
+        raise ValueError(f"Invalid simulation theme id: '{normalized}'.") from exc
 
 
 class ChatView(View):
@@ -97,7 +108,7 @@ class ChatView(View):
             "selected_simulation_theme": request.GET.get(
                 "selected_simulation_theme", ""
             ).strip(),
-            "simulation_theme_choices": ThemeV2.objects.all().order_by("name"),
+            "simulation_theme_choices": Theme.objects.all().order_by("name"),
         }
 
         return render(request, "chat.html", context)
@@ -112,6 +123,8 @@ class ChatView(View):
             return self._handle_new_profile(request)
         elif action == "simulate":
             return self._handle_simulate(request)
+        elif action == "simulate_conversation":
+            return self._handle_simulate_conversation(request)
         elif action == "analyze":
             return self._handle_analyze(request)
         elif action == "delete_and_regenerate":
@@ -160,6 +173,8 @@ class ChatView(View):
             channel="chat",
             ollama_prompt=user_prompt_payload,
         )
+        user_message.block_root = user_message
+        user_message.save(update_fields=["block_root"])
 
         chat_service = ChatService()
         try:
@@ -201,7 +216,20 @@ class ChatView(View):
             "emotional_profile", SimulatedUserProfile.AMBIVALENTE.value
         ).strip()
         predefined_scenario = request.POST.get("predefined_scenario", "").strip()
-        simulation_theme = request.POST.get("simulation_theme", "").strip()
+        simulation_theme_raw = request.POST.get("simulation_theme", "").strip()
+        try:
+            simulation_theme = _parse_optional_theme_id(simulation_theme_raw)
+        except ValueError as exc:
+            error_query = urlencode(
+                {
+                    "profile_id": profile_id,
+                    "simulated_error": str(exc),
+                    "selected_predefined_scenario": predefined_scenario,
+                    "selected_emotional_profile": emotional_profile,
+                    "selected_simulation_theme": simulation_theme_raw,
+                }
+            )
+            return redirect(f"{reverse('chat')}?{error_query}")
 
         if not profile_id:
             return redirect(reverse("chat"))
@@ -247,7 +275,7 @@ class ChatView(View):
                     "simulated_error": str(exc),
                     "selected_predefined_scenario": predefined_scenario,
                     "selected_emotional_profile": emotional_profile,
-                    "selected_simulation_theme": simulation_theme,
+                    "selected_simulation_theme": simulation_theme_raw,
                 }
             )
             return redirect(f"{reverse('chat')}?{error_query}")
@@ -263,7 +291,146 @@ class ChatView(View):
                 "simulated_preview": simulated_preview,
                 "selected_predefined_scenario": predefined_scenario,
                 "selected_emotional_profile": emotional_profile,
-                "selected_simulation_theme": simulation_theme,
+                "selected_simulation_theme": simulation_theme_raw,
+            }
+        )
+        return redirect(f"{reverse('chat')}?{query}")
+
+    def _handle_simulate_conversation(self, request):
+        profile_id = request.POST.get("profile_id")
+        emotional_profile = request.POST.get(
+            "emotional_profile", SimulatedUserProfile.AMBIVALENTE.value
+        ).strip()
+        predefined_scenario = request.POST.get("predefined_scenario", "").strip()
+        simulation_theme_raw = request.POST.get("simulation_theme", "").strip()
+        try:
+            simulation_theme = _parse_optional_theme_id(simulation_theme_raw)
+        except ValueError as exc:
+            error_query = urlencode(
+                {
+                    "profile_id": profile_id,
+                    "simulated_error": str(exc),
+                    "selected_predefined_scenario": predefined_scenario,
+                    "selected_emotional_profile": emotional_profile,
+                    "selected_simulation_theme": simulation_theme_raw,
+                }
+            )
+            return redirect(f"{reverse('chat')}?{error_query}")
+
+        if not profile_id:
+            return redirect(reverse("chat"))
+
+        try:
+            profile = Profile.objects.get(id=int(profile_id))
+        except Profile.DoesNotExist:
+            return redirect(reverse("chat"))
+
+        simulation_use_case = SimulationUseCase()
+        chat_service = ChatService()
+        turns_total = 5
+
+        try:
+            profile.welcome_message_sent = False
+            profile.save(update_fields=["welcome_message_sent", "updated_at"])
+            request.session.pop(f"pending_simulation_payload_{profile.id}", None)
+            request.session.pop(f"pending_simulation_preview_{profile.id}", None)
+
+            for turn in range(1, turns_total + 1):
+                if turn == 1:
+                    user_text = f"Oi, eu sou {profile.name}. Queria conversar com você."
+                    user_payload = {
+                        "source": "conversation_simulator",
+                        "turn": turn,
+                        "type": "intro",
+                    }
+                else:
+                    conversation = (
+                        Message.objects.filter(profile=profile)
+                        .exclude(role="system")
+                        .exclude(role="analysis")
+                        .exclude(exclude_from_context=True)
+                        .order_by("created_at")
+                    )
+                    simulation_result = (
+                        simulation_use_case.simulate_next_user_message_with_metadata(
+                            conversation=conversation,
+                            profile=emotional_profile,
+                            predefined_scenario=predefined_scenario,
+                            theme=simulation_theme,
+                        )
+                    )
+                    user_text = simulation_result.get("content", "").strip()
+                    if turn == 2:
+                        topic_openers = [
+                            "Mudando um pouco de assunto,",
+                            "Queria abrir meu coração sobre isso:",
+                            "Tenho pensado nisso hoje e",
+                            "Tem uma coisa que está pegando para mim:",
+                        ]
+                        user_text = (
+                            f"{random.choice(topic_openers)} {user_text}".strip()
+                        )
+                    user_payload = {
+                        "source": "conversation_simulator",
+                        "turn": turn,
+                        "payload": simulation_result.get("payload"),
+                    }
+
+                user_message = Message.objects.create(
+                    profile=profile,
+                    role="user",
+                    content=user_text,
+                    channel="simulation",
+                    generated_by_simulator=True,
+                    ollama_prompt=user_payload,
+                )
+                user_message.block_root = user_message
+                user_message.save(update_fields=["block_root"])
+
+                chat_service.classify_and_persist_message_theme(user_message)
+                chat_service.generate_response_message(profile=profile, channel="chat")
+
+            report = chat_service.analyze_conversation_emotions(profile=profile)
+            profile.last_simulation_report = report
+            profile.save(update_fields=["last_simulation_report", "updated_at"])
+
+            analysis_message = Message.objects.create(
+                profile=profile,
+                role="analysis",
+                content=f"📊 Relatório da Simulação:\n\n{report}",
+                channel="other",
+                exclude_from_context=True,
+            )
+            analysis_message.block_root = analysis_message
+            analysis_message.save(update_fields=["block_root"])
+        except (ValueError, RuntimeError) as exc:
+            logger.exception(
+                (
+                    "Conversation simulation failed for profile_id=%s "
+                    "(emotional_profile=%s, predefined_scenario=%s, simulation_theme=%s)"
+                ),
+                profile.id,
+                emotional_profile,
+                predefined_scenario,
+                simulation_theme_raw,
+            )
+            error_query = urlencode(
+                {
+                    "profile_id": profile.id,
+                    "simulated_error": str(exc),
+                    "selected_predefined_scenario": predefined_scenario,
+                    "selected_emotional_profile": emotional_profile,
+                    "selected_simulation_theme": simulation_theme_raw,
+                }
+            )
+            return redirect(f"{reverse('chat')}?{error_query}")
+
+        query = urlencode(
+            {
+                "profile_id": profile.id,
+                "selected_predefined_scenario": predefined_scenario,
+                "selected_emotional_profile": emotional_profile,
+                "selected_simulation_theme": simulation_theme_raw,
             }
         )
         return redirect(f"{reverse('chat')}?{query}")
@@ -286,13 +453,15 @@ class ChatView(View):
         logger.info("Generated critical analysis")
 
         # Save analysis message with exclude_from_context flag
-        Message.objects.create(
+        analysis_message = Message.objects.create(
             profile=profile,
             role="analysis",
             content=f"📊 Análise Crítica da Conversa:\n\n{analysis}",
             channel="other",
             exclude_from_context=True,
         )
+        analysis_message.block_root = analysis_message
+        analysis_message.save(update_fields=["block_root"])
 
         # Redirect back to chat with selected profile
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
@@ -317,7 +486,10 @@ class ChatView(View):
         except Message.DoesNotExist:
             return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 
-        message.delete()
+        block_root_id = message.block_root_id or message.id
+        Message.objects.filter(profile=profile, role="assistant").filter(
+            Q(id=block_root_id) | Q(block_root_id=block_root_id)
+        ).delete()
         ChatService().generate_response_message(profile=profile, channel="chat")
         return redirect(f"{reverse('chat')}?profile_id={profile.id}")
 

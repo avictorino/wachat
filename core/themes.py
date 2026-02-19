@@ -1,14 +1,17 @@
 THEME_CHOICES = [
-    ("relacionamento", "Relacionamento e família"),
-    ("financeiro", "Dinheiro e dívidas"),
-    ("vicios", "Vícios e recaídas"),
-    ("saude", "Saúde e cansaço"),
-    ("luto_perda", "Luto e perda"),
-    ("trabalho", "Trabalho e pressão"),
-    ("solidao", "Solidão"),
-    ("espiritual", "Espiritualidade"),
-    ("ansiedade", "Ansiedade"),
-    ("outros", "Outro problema"),
+    (1, "relacionamento", "Relacionamento e família"),
+    (2, "dinheiro_e_dividas", "Dinheiro e dívidas"),
+    (3, "vicios_e_recaidas", "Vícios e recaídas"),
+    (4, "saude_e_cansaco", "Saúde e cansaço"),
+    (5, "luto_e_perda", "Luto e perda"),
+    (6, "trabalho_e_pressao", "Trabalho e pressão"),
+    (7, "solidao", "Solidão"),
+    (8, "espiritualidade", "Espiritualidade"),
+    (9, "ansiedade", "Ansiedade"),
+    (10, "outros", "Outro problema"),
 ]
 
-THEME_VALUES = [theme[0] for theme in THEME_CHOICES]
+THEME_IDS = [theme[0] for theme in THEME_CHOICES]
+THEME_SLUGS = [theme[1] for theme in THEME_CHOICES]
+THEME_SLUG_TO_ID = {slug: theme_id for theme_id, slug, _ in THEME_CHOICES}
+THEME_ID_TO_SLUG = {theme_id: slug for theme_id, slug, _ in THEME_CHOICES}

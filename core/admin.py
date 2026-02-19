@@ -3,7 +3,7 @@ import json
 from django.contrib import admin, messages
 from django.utils.html import format_html
 
-from core.models import BibleTextFlat, Message, Profile, RagChunk, ThemeV2
+from core.models import BibleTextFlat, Message, Profile, RagChunk, Theme
 from core.theme_prompt_generation import build_theme_prompt_partial
 
 
@@ -18,9 +18,9 @@ class MessageInline(admin.TabularInline):
 
     model = Message
     extra = 0
-    readonly_fields = ["role", "content", "channel", "theme", "created_at"]
+    readonly_fields = ["role", "content", "channel", "theme", "score", "created_at"]
     can_delete = False
-    fields = ["role", "channel", "theme", "content", "created_at"]
+    fields = ["role", "channel", "theme", "score", "content", "created_at"]
     ordering = ["-created_at"]
 
     def has_add_permission(self, request, obj=None):
@@ -28,20 +28,53 @@ class MessageInline(admin.TabularInline):
         return False
 
 
+class MessageScoreBandFilter(admin.SimpleListFilter):
+    title = "score range"
+    parameter_name = "score_band"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("bad", "Ruins (<= 6.0)"),
+            ("medium", "Médias (> 6.0 e < 8.0)"),
+            ("good", "Boas (>= 8.0)"),
+            ("empty", "Sem score"),
+        )
+
+    def queryset(self, request, queryset):
+        value = self.value()
+        if value == "bad":
+            return queryset.filter(score__lte=6.0)
+        if value == "medium":
+            return queryset.filter(score__gt=6.0, score__lt=8.0)
+        if value == "good":
+            return queryset.filter(score__gte=8.0)
+        if value == "empty":
+            return queryset.filter(score__isnull=True)
+        return queryset
+
+
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
     """Admin interface for Message model."""
 
-    list_display = ["id", "profile", "role", "theme", "content_preview", "created_at"]
-    list_filter = ["role", "channel", "theme", "created_at"]
+    list_display = [
+        "id",
+        "profile",
+        "role",
+        "score",
+        "theme",
+        "content_preview",
+        "created_at",
+    ]
+    list_filter = ["role", "channel", "theme", MessageScoreBandFilter, "created_at"]
     search_fields = ["content", "profile__name"]
-    readonly_fields = ["created_at", "ollama_prompt_display"]
+    readonly_fields = ["created_at", "score", "ollama_prompt_display"]
     ordering = ["-created_at"]
 
     fieldsets = (
         (
             "Message Info",
-            {"fields": ("profile", "role", "content", "channel", "theme")},
+            {"fields": ("profile", "role", "content", "channel", "theme", "score")},
         ),
         (
             "Ollama Prompt",
@@ -155,26 +188,21 @@ class RagChunkAdmin(admin.ModelAdmin):
     conversations_display.short_description = "Conversations (Formatted)"
 
 
-@admin.register(ThemeV2)
-class ThemeV2Admin(admin.ModelAdmin):
-    """Admin interface for ThemeV2 model."""
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    """Admin interface for Theme model."""
 
-    list_display = ["id", "name", "prompt_short"]
-    search_fields = ["id", "name", "prompt"]
+    list_display = ["id", "slug", "name", "score"]
+    search_fields = ["id", "slug", "name", "meta_prompt"]
+    readonly_fields = ["score", "improvement"]
+    fields = ["id", "slug", "name", "meta_prompt", "score", "improvement"]
     actions = ["regenerate_prompts_from_runtime"]
-
-    def prompt_short(self, obj):
-        """Show truncated prompt in list view."""
-        return obj.prompt[:50] + "..." if len(obj.prompt) > 50 else obj.prompt
 
     @admin.action(description="Regenerar prompt dos temas selecionados (runtime)")
     def regenerate_prompts_from_runtime(self, request, queryset):
         updated_count = 0
         for theme in queryset:
-            theme.prompt = build_theme_prompt_partial(
-                theme_name=theme.name,
-            )
-            theme.save(update_fields=["prompt"])
+            build_theme_prompt_partial(theme=theme)
             updated_count += 1
         self.message_user(
             request,

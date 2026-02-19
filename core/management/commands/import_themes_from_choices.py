@@ -1,28 +1,28 @@
 from django.core.management.base import BaseCommand
 
-from core.models import ThemeV2
+from core.models import Theme
 from core.theme_prompt_generation import build_theme_prompt_partial
 from core.themes import THEME_CHOICES
 
 
 class Command(BaseCommand):
     help = (
-        "Importa ThemeV2 a partir de THEME_CHOICES e gera prompt parcial com OpenAI "
+        "Importa Theme a partir de THEME_CHOICES e gera meta_prompt com OpenAI "
         "para cada tema."
     )
 
     def handle(self, *args, **options):
         created_count = 0
         updated_count = 0
-        for theme_id, theme_name in THEME_CHOICES:
-            prompt = build_theme_prompt_partial(theme_name=theme_name)
-            _, created = ThemeV2.objects.update_or_create(
+        for theme_id, theme_slug, theme_name in THEME_CHOICES:
+            theme, created = Theme.objects.update_or_create(
                 id=theme_id,
                 defaults={
+                    "slug": theme_slug,
                     "name": theme_name,
-                    "prompt": prompt,
                 },
             )
+            build_theme_prompt_partial(theme=theme)
             if created:
                 created_count += 1
             else:
