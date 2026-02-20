@@ -1,6 +1,7 @@
 import json
 
 from django.contrib import admin, messages
+from django.db.models import Count
 from django.utils.html import format_html
 
 from core.models import BibleTextFlat, Message, Profile, RagChunk, Theme
@@ -136,6 +137,7 @@ class ProfileAdmin(admin.ModelAdmin):
         "name",
         "phone_number",
         "inferred_gender",
+        "messages_count",
         "created_at",
     ]
     list_filter = ["inferred_gender", "created_at"]
@@ -143,6 +145,16 @@ class ProfileAdmin(admin.ModelAdmin):
     readonly_fields = ["created_at", "updated_at"]
     ordering = ["-created_at"]
     inlines = [MessageInline]
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        return queryset.annotate(messages_total=Count("messages"))
+
+    def messages_count(self, obj):
+        return obj.messages_total
+
+    messages_count.short_description = "Messages"
+    messages_count.admin_order_field = "messages_total"
 
 
 @admin.register(RagChunk)

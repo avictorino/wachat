@@ -8,6 +8,8 @@ This document defines mandatory operational constraints for any AI agent (Codex 
 
 Agents must follow these rules strictly.
 
+python version: Python 3.9.16
+
 ---
 
 ## Global Modification Rules
@@ -102,5 +104,9 @@ If any of the above were added, remove them.
 - Do not use chained env fallbacks for model selection (for example: `A or B or C`).
 - Model configuration must use only `OPENAI_MODEL` from environment.
 - If `OPENAI_MODEL` is missing, raise an explicit exception.
+
+
+## CODE STANDARDS:
+- MY PYTHON VERSION DOES NOT ACCEPT: TypeError: unsupported operand type(s) for |: 'type' and 'NoneType'
 
 End of AGENTS.md

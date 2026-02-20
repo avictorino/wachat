@@ -1,3 +1,4 @@
+import json
 import logging
 import random
 from urllib.parse import urlencode
@@ -109,6 +110,13 @@ class ChatView(View):
                 "selected_simulation_theme", ""
             ).strip(),
             "simulation_theme_choices": Theme.objects.all().order_by("name"),
+            "simulated_behavior_pretty": (
+                json.dumps(
+                    selected_profile.simulated_behavior, indent=2, ensure_ascii=False
+                )
+                if selected_profile and selected_profile.simulated_behavior
+                else ""
+            ),
         }
 
         return render(request, "chat.html", context)
@@ -255,6 +263,7 @@ class ChatView(View):
                     predefined_scenario=predefined_scenario,
                     theme=simulation_theme,
                     inferred_gender=profile.inferred_gender,
+                    profile_instance=profile,
                 )
             )
         except (ValueError, RuntimeError) as exc:
@@ -383,6 +392,7 @@ class ChatView(View):
                             ),
                             inferred_gender=profile.inferred_gender,
                             force_context_expansion=turn <= 3,
+                            profile_instance=profile,
                         )
                     )
                     user_text = simulation_result.get("content", "").strip()

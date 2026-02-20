@@ -151,6 +151,11 @@ class Profile(models.Model):
         null=True,
         help_text="Last full conversation simulation report generated for this profile",
     )
+    simulated_behavior = models.JSONField(
+        blank=True,
+        null=True,
+        help_text="Latest simulated user behavior controls and generation metadata",
+    )
 
     class Meta:
         ordering = ["-created_at"]
@@ -224,6 +229,13 @@ class Message(models.Model):
         blank=True,
         db_index=True,
         help_text="Evaluation score for assistant messages (0-10)",
+    )
+    bot_mode = models.CharField(
+        max_length=40,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Conversation runtime mode used to generate assistant message",
     )
     theme = models.ForeignKey(
         Theme,

@@ -3,11 +3,14 @@ import logging
 import re
 from copy import deepcopy
 from datetime import timedelta
+from string import Formatter
 from typing import Any, Dict, List, Optional
 
 from django.utils import timezone
 
 from core.models import Message, Profile, Theme
+from prompts.prompt_defaults import DEFAULT_WACHAT_SYSTEM_PROMPT
+from prompts.prompt_registry import PromptRegistry
 from services.conversation_runtime import (
     MODE_ACOLHIMENTO,
     MODE_AMBIVALENCIA,
@@ -65,6 +68,7 @@ FIXED_TOPIC_SIGNAL_MAX_COMPLETION_TOKENS = 1000
 FIXED_GENDER_INFERENCE_MAX_COMPLETION_TOKENS = 400
 FIXED_THEME_PROMPT_MAX_COMPLETION_TOKENS = 1200
 FIXED_EVALUATION_MAX_COMPLETION_TOKENS = 500
+EVALUATION_EMPTY_RETRY_ATTEMPTS = 2
 FIXED_SIMULATION_ANALYSIS_MAX_COMPLETION_TOKENS = 3200
 EVALUATION_MODEL = "gpt-5-mini"
 MULTI_MESSAGE_MIN_PARTS = 3
@@ -73,14 +77,64 @@ LOW_SCORE_REFINEMENT_THRESHOLD = 5.0
 TARGET_RESPONSE_SCORE = 8.0
 MAX_SCORE_REFINEMENT_ROUNDS = 3
 LOOP_SIMILARITY_THRESHOLD = 0.85
+OPENING_SIMILARITY_BLOCK_THRESHOLD = 0.9
+ASSISTANT_NGRAM_SIZE = 4
 LOOP_PRACTICAL_COOLDOWN_TURNS = 3
-PROGRESS_STATE_IDENTIFICACAO = "IDENTIFICACAO"
-PROGRESS_STATE_ACAO_PRATICA = "ACAO_PRATICA"
+PRAYER_COOLDOWN_TURNS = 2
+MAX_INFERENCE_REGEN_PER_ROUND = 1
+STALL_TURNS_FORCE_ACTION = 2
+MAX_EMPATHY_SENTENCES_PER_RESPONSE = 1
+MAX_EMPATHY_SENTENCE_WORDS = 18
+EMPATHY_MARKERS = [
+    "sinto muito",
+    "lamento",
+    "imagino como",
+    "faz sentido",
+    "entendo que",
+    "isso dói",
+    "isso doi",
+    "deve estar pesado",
+]
+PRAYER_LANGUAGE_MARKERS = [
+    "deus",
+    "jesus",
+    "oração",
+    "oracao",
+    "orar",
+    "oro por",
+    "senhor,",
+    "amém",
+    "amen",
+]
+STRONG_INFERENCE_MARKERS = [
+    "isso mostra que",
+    "isso prova que",
+    "a causa é",
+    "a causa disso é",
+    "claramente você",
+    "com certeza você",
+    "o problema é que você",
+    "isso aconteceu porque você",
+]
+USER_CITATION_MARKERS = [
+    "você disse",
+    "voce disse",
+    "você falou",
+    "voce falou",
+    "você mencionou",
+    "voce mencionou",
+    "você contou",
+    "voce contou",
+]
+PROGRESS_STATE_COLETA = "COLETA"
+PROGRESS_STATE_PROPOSTA = "PROPOSTA"
+PROGRESS_STATE_EXECUCAO = "EXECUCAO"
 PROGRESS_STATE_CONFIRMACAO = "CONFIRMACAO"
 PROGRESS_STATE_FECHAMENTO = "FECHAMENTO"
 VALID_PROGRESS_STATES = {
-    PROGRESS_STATE_IDENTIFICACAO,
-    PROGRESS_STATE_ACAO_PRATICA,
+    PROGRESS_STATE_COLETA,
+    PROGRESS_STATE_PROPOSTA,
+    PROGRESS_STATE_EXECUCAO,
     PROGRESS_STATE_CONFIRMACAO,
     PROGRESS_STATE_FECHAMENTO,
 }
@@ -106,69 +160,21 @@ LIVE_SUPPORT_REQUEST_MARKERS = (
     "fique comigo",
     "fica comigo",
 )
+INTENT_DEFAULT = "DEFAULT"
+INTENT_COMPANHIA = "COMPANHIA"
+INTENT_TEXTO = "TEXTO"
+INTENT_PASSO_PRATICO = "PASSO_PRATICO"
+INTENT_ORACAO = "ORACAO"
 
-WACHAT_RESPONSE_SYSTEM_PROMPT = """Você é um assistente conversacional cristão (evangélico), com acolhimento emocional e direção espiritual prática, centrado em Deus, na graça de Cristo e na esperança do Evangelho.
+STRATEGY_SUPPORT_COMPANHIA = "SUPPORT_COMPANHIA"
+STRATEGY_OFFER_TEXT_ALTERNATIVES = "OFFER_TEXT_ALTERNATIVES"
+STRATEGY_EXECUTE_PRACTICAL_STEP = "EXECUTE_PRACTICAL_STEP"
+STRATEGY_PRAYER_BRIEF = "PRAYER_BRIEF"
+STRATEGY_CONTEXT_EXPLORATION = "CONTEXT_EXPLORATION"
+STRATEGY_CONFIRM_AND_EXECUTE = "CONFIRM_AND_EXECUTE"
+STRATEGY_CLARIFY_BLOCKER = "CLARIFY_BLOCKER"
 
-ESTILO
-- Português brasileiro simples, humano e direto.
-- Tom pastoral firme, responsável e acolhedor.
-- Quando necessário, pode estruturar a resposta em múltiplos parágrafos.
-- Pode explicar processos institucionais com clareza.
-- Sem emojis.
-
-OBJETIVO POR TURNO
-- Escolha UMA linha dominante de ação: acolher, explorar, orientar ou organizar.
-- Evite combinar múltiplas estruturas formais no mesmo turno.
-- Só explique processo institucional quando o usuário pedir explicitamente.
-- Em momentos de vulnerabilidade inicial, priorize presença humana antes de estrutura.
-- Em modo de EXPLORAÇÃO, é proibido oferecer oração ou intervenção espiritual direta.
-- Nesse modo, a resposta deve priorizar aprofundamento existencial.
-
-PRIORIDADE EMOCIONAL
-- Reflita a emoção central da última mensagem do usuário.
-- Valide o conflito interno com base em algo literal dito pela pessoa.
-- Demonstre proximidade humana antes de direcionar.
-
-PROGRESSÃO ESPIRITUAL
-
-Antes de:
-- Oferecer oração
-- Sugerir leitura bíblica
-- Declarar promessa espiritual
-- Afirmar que Jesus quer fazer algo específico
-
-O assistente DEVE primeiro:
-
-1. Investigar a raiz do sofrimento com pelo menos 1 pergunta de aprofundamento.
-2. Diferenciar sintoma (ansiedade, vazio, medo, culpa) de causa (frustração, propósito, perda, pecado, decepção, conflito relacional).
-3. Demonstrar compreensão do núcleo do conflito.
-
-É PROIBIDO:
-- Oferecer oração na primeira resposta após a revelação do problema central.
-- Usar espiritualidade como substituto da investigação.
-- Encerrar com frase espiritual conclusiva antes de entender a raiz.
-
-A espiritualidade deve entrar como aprofundamento do entendimento, nunca como atalho.
-- Mesmo em modo institucional, se houver dor emocional explícita, priorize validação antes de qualquer explicação estrutural.
-- A espiritualidade pode acompanhar a orientação sem necessidade de etapa investigativa prévia.
-
-PROIBIÇÕES
-- Não usar linguagem clínica/técnica.
-- Não moralizar nem culpar.
-- Não impor religião.
-- Não sugerir, convidar ou encaminhar para encontro presencial/online por iniciativa própria.
-- Mantenha todo acolhimento, orientação e escuta no canal atual de mensagem, com calor humano e proximidade.
-- Nunca ofereça visita presencial, ida ao local ou acompanhamento físico.
-- Quando houver pedido de acompanhamento, mantenha tudo em mensagem/ligação online.
-
-FORMATO DE SAÍDA
-- Entregue apenas a próxima fala do assistente.
-
-FLUIDEZ CONVERSACIONAL
-- Prefira naturalidade em vez de formalidade.
-- Evite linguagem de manual, protocolo ou roteiro.
-- Não anuncie etapas como se estivesse abrindo um procedimento.
-- A conversa deve soar orgânica, não institucional."""
+WACHAT_RESPONSE_SYSTEM_PROMPT = DEFAULT_WACHAT_SYSTEM_PROMPT
 
 
 # Helper constant for gender context in Portuguese
@@ -183,6 +189,7 @@ class ChatService:
         self._llm_service = OpenAIService()
         self._rag_service = RAGService()
         self._theme_classifier = ThemeClassifier()
+        self._prompt_registry = PromptRegistry()
 
     def basic_call(self, *args, **kwargs) -> str:
         return self._llm_service.basic_call(*args, **kwargs)
@@ -238,6 +245,322 @@ class ChatService:
             if item.strip()
         ]
         return sentences
+
+    def _tokenize_for_ngram(self, text: str) -> List[str]:
+        normalized = (text or "").lower()
+        return re.findall(r"[a-zà-ÿ0-9]+", normalized)
+
+    def _extract_ngrams(self, text: str, n: int) -> set:
+        tokens = self._tokenize_for_ngram(text)
+        if len(tokens) < n:
+            return set()
+        ngrams = set()
+        for index in range(0, len(tokens) - n + 1):
+            ngrams.add(" ".join(tokens[index : index + n]))  # noqa: E203
+        return ngrams
+
+    def _build_recent_assistant_ngram_ban(
+        self, recent_assistant_messages: List[str]
+    ) -> set:
+        banned = set()
+        for text in recent_assistant_messages[-2:]:
+            banned.update(self._extract_ngrams(text, ASSISTANT_NGRAM_SIZE))
+        return banned
+
+    def _candidate_has_banned_ngram(self, candidate: str, banned_ngrams: set) -> bool:
+        if not banned_ngrams:
+            return False
+        candidate_ngrams = self._extract_ngrams(candidate, ASSISTANT_NGRAM_SIZE)
+        if not candidate_ngrams:
+            return False
+        return any(ngram in banned_ngrams for ngram in candidate_ngrams)
+
+    def _candidate_opening_similarity(
+        self, candidate: str, recent_assistant_messages: List[str]
+    ) -> float:
+        candidate_sentences = self._split_sentences(candidate)
+        if not candidate_sentences:
+            return 0.0
+        candidate_opening = candidate_sentences[0]
+        best_similarity = 0.0
+        for text in recent_assistant_messages[-2:]:
+            reference_sentences = self._split_sentences(text)
+            if not reference_sentences:
+                continue
+            similarity = semantic_similarity(candidate_opening, reference_sentences[0])
+            if similarity > best_similarity:
+                best_similarity = similarity
+        return best_similarity
+
+    def _candidate_has_required_new_element(self, candidate: str) -> bool:
+        normalized = (candidate or "").lower()
+        has_question = "?" in normalized
+        action_markers = [
+            "faça",
+            "faca",
+            "vamos",
+            "tente",
+            "comece",
+            "agora",
+            "passo",
+            "escolha",
+            "envie",
+            "respire",
+        ]
+        summary_markers = [
+            "resumindo",
+            "em resumo",
+            "então",
+            "pelo que você disse",
+            "pelo que voce disse",
+        ]
+        has_action = any(marker in normalized for marker in action_markers)
+        has_summary = any(marker in normalized for marker in summary_markers)
+        return has_question or has_action or has_summary
+
+    def _candidate_has_practical_action(self, candidate: str) -> bool:
+        normalized = (candidate or "").lower()
+        practical_markers = [
+            "agora",
+            "faça",
+            "faca",
+            "comece",
+            "envie",
+            "respire",
+            "anote",
+            "defina",
+            "escolha",
+            "próximo passo",
+            "proximo passo",
+        ]
+        return any(marker in normalized for marker in practical_markers)
+
+    def _contains_prayer_language(self, text: str) -> bool:
+        normalized = (text or "").lower()
+        return any(marker in normalized for marker in PRAYER_LANGUAGE_MARKERS)
+
+    def _detect_explicit_user_intent(self, last_user_message: str) -> str:
+        normalized = (last_user_message or "").lower()
+        if any(marker in normalized for marker in PRAYER_REQUEST_MARKERS):
+            return INTENT_ORACAO
+        text_markers = [
+            "escreva para mim",
+            "escrever para mim",
+            "faz uma mensagem",
+            "me dá uma mensagem",
+            "me de uma mensagem",
+            "texto pronto",
+            "pronto para copiar",
+            "modelo de mensagem",
+        ]
+        if any(marker in normalized for marker in text_markers):
+            return INTENT_TEXTO
+        companionship_markers = [
+            "fica comigo",
+            "fique comigo",
+            "fica aqui",
+            "fique aqui",
+            "fica online",
+            "fique online",
+            "trocando mensagem",
+            "não me deixa sozinho",
+            "nao me deixa sozinho",
+        ]
+        if any(marker in normalized for marker in companionship_markers):
+            return INTENT_COMPANHIA
+        practical_markers = [
+            "o que faço agora",
+            "o que eu faço agora",
+            "como faço",
+            "como começo",
+            "por onde começo",
+            "próximo passo",
+            "proximo passo",
+            "passo a passo",
+        ]
+        if any(marker in normalized for marker in practical_markers):
+            return INTENT_PASSO_PRATICO
+        return INTENT_DEFAULT
+
+    def _select_strategy_for_intent(
+        self,
+        *,
+        explicit_user_intent: str,
+        direct_guidance_request: bool,
+        previous_strategy_key: str,
+        previous_strategy_repetition_count: int,
+    ) -> Dict[str, Any]:
+        primary_by_intent = {
+            INTENT_COMPANHIA: STRATEGY_SUPPORT_COMPANHIA,
+            INTENT_TEXTO: STRATEGY_OFFER_TEXT_ALTERNATIVES,
+            INTENT_PASSO_PRATICO: STRATEGY_EXECUTE_PRACTICAL_STEP,
+            INTENT_ORACAO: STRATEGY_PRAYER_BRIEF,
+            INTENT_DEFAULT: (
+                STRATEGY_CONFIRM_AND_EXECUTE
+                if direct_guidance_request
+                else STRATEGY_CONTEXT_EXPLORATION
+            ),
+        }
+        alternative_by_strategy = {
+            STRATEGY_SUPPORT_COMPANHIA: STRATEGY_EXECUTE_PRACTICAL_STEP,
+            STRATEGY_OFFER_TEXT_ALTERNATIVES: STRATEGY_CONFIRM_AND_EXECUTE,
+            STRATEGY_EXECUTE_PRACTICAL_STEP: STRATEGY_CLARIFY_BLOCKER,
+            STRATEGY_PRAYER_BRIEF: STRATEGY_EXECUTE_PRACTICAL_STEP,
+            STRATEGY_CONTEXT_EXPLORATION: STRATEGY_CONFIRM_AND_EXECUTE,
+            STRATEGY_CONFIRM_AND_EXECUTE: STRATEGY_CLARIFY_BLOCKER,
+            STRATEGY_CLARIFY_BLOCKER: STRATEGY_EXECUTE_PRACTICAL_STEP,
+        }
+        selected = primary_by_intent.get(
+            explicit_user_intent, STRATEGY_CONTEXT_EXPLORATION
+        )
+        strategy_alternative_forced = False
+        if (
+            previous_strategy_key == selected
+            and previous_strategy_repetition_count >= 2
+        ):
+            selected = alternative_by_strategy.get(
+                selected, STRATEGY_EXECUTE_PRACTICAL_STEP
+            )
+            strategy_alternative_forced = True
+        return {
+            "strategy_key": selected,
+            "strategy_alternative_forced": strategy_alternative_forced,
+        }
+
+    def _empathy_sentence_stats(self, candidate: str) -> Dict[str, int]:
+        sentences = self._split_sentences(candidate)
+        empathy_count = 0
+        max_empathy_words = 0
+        for sentence in sentences:
+            normalized_sentence = sentence.lower()
+            if any(marker in normalized_sentence for marker in EMPATHY_MARKERS):
+                empathy_count += 1
+                words = len(self._tokenize_for_ngram(sentence))
+                if words > max_empathy_words:
+                    max_empathy_words = words
+        return {
+            "count": empathy_count,
+            "max_words": max_empathy_words,
+        }
+
+    def _has_strong_inference(self, candidate: str) -> bool:
+        normalized = (candidate or "").lower()
+        if any(marker in normalized for marker in STRONG_INFERENCE_MARKERS):
+            return True
+        # Broad causal assertions without hedge.
+        causal_patterns = [
+            "isso é porque",
+            "isso acontece porque",
+            "você está assim porque",
+            "voce está assim porque",
+            "você está desse jeito porque",
+            "voce está desse jeito porque",
+        ]
+        return any(pattern in normalized for pattern in causal_patterns)
+
+    def _contains_user_citation(self, candidate: str, last_user_message: str) -> bool:
+        normalized_candidate = (candidate or "").lower()
+        if any(marker in normalized_candidate for marker in USER_CITATION_MARKERS):
+            return True
+        user_tokens = self._tokenize_for_ngram(last_user_message)
+        if len(user_tokens) < 3:
+            return False
+        user_trigrams = set()
+        for index in range(0, len(user_tokens) - 3 + 1):
+            user_trigrams.add(" ".join(user_tokens[index : index + 3]))  # noqa: E203
+        candidate_trigrams = self._extract_ngrams(candidate, 3)
+        overlap = user_trigrams.intersection(candidate_trigrams)
+        return len(overlap) > 0
+
+    def _has_conditional_inference_confirmation(self, candidate: str) -> bool:
+        normalized = (candidate or "").lower()
+        has_conditional = "pode ser que" in normalized
+        has_confirmation_request = "?" in normalized and (
+            "faz sentido" in normalized
+            or "confere" in normalized
+            or "é isso" in normalized
+            or "me confirma" in normalized
+        )
+        return has_conditional and has_confirmation_request
+
+    def _extract_progress_metric(self, text: str) -> Dict[str, bool]:
+        normalized = (text or "").lower()
+        decision_markers = [
+            "vou",
+            "decidi",
+            "escolhi",
+            "combinado",
+            "fechado",
+            "ok",
+        ]
+        action_markers = [
+            "agora",
+            "faça",
+            "faca",
+            "envie",
+            "respire",
+            "anote",
+            "defina",
+            "passo",
+            "agende",
+        ]
+        confirm_markers = [
+            "confirmo",
+            "confirmar",
+            "check-in",
+            "retorno",
+            "me avisa",
+            "combinamos",
+        ]
+        return {
+            "decision_taken": any(marker in normalized for marker in decision_markers),
+            "action_defined": any(marker in normalized for marker in action_markers),
+            "next_step_confirmed": any(
+                marker in normalized for marker in confirm_markers
+            ),
+        }
+
+    def _progress_metric_score(self, metric: Dict[str, bool]) -> int:
+        return (
+            int(bool(metric.get("decision_taken")))
+            + int(bool(metric.get("action_defined")))
+            + int(bool(metric.get("next_step_confirmed")))
+        )
+
+    def _progress_advanced(
+        self, previous_metric: Dict[str, bool], current_metric: Dict[str, bool]
+    ) -> bool:
+        if self._progress_metric_score(current_metric) > self._progress_metric_score(
+            previous_metric
+        ):
+            return True
+        for key in ("decision_taken", "action_defined", "next_step_confirmed"):
+            if bool(current_metric.get(key)) and not bool(previous_metric.get(key)):
+                return True
+        return False
+
+    def _count_concrete_actions(self, candidate: str) -> int:
+        sentences = self._split_sentences(candidate)
+        if not sentences:
+            return 0
+        action_markers = [
+            "faça",
+            "faca",
+            "agora",
+            "envie",
+            "respire",
+            "anote",
+            "defina",
+            "agende",
+            "comece",
+            "escolha",
+        ]
+        count = 0
+        for sentence in sentences:
+            normalized = sentence.lower()
+            if any(marker in normalized for marker in action_markers):
+                count += 1
+        return count
 
     def _build_assistant_message_chunks(
         self, *, text: str, conversation_mode: str
@@ -322,27 +645,14 @@ class ChatService:
         transcript = ""
         for message in recent_messages[-5:]:
             transcript += f"{message.role.upper()}: {message.content}\n"
-
-        prompt = f"""
-            Você extrai o tópico principal de conversa em português brasileiro.
-            Retorne SOMENTE JSON válido, sem comentários, sem markdown:
-            {{
-              "topic": "string curta ou null",
-              "confidence": 0.0,
-              "keep_current": true
-            }}
-
-            Regras:
-            - "topic" deve ser um assunto principal concreto (ex.: drogas, álcool, culpa, ansiedade, família, trabalho, recaída).
-            - Se não houver evidência suficiente, use topic=null e keep_current=true.
-            - confidence entre 0 e 1.
-            - Não inventar.
-
-            Tópico atual salvo: {current_topic or "null"}
-            Última mensagem do usuário: {last_user_message}
-            Histórico recente:
-            {transcript if transcript else "sem histórico"}
-            """
+        topic_prompt_template = self._prompt_registry.get_active_prompt(
+            "topic.extractor.main"
+        ).content
+        prompt = topic_prompt_template.format(
+            current_topic=current_topic or "null",
+            last_user_message=last_user_message,
+            transcript=transcript if transcript else "sem histórico",
+        )
         raw = self.basic_call(
             url_type="generate",
             prompt=prompt,
@@ -386,34 +696,8 @@ class ChatService:
                 "OpenAI client is not available on configured LLM service."
             )
 
-        evaluation_system_prompt = """
-Você é um avaliador técnico de respostas conversacionais.
-Responda SOMENTE com JSON válido no formato:
-{
-  "score": 0-10,
-  "analysis": "breve explicação técnica",
-  "improvement_prompt": "trecho curto para melhorar a próxima resposta"
-}
-
-Regras obrigatórias:
-- Não inclua texto fora do JSON.
-- score deve ser número (int ou float) entre 0 e 10.
-- analysis deve ser curta e objetiva.
-- improvement_prompt deve ser curto, no máximo 6 linhas.
-- Penalize repetição estrutural, loop ou template dominante.
-- Avalie: clareza, profundidade emocional, progressão conversacional,
-  fidelidade ao último turno do usuário e adequação espiritual ao contexto.
-- Valorize respostas estruturadas quando o usuário pedir instrução formal.
-- Não penalize respostas mais longas quando houver pedido de explicação processual.
-- Penalize fortemente quando o assistente ignorar pedido explícito do usuário.
-- Se o usuário pedir oração explicitamente, a resposta deve incluir oração breve
-  ou explicar de forma direta e respeitosa por que não pode orar naquele turno.
-- Penalize quando o usuário pedir artefato concreto (ex.: mensagem pronta)
-  e o assistente responder com pergunta redundante sem entregar o conteúdo.
-- Penalize repetição de oração ou frases pastorais nos 2 turnos subsequentes.
-- Penalize quando pedido operacional explícito não traz duas alternativas práticas
-  quando o canal não permite executar diretamente.
-""".strip()
+        evaluation_prompt_selection = self._prompt_registry.get_evaluation_prompt()
+        evaluation_system_prompt = evaluation_prompt_selection.content
 
         evaluation_user_prompt = f"""
 Última mensagem do usuário:
@@ -423,25 +707,33 @@ Resposta do assistente para avaliar:
 {assistant_response}
 """.strip()
 
-        response = client.chat.completions.create(
-            model=EVALUATION_MODEL,
-            messages=[
-                {"role": "system", "content": evaluation_system_prompt},
-                {"role": "user", "content": evaluation_user_prompt},
-            ],
-            max_completion_tokens=FIXED_EVALUATION_MAX_COMPLETION_TOKENS,
-            reasoning_effort="low",
-            timeout=FIXED_TIMEOUT_SECONDS,
-            response_format={"type": "json_object"},
-        )
+        raw_content = None
+        for attempt in range(1, EVALUATION_EMPTY_RETRY_ATTEMPTS + 1):
+            response = client.chat.completions.create(
+                model=EVALUATION_MODEL,
+                messages=[
+                    {"role": "system", "content": evaluation_system_prompt},
+                    {"role": "user", "content": evaluation_user_prompt},
+                ],
+                max_completion_tokens=FIXED_EVALUATION_MAX_COMPLETION_TOKENS,
+                reasoning_effort="low",
+                timeout=FIXED_TIMEOUT_SECONDS,
+                response_format={"type": "json_object"},
+            )
 
-        choices = getattr(response, "choices", None) or []
-        if not choices:
-            raise RuntimeError("Evaluation model returned no choices.")
-        message = getattr(choices[0], "message", None)
-        if not message:
-            raise RuntimeError("Evaluation model returned empty message.")
-        raw_content = getattr(message, "content", None)
+            choices = getattr(response, "choices", None) or []
+            message = getattr(choices[0], "message", None) if choices else None
+            candidate_content = getattr(message, "content", None) if message else None
+            if isinstance(candidate_content, str) and candidate_content.strip():
+                raw_content = candidate_content
+                break
+
+            logger.warning(
+                "Evaluation returned empty content attempt=%s/%s",
+                attempt,
+                EVALUATION_EMPTY_RETRY_ATTEMPTS,
+            )
+
         if not isinstance(raw_content, str) or not raw_content.strip():
             raise RuntimeError("Evaluation model returned empty content.")
 
@@ -571,6 +863,9 @@ Resposta do assistente para avaliar:
     def _build_dynamic_runtime_prompt(
         self,
         *,
+        runtime_main_prompt: str,
+        runtime_mode_prompt: str,
+        mode_objective: str,
         conversation_mode: str,
         derived_mode: str,
         previous_mode: str,
@@ -582,6 +877,12 @@ Resposta do assistente para avaliar:
         repetition_complaint: bool,
         prayer_request_detected: bool,
         live_support_request_detected: bool,
+        explicit_user_intent: str,
+        strategy_key: str,
+        strategy_alternative_forced: bool,
+        prayer_cooldown_remaining: int,
+        progress_stalled_turns: int,
+        force_single_concrete_action: bool,
         practical_mode_forced: bool,
         practical_mode_cooldown_remaining: int,
         active_topic: Optional[str],
@@ -594,19 +895,6 @@ Resposta do assistente para avaliar:
         rag_contexts: list,
     ) -> str:
         runtime_mode = MODE_PASTOR_INSTITUCIONAL
-
-        mode_objective = {
-            MODE_ACOLHIMENTO: "acolher com precisão e abrir espaço de continuidade",
-            MODE_EXPLORACAO: "aprofundar com investigação concreta",
-            MODE_AMBIVALENCIA: "investigar conflito interno sem concluir pelo usuário",
-            MODE_DEFENSIVO: "reduzir confronto e buscar clarificação objetiva",
-            MODE_CULPA: "separar identidade de comportamento e propor reparo possível",
-            MODE_ORIENTACAO: "entregar orientação prática breve e acionável",
-            MODE_PRESENCA_PROFUNDA: "sustentar presença, dignidade e misericórdia em sofrimento profundo",
-            MODE_VULNERABILIDADE_INICIAL: "validar dor inicial com presença humana e abertura simples",
-            MODE_PASTOR_INSTITUCIONAL: "fornecer orientação institucional estruturada, com clareza processual e autoridade pastoral",
-            MODE_WELCOME: "acolhimento inicial curto",
-        }.get(derived_mode, "avançar a conversa com precisão")
 
         base_mode_actions = [
             "Só explique processo institucional se o usuário pedir orientação formal explícita.",
@@ -667,6 +955,50 @@ Resposta do assistente para avaliar:
                 derived_mode, ["Escolha a melhor função para este turno."]
             )
         )
+        intent_strategy_catalog = {
+            INTENT_COMPANHIA: [
+                "Pedido explícito de companhia é prioridade máxima do turno.",
+                "Confirme permanência no canal e execute acompanhamento por mensagem imediatamente.",
+            ],
+            INTENT_TEXTO: [
+                "Pedido explícito de texto/mensagem: trate como tarefa principal do turno.",
+                "Ofereça duas alternativas operacionais e conduza escolha objetiva.",
+            ],
+            INTENT_PASSO_PRATICO: [
+                "Pedido explícito de passo prático: entregar ação concreta no mesmo turno.",
+                "Evite explorar demais antes da execução.",
+            ],
+            INTENT_ORACAO: [
+                "Pedido explícito de oração: oração breve é permitida, sem tomar o turno inteiro.",
+                "Após oração, adicionar 1 passo prático objetivo.",
+            ],
+            INTENT_DEFAULT: [
+                "Sem pedido explícito: seguir estratégia do modo com progressão tática.",
+            ],
+        }
+        mode_actions.extend(
+            intent_strategy_catalog.get(
+                explicit_user_intent, intent_strategy_catalog[INTENT_DEFAULT]
+            )
+        )
+        strategy_rules = {
+            STRATEGY_SUPPORT_COMPANHIA: "Estratégia ativa: confirmar presença no canal + check-in curto com ação imediata.",
+            STRATEGY_OFFER_TEXT_ALTERNATIVES: "Estratégia ativa: propor alternativas objetivas ao texto pronto e pedir escolha.",
+            STRATEGY_EXECUTE_PRACTICAL_STEP: "Estratégia ativa: executar passo prático curto e verificável neste turno.",
+            STRATEGY_PRAYER_BRIEF: "Estratégia ativa: oração breve (se pedida) + próximo passo prático.",
+            STRATEGY_CONTEXT_EXPLORATION: "Estratégia ativa: clarificar contexto com foco em destravar ação.",
+            STRATEGY_CONFIRM_AND_EXECUTE: "Estratégia ativa: confirmar decisão do usuário e converter em execução.",
+            STRATEGY_CLARIFY_BLOCKER: "Estratégia ativa: identificar bloqueador principal e contornar com plano de 1 passo.",
+        }
+        mode_actions.append(
+            strategy_rules.get(
+                strategy_key, strategy_rules[STRATEGY_CONTEXT_EXPLORATION]
+            )
+        )
+        if strategy_alternative_forced:
+            mode_actions.append(
+                "Troca obrigatória de estratégia ativa: não repetir abordagem dos 2 últimos turnos do assistente."
+            )
 
         spiritual_policy = "Mantenha base espiritual leve (esperança/propósito) sem linguagem explícita."
         if derived_mode == MODE_EXPLORACAO:
@@ -702,77 +1034,49 @@ Resposta do assistente para avaliar:
             max_questions = 1
             max_words = 110
 
-        prompt = f"""
-    MODO ATUAL: {runtime_mode}
-    MODO DERIVADO: {derived_mode}
-    MODO ANTERIOR: {previous_mode}
-    ESTADO DE PROGRESSO: {progress_state}
-    ESTADO ANTERIOR: {previous_progress_state}
-    OBJETIVO DO MODO BASE: {mode_objective}
-    INTENSIDADE ESPIRITUAL: {spiritual_intensity}
-
-    REGRAS GERAIS:
-    - Responda entre 3 e {max_sentences} frases.
-    - Limite de até {max_words} palavras.
-    - No máximo {max_questions} pergunta.
-    - Não comece com frase-padrão de acolhimento.
-    - Validar algo específico que o usuário acabou de dizer.
-    - Não repetir frases/estruturas dos últimos turnos.
-    - Não iniciar ecoando a frase do usuário.
-    - Não inferir sentimentos não declarados.
-    - Evite parafrasear o usuário em bloco; use no máximo 1 detalhe literal e avance para ação útil.
-    - Evite aberturas repetidas como "vejo que", "percebo que", "entendo que".
-    - Evite ecoar literalmente expressões do usuário (ex.: "por mensagem") na frase seguinte.
-    - Prefira variações naturais de proximidade no canal atual (ex.: "aqui com você", "neste espaço", "agora com você").
-    - {spiritual_policy}
-    - Escolha a melhor função para este turno conforme o modo atual.
-
-    AÇÃO FINAL:
-    - Se o usuário estiver em vulnerabilidade emocional, finalize com 1 pergunta simples e humana.
-    - Se o usuário pedir orientação prática direta, finalize com orientação clara sem pergunta.
-    - Nunca imponha pergunta obrigatória.
-
-    TRATAMENTO OBRIGATÓRIO:
-    - Use segunda pessoa direta ("você").
-    - É proibido usar terceira pessoa ("ela", "dele", "dela").
-    - Em oração, também use "você" (nunca "ele(a)").
-    """
-
+        practical_mode_block = ""
         if practical_mode_forced:
-            prompt += (
+            practical_mode_block = (
                 f"\nMODO PRÁTICO ANTI-LOOP ATIVO ({practical_mode_cooldown_remaining} turnos restantes):\n"
                 "- Entregue passo concreto neste turno.\n"
                 "- Evite repetição de consolo religioso.\n"
                 "- Não use mais de 1 frase espiritual curta.\n"
             )
 
-        if progress_state == PROGRESS_STATE_IDENTIFICACAO:
-            prompt += (
-                "\nESTRATÉGIA DE PROGRESSO (IDENTIFICAÇÃO):\n"
+        progress_strategy_block = ""
+        if progress_state == PROGRESS_STATE_COLETA:
+            progress_strategy_block = (
+                "\nESTRATÉGIA DE PROGRESSO (COLETA):\n"
                 "- Faça 1 pergunta concreta de contexto OU confirme 1 obstáculo específico.\n"
             )
-        elif progress_state == PROGRESS_STATE_ACAO_PRATICA:
-            prompt += (
-                "\nESTRATÉGIA DE PROGRESSO (AÇÃO PRÁTICA):\n"
-                "- Entregue uma ação executável agora (mensagem pronta, roteiro curto ou próximo passo explícito).\n"
+        elif progress_state == PROGRESS_STATE_PROPOSTA:
+            progress_strategy_block = (
+                "\nESTRATÉGIA DE PROGRESSO (PROPOSTA):\n"
+                "- Apresente 1 proposta tática clara conectada ao pedido do usuário.\n"
+            )
+        elif progress_state == PROGRESS_STATE_EXECUCAO:
+            progress_strategy_block = (
+                "\nESTRATÉGIA DE PROGRESSO (EXECUÇÃO):\n"
+                "- Entregue uma ação executável agora (roteiro curto de conversa, ensaio guiado ou próximo passo explícito).\n"
             )
         elif progress_state == PROGRESS_STATE_CONFIRMACAO:
-            prompt += (
+            progress_strategy_block = (
                 "\nESTRATÉGIA DE PROGRESSO (CONFIRMAÇÃO):\n"
                 "- Confirmar o plano em 1 frase e definir 1 check-in objetivo.\n"
             )
         elif progress_state == PROGRESS_STATE_FECHAMENTO:
-            prompt += (
+            progress_strategy_block = (
                 "\nESTRATÉGIA DE PROGRESSO (FECHAMENTO):\n"
                 "- Encerrar com resumo breve e próximo ponto opcional, sem abrir novos tópicos.\n"
             )
 
+        explicit_request_block = ""
         if (
             direct_guidance_request
             or prayer_request_detected
             or live_support_request_detected
         ):
-            prompt += (
+            explicit_request_block = (
                 "\nPEDIDO EXPLÍCITO DETECTADO:\n"
                 "- Responda ao pedido explícito antes de investigar causas.\n"
                 "- Se houver pedido de oração, inclua oração breve de 1-2 frases neste turno.\n"
@@ -793,8 +1097,9 @@ Resposta do assistente para avaliar:
             marker in (last_user_message or "").lower()
             for marker in presencial_request_markers
         )
+        presencial_limit_block = ""
         if has_presencial_request:
-            prompt += (
+            presencial_limit_block = (
                 "\nLIMITE DE CANAL (ONLINE-ONLY):\n"
                 "- Não ofereça visita presencial, ida ao local ou acompanhamento físico.\n"
                 "- Responda com limite claro e acolhedor: apoio apenas por mensagem/ligação online.\n"
@@ -802,32 +1107,52 @@ Resposta do assistente para avaliar:
             )
 
         actionable_artifact_markers = [
-            "escreva",
-            "rascunh",
-            "mensagem",
-            "texto",
-            "modelo",
+            "escreva para mim",
+            "escrever para mim",
+            "faz uma mensagem",
+            "me dá uma mensagem",
+            "me de uma mensagem",
+            "texto pronto",
             "pronto para copiar",
+            "modelo de mensagem",
         ]
         explicit_artifact_request = any(
             marker in (last_user_message or "").lower()
             for marker in actionable_artifact_markers
         )
+        artifact_request_block = ""
         if explicit_artifact_request:
-            prompt += (
+            artifact_request_block = (
                 "\nPEDIDO DE ARTEFATO DETECTADO:\n"
-                "- Entregue o artefato solicitado neste turno (ex.: mensagem pronta para copiar).\n"
-                "- Não faça pergunta de preferência se já houver informação suficiente para executar.\n"
-                "- Se faltar dado essencial, assuma um padrão útil e sinalize que pode ajustar depois.\n"
+                "- Não redija mensagem pronta neste primeiro turno.\n"
+                "- Ofereça 2 alternativas práticas ao texto pronto (ex.: roteiro de fala em 3 pontos, ensaio de conversa aqui no chat).\n"
+                "- Pergunte qual alternativa o usuário prefere executar agora.\n"
             )
 
-        prompt += (
+        antiloop_block = (
             "\nANTILOOP DE CONTEÚDO:\n"
             "- Se uma frase já apareceu nos últimos 2 turnos do assistente, não repita literal nem com variação mínima.\n"
+            "- Aplique bloqueio de n-grama (4 palavras) usando os 2 últimos turnos do assistente como banlist.\n"
+            "- Cada resposta deve conter pelo menos 1 elemento novo obrigatório: ação, pergunta ou resumo.\n"
+            "- Bloqueie abertura da resposta quando a similaridade semântica da primeira frase for alta em relação às 2 últimas aberturas do assistente.\n"
             "- Não repita oração em turnos consecutivos, exceto se o usuário pedir oração de novo explicitamente.\n"
+            f"- Cooldown de oração ativo por {prayer_cooldown_remaining} turnos quando houver oração recente; sem pedido explícito no turno atual, não reintroduza oração.\n"
+            "- Limite acolhimento a 1 frase curta no turno.\n"
+            "- Se oração não for pedida no turno atual, priorize ação prática concreta.\n"
+            "- Pedido explícito do usuário define tarefa principal do turno.\n"
+            "- Se mesma estratégia repetir por 2 turnos, no próximo turno aplique estratégia alternativa obrigatória.\n"
+            "- Em qualquer inferência sobre causa/motivo, use linguagem condicional: 'pode ser que...'.\n"
+            "- Após inferência condicional, peça confirmação explícita ao usuário no mesmo turno.\n"
+            "- É proibido afirmar causalidade sem citação textual do que o usuário disse.\n"
             '- Evite rotular padrão psicológico sem validação; use formulação condicional (ex.: "isso pode indicar...") ou peça confirmação.\n'
             "- Após 2 turnos sem avanço prático, entregue 1 ação operacional nova e objetiva neste turno.\n"
         )
+        if force_single_concrete_action:
+            antiloop_block += (
+                f"- Gatilho ativo: {progress_stalled_turns} turnos sem avanço.\n"
+                "- Neste turno, entregue EXATAMENTE uma ação concreta e verificável.\n"
+                "- Não ofereça múltiplas ações concorrentes.\n"
+            )
 
         distress_markers = [
             "chor",
@@ -841,15 +1166,17 @@ Resposta do assistente para avaliar:
         has_high_distress = any(
             marker in (last_user_message or "").lower() for marker in distress_markers
         )
+        distress_block = ""
         if has_high_distress:
-            prompt += (
+            distress_block = (
                 "\nSENSIBILIDADE DE ABERTURA:\n"
                 '- Não use abertura celebratória ou potencialmente minimizadora (ex.: "que bom", "é bom saber").\n'
                 "- Comece validando a dor concreta do usuário com linguagem sóbria.\n"
             )
 
+        repetition_block = ""
         if repetition_complaint:
-            prompt += (
+            repetition_block = (
                 "\nUSUÁRIO SINALIZOU REPETIÇÃO: não repita pergunta; "
                 "entregue orientação prática nova e específica para este caso.\n"
             )
@@ -862,40 +1189,101 @@ Resposta do assistente para avaliar:
             if not first_sentence:
                 continue
             assistant_openers.append(first_sentence[0].strip())
+        assistant_openers_block = ""
         if assistant_openers:
-            prompt += "\nEVITE REPETIR ABERTURAS RECENTES DO ASSISTENTE:\n"
+            assistant_openers_block = (
+                "\nEVITE REPETIR ABERTURAS RECENTES DO ASSISTENTE:\n"
+            )
             for opener in assistant_openers[-3:]:
-                prompt += f"- {opener}\n"
+                assistant_openers_block += f"- {opener}\n"
 
+        active_topic_block = ""
         if active_topic:
-            prompt += f"\nTÓPICO ATIVO: {active_topic}\n"
+            active_topic_block = f"\nTÓPICO ATIVO: {active_topic}\n"
 
+        top_topics_block = ""
         if top_topics:
-            prompt += f"TÓPICOS RECENTES: {top_topics}\n"
+            top_topics_block = f"\nTÓPICOS RECENTES: {top_topics}\n"
 
-        prompt += (
+        theme_block = (
             f"\nTEMA IDENTIFICADO DA MENSAGEM DO USUÁRIO: "
             f"{selected_theme_name} ({selected_theme_id})\n"
         )
+        theme_instruction_block = ""
         if theme_prompt:
-            prompt += f"\nINSTRUÇÃO TEMÁTICA:\n{theme_prompt}\n"
+            theme_instruction_block = f"\nINSTRUÇÃO TEMÁTICA:\n{theme_prompt}\n"
 
-        prompt += "\nFUNÇÕES PRIORITÁRIAS DESTE TURNO:\n"
+        mode_actions_block = "\nFUNÇÕES PRIORITÁRIAS DESTE TURNO:\n"
         for action in mode_actions:
-            prompt += f"- {action}\n"
+            mode_actions_block += f"- {action}\n"
 
-        prompt += f"\nÚLTIMA MENSAGEM DO USUÁRIO:\n{last_user_message}\n"
-        prompt += "\nHISTÓRICO RECENTE:\n"
+        history_block = ""
         for msg in context_messages:
-            prompt += f"{msg.role.upper()}: {msg.content}\n"
+            history_block += f"{msg.role.upper()}: {msg.content}\n"
 
+        rag_block = ""
         if rag_contexts:
-            prompt += "\nRAG CONTEXT AUXILIAR:\n"
+            rag_block += "\nRAG CONTEXT AUXILIAR:\n"
             for rag in rag_contexts:
-                prompt += f"- {rag}\n"
+                rag_block += f"- {rag}\n"
 
-        prompt += "\nResponda somente com a próxima fala do assistente."
-        return prompt
+        runtime_template_context = {
+            "runtime_mode_prompt": runtime_mode_prompt,
+            "runtime_mode": runtime_mode,
+            "derived_mode": derived_mode,
+            "previous_mode": previous_mode,
+            "progress_state": progress_state,
+            "previous_progress_state": previous_progress_state,
+            "mode_objective": mode_objective,
+            "spiritual_intensity": spiritual_intensity,
+            "max_sentences": max_sentences,
+            "max_words": max_words,
+            "max_questions": max_questions,
+            "spiritual_policy": spiritual_policy,
+            "practical_mode_block": practical_mode_block,
+            "progress_strategy_block": progress_strategy_block,
+            "explicit_request_block": explicit_request_block,
+            "presencial_limit_block": presencial_limit_block,
+            "artifact_request_block": artifact_request_block,
+            "antiloop_block": antiloop_block,
+            "distress_block": distress_block,
+            "repetition_block": repetition_block,
+            "assistant_openers_block": assistant_openers_block,
+            "active_topic_block": active_topic_block,
+            "top_topics_block": top_topics_block,
+            "theme_block": theme_block,
+            "theme_instruction_block": theme_instruction_block,
+            "mode_actions_block": mode_actions_block,
+            "last_user_message": last_user_message,
+            "history_block": history_block,
+            "rag_block": rag_block,
+        }
+        return self._render_runtime_main_prompt(
+            runtime_main_prompt=runtime_main_prompt, context=runtime_template_context
+        )
+
+    def _render_runtime_main_prompt(
+        self, *, runtime_main_prompt: str, context: Dict[str, Any]
+    ) -> str:
+        required_fields = []
+        for _, field_name, _, _ in Formatter().parse(runtime_main_prompt):
+            if field_name:
+                required_fields.append(field_name)
+        for field_name in required_fields:
+            if field_name not in context:
+                raise RuntimeError(
+                    f"Runtime main prompt missing required context key '{field_name}'."
+                )
+        try:
+            return runtime_main_prompt.format(**context).strip()
+        except KeyError as exc:
+            raise RuntimeError(
+                f"Runtime main prompt rendering missing key '{exc.args[0]}'."
+            ) from exc
+        except ValueError as exc:
+            raise RuntimeError(
+                f"Runtime main prompt has invalid format syntax: {exc}."
+            ) from exc
 
     def _collect_recent_context(self, queryset) -> Dict[str, Any]:
         recent_user_messages = list(
@@ -935,10 +1323,9 @@ Resposta do assistente para avaliar:
         last_user_message: str,
         previous_progress_state: str,
         direct_guidance_request: bool,
+        explicit_user_intent: str,
     ) -> str:
         normalized = (last_user_message or "").lower()
-        if direct_guidance_request:
-            return PROGRESS_STATE_ACAO_PRATICA
 
         closing_markers = [
             "obrigado",
@@ -954,6 +1341,19 @@ Resposta do assistente para avaliar:
         if any(marker in normalized for marker in closing_markers):
             return PROGRESS_STATE_FECHAMENTO
 
+        execution_done_markers = [
+            "fiz",
+            "feito",
+            "enviei",
+            "mande",
+            "agendei",
+            "combinei",
+            "coloquei em prática",
+            "coloquei em pratica",
+        ]
+        if any(marker in normalized for marker in execution_done_markers):
+            return PROGRESS_STATE_CONFIRMACAO
+
         confirmation_markers = [
             "sim",
             "aceito",
@@ -966,14 +1366,34 @@ Resposta do assistente para avaliar:
         ]
         if any(marker in normalized for marker in confirmation_markers):
             if previous_progress_state in {
-                PROGRESS_STATE_ACAO_PRATICA,
+                PROGRESS_STATE_EXECUCAO,
                 PROGRESS_STATE_CONFIRMACAO,
             }:
                 return PROGRESS_STATE_CONFIRMACAO
+            if previous_progress_state == PROGRESS_STATE_PROPOSTA:
+                return PROGRESS_STATE_EXECUCAO
+
+        if direct_guidance_request:
+            if previous_progress_state in {
+                PROGRESS_STATE_COLETA,
+                PROGRESS_STATE_PROPOSTA,
+            }:
+                return PROGRESS_STATE_EXECUCAO
+            return PROGRESS_STATE_EXECUCAO
+
+        if explicit_user_intent in {
+            INTENT_COMPANHIA,
+            INTENT_TEXTO,
+            INTENT_PASSO_PRATICO,
+        }:
+            if previous_progress_state == PROGRESS_STATE_COLETA:
+                return PROGRESS_STATE_PROPOSTA
+            if previous_progress_state == PROGRESS_STATE_PROPOSTA:
+                return PROGRESS_STATE_EXECUCAO
 
         if previous_progress_state in VALID_PROGRESS_STATES:
             return previous_progress_state
-        return PROGRESS_STATE_IDENTIFICACAO
+        return PROGRESS_STATE_COLETA
 
     def _determine_generation_state(
         self,
@@ -992,10 +1412,20 @@ Resposta do assistente para avaliar:
 
         last_runtime_metadata = self._last_assistant_runtime_metadata(queryset)
         previous_progress_state = str(
-            last_runtime_metadata.get("progress_state", PROGRESS_STATE_IDENTIFICACAO)
+            last_runtime_metadata.get("progress_state", PROGRESS_STATE_COLETA)
         )
         if previous_progress_state not in VALID_PROGRESS_STATES:
-            previous_progress_state = PROGRESS_STATE_IDENTIFICACAO
+            previous_progress_state = PROGRESS_STATE_COLETA
+        previous_progress_metric = last_runtime_metadata.get("progress_metric", {})
+        if not isinstance(previous_progress_metric, dict):
+            previous_progress_metric = {}
+        previous_progress_stalled_turns = last_runtime_metadata.get(
+            "progress_stalled_turns", 0
+        )
+        try:
+            previous_progress_stalled_turns = int(previous_progress_stalled_turns)
+        except (TypeError, ValueError):
+            previous_progress_stalled_turns = 0
         previous_practical_cooldown = last_runtime_metadata.get(
             "practical_mode_cooldown_remaining", 0
         )
@@ -1004,6 +1434,22 @@ Resposta do assistente para avaliar:
         except (TypeError, ValueError):
             previous_practical_cooldown = 0
         practical_mode_cooldown_remaining = max(previous_practical_cooldown - 1, 0)
+        previous_prayer_cooldown = last_runtime_metadata.get(
+            "prayer_cooldown_remaining", 0
+        )
+        try:
+            previous_prayer_cooldown = int(previous_prayer_cooldown)
+        except (TypeError, ValueError):
+            previous_prayer_cooldown = 0
+        prayer_cooldown_remaining = max(previous_prayer_cooldown - 1, 0)
+        previous_strategy_key = str(last_runtime_metadata.get("strategy_key", "") or "")
+        previous_strategy_repetition_count = last_runtime_metadata.get(
+            "strategy_repetition_count", 0
+        )
+        try:
+            previous_strategy_repetition_count = int(previous_strategy_repetition_count)
+        except (TypeError, ValueError):
+            previous_strategy_repetition_count = 0
 
         is_first_message = queryset.filter(role="assistant").count() == 0
         signals = detect_user_signals(last_user_message)
@@ -1022,6 +1468,7 @@ Resposta do assistente para avaliar:
 
         if prayer_request_detected or live_support_request_detected:
             direct_guidance_request = True
+        explicit_user_intent = self._detect_explicit_user_intent(last_user_message)
         deep_presence_trigger = any(
             [
                 bool(signals.get("deep_suffering")),
@@ -1062,6 +1509,7 @@ Resposta do assistente para avaliar:
             last_user_message=last_user_message,
             previous_progress_state=previous_progress_state,
             direct_guidance_request=direct_guidance_request,
+            explicit_user_intent=explicit_user_intent,
         )
 
         conversation_mode = choose_conversation_mode(
@@ -1093,21 +1541,32 @@ Resposta do assistente para avaliar:
         if practical_mode_forced:
             conversation_mode = MODE_ORIENTACAO
             direct_guidance_request = True
-            progress_state = PROGRESS_STATE_ACAO_PRATICA
+            progress_state = PROGRESS_STATE_EXECUCAO
             allow_spiritual_context = False
+        strategy_selection = self._select_strategy_for_intent(
+            explicit_user_intent=explicit_user_intent,
+            direct_guidance_request=direct_guidance_request,
+            previous_strategy_key=previous_strategy_key,
+            previous_strategy_repetition_count=previous_strategy_repetition_count,
+        )
+        strategy_key = strategy_selection["strategy_key"]
+        strategy_alternative_forced = strategy_selection["strategy_alternative_forced"]
         spiritual_intensity = choose_spiritual_intensity(
             mode=conversation_mode,
             spiritual_context=explicit_spiritual_context,
             high_spiritual_need=high_spiritual_need,
         )
-        if (
-            progress_state == PROGRESS_STATE_ACAO_PRATICA
-            and not prayer_request_detected
-        ):
+        if progress_state == PROGRESS_STATE_EXECUCAO and not prayer_request_detected:
             spiritual_intensity = "leve"
         if practical_mode_forced:
             spiritual_intensity = "leve"
         derived_mode = conversation_mode
+        force_single_concrete_action = (
+            previous_progress_stalled_turns >= STALL_TURNS_FORCE_ACTION
+        )
+        prayer_allowed_this_turn = prayer_request_detected or (
+            prayer_cooldown_remaining == 0
+        )
         return {
             "previous_mode": previous_mode,
             "conversation_mode": conversation_mode,
@@ -1125,6 +1584,16 @@ Resposta do assistente para avaliar:
             "deep_presence_trigger": deep_presence_trigger,
             "prayer_request_detected": prayer_request_detected,
             "live_support_request_detected": live_support_request_detected,
+            "explicit_user_intent": explicit_user_intent,
+            "strategy_key": strategy_key,
+            "strategy_alternative_forced": strategy_alternative_forced,
+            "previous_strategy_key": previous_strategy_key,
+            "previous_strategy_repetition_count": previous_strategy_repetition_count,
+            "prayer_cooldown_remaining": prayer_cooldown_remaining,
+            "prayer_allowed_this_turn": prayer_allowed_this_turn,
+            "previous_progress_metric": previous_progress_metric,
+            "previous_progress_stalled_turns": previous_progress_stalled_turns,
+            "force_single_concrete_action": force_single_concrete_action,
         }
 
     def _build_response_prompt(
@@ -1156,8 +1625,26 @@ Resposta do assistente para avaliar:
             theme_id=selected_theme.id,
             limit=3,
         )
+        runtime_selection = self._prompt_registry.get_runtime_prompt_for_mode(
+            generation_state["derived_mode"]
+        )
+        runtime_main_selection = self._prompt_registry.get_runtime_main_prompt()
+        objective_selection = self._prompt_registry.get_runtime_mode_objective_for_mode(
+            generation_state["derived_mode"]
+        )
+        mode_objective = (objective_selection.content or "").strip()
+        if not mode_objective:
+            raise RuntimeError(
+                (
+                    "Runtime mode objective is empty for mode "
+                    f"'{generation_state['derived_mode']}'."
+                )
+            )
 
         return self._build_dynamic_runtime_prompt(
+            runtime_main_prompt=runtime_main_selection.content,
+            runtime_mode_prompt=runtime_selection.content,
+            mode_objective=mode_objective,
             conversation_mode=generation_state["conversation_mode"],
             derived_mode=generation_state["derived_mode"],
             previous_mode=generation_state["previous_mode"],
@@ -1170,6 +1657,14 @@ Resposta do assistente para avaliar:
             prayer_request_detected=generation_state["prayer_request_detected"],
             live_support_request_detected=generation_state[
                 "live_support_request_detected"
+            ],
+            explicit_user_intent=generation_state["explicit_user_intent"],
+            strategy_key=generation_state["strategy_key"],
+            strategy_alternative_forced=generation_state["strategy_alternative_forced"],
+            prayer_cooldown_remaining=generation_state["prayer_cooldown_remaining"],
+            progress_stalled_turns=generation_state["previous_progress_stalled_turns"],
+            force_single_concrete_action=generation_state[
+                "force_single_concrete_action"
             ],
             practical_mode_forced=generation_state["practical_mode_forced"],
             practical_mode_cooldown_remaining=generation_state[
@@ -1312,9 +1807,14 @@ Resposta do assistente para avaliar:
         selected_max_completion_tokens = max_completion_tokens
         regeneration_counter = 0
         semantic_loop_regenerations = 0
+        system_prompt_selection = self._prompt_registry.get_system_prompt()
+        selected_system_prompt = system_prompt_selection.content
+        runtime_prompt_selection = self._prompt_registry.get_runtime_prompt_for_mode(
+            generation_state["derived_mode"]
+        )
 
         request_messages = [
-            {"role": "system", "content": WACHAT_RESPONSE_SYSTEM_PROMPT},
+            {"role": "system", "content": selected_system_prompt},
             {"role": "user", "content": prompt_aux},
         ]
         system_messages_count = sum(
@@ -1363,6 +1863,11 @@ Resposta do assistente para avaliar:
         best_attempt: Optional[Dict[str, Any]] = None
         selected_runtime_prompt = prompt_aux
         selected_response_metadata = response_metadata
+        banned_ngrams = self._build_recent_assistant_ngram_ban(
+            recent_assistant_messages
+        )
+        previous_progress_metric = generation_state["previous_progress_metric"]
+        force_single_concrete_action = generation_state["force_single_concrete_action"]
 
         current_runtime_prompt = prompt_aux
         for round_number in range(1, MAX_SCORE_REFINEMENT_ROUNDS + 2):
@@ -1382,7 +1887,7 @@ Resposta do assistente para avaliar:
                     improvement_prompt=str(best_attempt["improvement_prompt"]),
                 )
                 refined_messages = [
-                    {"role": "system", "content": WACHAT_RESPONSE_SYSTEM_PROMPT},
+                    {"role": "system", "content": selected_system_prompt},
                     {"role": "user", "content": current_runtime_prompt},
                 ]
                 refined_system_count = sum(
@@ -1410,48 +1915,223 @@ Resposta do assistente para avaliar:
             choices = getattr(current_response, "choices", None) or []
             if len(choices) < 2:
                 raise RuntimeError("OpenAI did not return the expected 2 candidates.")
+            non_empty_candidates_in_round = 0
+            evaluated_candidates_in_round = 0
+            for regen_attempt in range(0, MAX_INFERENCE_REGEN_PER_ROUND + 1):
+                for attempt_number, choice in enumerate(choices[:2], start=1):
+                    assistant_text_candidate = _extract_text_from_choice(choice)
+                    logger.info(
+                        "Raw assistant response received profile_id=%s channel=%s round=%s content=%r",
+                        profile.id,
+                        channel,
+                        round_number,
+                        assistant_text_candidate,
+                    )
+                    if not assistant_text_candidate:
+                        logger.warning(
+                            "Empty assistant candidate ignored profile_id=%s channel=%s round=%s attempt=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                        )
+                        continue
+                    non_empty_candidates_in_round += 1
+                    if self._candidate_has_banned_ngram(
+                        assistant_text_candidate, banned_ngrams
+                    ):
+                        logger.warning(
+                            "Candidate blocked by ngram ban profile_id=%s channel=%s round=%s attempt=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                        )
+                        continue
+                    opening_similarity = self._candidate_opening_similarity(
+                        assistant_text_candidate, recent_assistant_messages
+                    )
+                    if opening_similarity >= OPENING_SIMILARITY_BLOCK_THRESHOLD:
+                        logger.warning(
+                            "Candidate blocked by opening similarity profile_id=%s channel=%s round=%s attempt=%s similarity=%.3f",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                            opening_similarity,
+                        )
+                        continue
+                    if not self._candidate_has_required_new_element(
+                        assistant_text_candidate
+                    ):
+                        logger.warning(
+                            "Candidate blocked: missing required new element profile_id=%s channel=%s round=%s attempt=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                        )
+                        continue
+                    candidate_has_prayer = self._contains_prayer_language(
+                        assistant_text_candidate
+                    )
+                    candidate_has_action = self._candidate_has_practical_action(
+                        assistant_text_candidate
+                    )
+                    if (
+                        candidate_has_prayer
+                        and not generation_state["prayer_request_detected"]
+                        and generation_state["prayer_cooldown_remaining"] > 0
+                    ):
+                        logger.warning(
+                            "Candidate blocked by prayer cooldown profile_id=%s channel=%s round=%s attempt=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                        )
+                        continue
+                    if (
+                        candidate_has_prayer
+                        and not generation_state["prayer_request_detected"]
+                        and not candidate_has_action
+                    ):
+                        logger.warning(
+                            "Candidate blocked: prayer without practical action profile_id=%s channel=%s round=%s attempt=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                        )
+                        continue
+                    empathy_stats = self._empathy_sentence_stats(
+                        assistant_text_candidate
+                    )
+                    if empathy_stats["count"] > MAX_EMPATHY_SENTENCES_PER_RESPONSE:
+                        logger.warning(
+                            "Candidate blocked: excessive empathy sentences profile_id=%s channel=%s round=%s attempt=%s count=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                            empathy_stats["count"],
+                        )
+                        continue
+                    if (
+                        empathy_stats["count"] == 1
+                        and empathy_stats["max_words"] > MAX_EMPATHY_SENTENCE_WORDS
+                    ):
+                        logger.warning(
+                            "Candidate blocked: empathy sentence too long profile_id=%s channel=%s round=%s attempt=%s words=%s",
+                            profile.id,
+                            channel,
+                            round_number,
+                            attempt_number,
+                            empathy_stats["max_words"],
+                        )
+                        continue
+                    if self._has_strong_inference(assistant_text_candidate):
+                        has_citation = self._contains_user_citation(
+                            assistant_text_candidate, last_person_message.content
+                        )
+                        has_conditional_confirmation = (
+                            self._has_conditional_inference_confirmation(
+                                assistant_text_candidate
+                            )
+                        )
+                        if not has_citation or not has_conditional_confirmation:
+                            logger.warning(
+                                "Candidate blocked: strong inference without citation/confirmation profile_id=%s channel=%s round=%s attempt=%s",
+                                profile.id,
+                                channel,
+                                round_number,
+                                attempt_number,
+                            )
+                            continue
+                    candidate_progress_metric = self._extract_progress_metric(
+                        assistant_text_candidate
+                    )
+                    if force_single_concrete_action:
+                        concrete_actions = self._count_concrete_actions(
+                            assistant_text_candidate
+                        )
+                        if concrete_actions != 1:
+                            logger.warning(
+                                "Candidate blocked: force single concrete action profile_id=%s channel=%s round=%s attempt=%s actions=%s",
+                                profile.id,
+                                channel,
+                                round_number,
+                                attempt_number,
+                                concrete_actions,
+                            )
+                            continue
+                        if not self._progress_advanced(
+                            previous_progress_metric, candidate_progress_metric
+                        ):
+                            logger.warning(
+                                "Candidate blocked: no progress advance under force mode profile_id=%s channel=%s round=%s attempt=%s",
+                                profile.id,
+                                channel,
+                                round_number,
+                                attempt_number,
+                            )
+                            continue
 
-            for attempt_number, choice in enumerate(choices[:2], start=1):
-                assistant_text_candidate = _extract_text_from_choice(choice)
-                logger.info(
-                    "Raw assistant response received profile_id=%s channel=%s round=%s content=%r",
-                    profile.id,
-                    channel,
-                    round_number,
-                    assistant_text_candidate,
+                    evaluation = self._evaluate_response(
+                        user_message=last_person_message.content,
+                        assistant_response=assistant_text_candidate,
+                    )
+                    score = evaluation["score"]
+                    analysis = evaluation["analysis"]
+                    improvement_prompt = evaluation["improvement_prompt"]
+                    logger.info(
+                        "Evaluation round %s attempt %s | score=%s",
+                        round_number,
+                        attempt_number,
+                        score,
+                    )
+                    logger.info("Improvement prompt: %s", improvement_prompt)
+
+                    attempt = {
+                        "round": round_number,
+                        "attempt": attempt_number,
+                        "response": assistant_text_candidate,
+                        "score": score,
+                        "analysis": analysis,
+                        "improvement_prompt": improvement_prompt,
+                        "progress_metric": candidate_progress_metric,
+                    }
+                    attempts.append(attempt)
+                    evaluated_candidates_in_round += 1
+                    if not best_attempt or score > float(best_attempt["score"]):
+                        best_attempt = attempt
+                        selected_runtime_prompt = current_runtime_prompt
+                        selected_response_metadata = current_metadata
+                if evaluated_candidates_in_round > 0:
+                    break
+                if regen_attempt >= MAX_INFERENCE_REGEN_PER_ROUND:
+                    break
+                if round_number == 1:
+                    current_response = client.chat.completions.create(**request_kwargs)
+                else:
+                    current_response = client.chat.completions.create(**refined_kwargs)
+                current_metadata = _usage_metadata(current_response)
+                current_metadata["round"] = round_number
+                current_metadata["regenerated_after_guard"] = True
+                response_rounds_metadata.append(current_metadata)
+                regeneration_counter += 1
+                choices = getattr(current_response, "choices", None) or []
+                if len(choices) < 2:
+                    raise RuntimeError(
+                        "OpenAI did not return the expected 2 candidates."
+                    )
+
+            if non_empty_candidates_in_round == 0:
+                raise RuntimeError("OpenAI returned empty assistant content.")
+            if evaluated_candidates_in_round == 0:
+                raise RuntimeError(
+                    "Post-generation inference guard blocked all assistant candidates."
                 )
-                if not assistant_text_candidate:
-                    raise RuntimeError("OpenAI returned empty assistant content.")
-
-                evaluation = self._evaluate_response(
-                    user_message=last_person_message.content,
-                    assistant_response=assistant_text_candidate,
-                )
-                score = evaluation["score"]
-                analysis = evaluation["analysis"]
-                improvement_prompt = evaluation["improvement_prompt"]
-                logger.info(
-                    "Evaluation round %s attempt %s | score=%s",
-                    round_number,
-                    attempt_number,
-                    score,
-                )
-                logger.info("Improvement prompt: %s", improvement_prompt)
-
-                attempt = {
-                    "round": round_number,
-                    "attempt": attempt_number,
-                    "response": assistant_text_candidate,
-                    "score": score,
-                    "analysis": analysis,
-                    "improvement_prompt": improvement_prompt,
-                }
-                attempts.append(attempt)
-                if not best_attempt or score > float(best_attempt["score"]):
-                    best_attempt = attempt
-                    selected_runtime_prompt = current_runtime_prompt
-                    selected_response_metadata = current_metadata
-
             if not best_attempt:
                 raise RuntimeError("No evaluated attempts were produced.")
             if float(best_attempt["score"]) >= TARGET_RESPONSE_SCORE:
@@ -1467,6 +2147,29 @@ Resposta do assistente para avaliar:
         assistant_text = best_attempt["response"]
         best_score = best_attempt["score"]
         logger.info("Selected best score=%s", best_score)
+        selected_has_prayer = self._contains_prayer_language(assistant_text)
+        next_prayer_cooldown_remaining = generation_state["prayer_cooldown_remaining"]
+        if selected_has_prayer:
+            next_prayer_cooldown_remaining = PRAYER_COOLDOWN_TURNS
+        selected_progress_metric = best_attempt.get("progress_metric")
+        if not isinstance(selected_progress_metric, dict):
+            selected_progress_metric = self._extract_progress_metric(assistant_text)
+        progress_advanced = self._progress_advanced(
+            generation_state["previous_progress_metric"], selected_progress_metric
+        )
+        next_progress_stalled_turns = (
+            0
+            if progress_advanced
+            else generation_state["previous_progress_stalled_turns"] + 1
+        )
+        next_strategy_repetition_count = 1
+        if (
+            generation_state["previous_strategy_key"]
+            == generation_state["strategy_key"]
+        ):
+            next_strategy_repetition_count = (
+                generation_state["previous_strategy_repetition_count"] + 1
+            )
 
         loop_counter = 1 if generation_state["loop_detected"] else 0
         self._save_runtime_counters(
@@ -1487,11 +2190,17 @@ Resposta do assistente para avaliar:
                 "max_completion_tokens": selected_max_completion_tokens,
             },
             "prompts": {
-                "system_prompt": WACHAT_RESPONSE_SYSTEM_PROMPT,
+                "system_prompt": selected_system_prompt,
                 "runtime_prompt": selected_runtime_prompt,
                 "selected_theme": {
                     "id": selected_theme.id,
                     "name": selected_theme.name,
+                },
+                "versions": {
+                    "system_component": system_prompt_selection.component_key,
+                    "system_version": system_prompt_selection.version,
+                    "runtime_component": runtime_prompt_selection.component_key,
+                    "runtime_version": runtime_prompt_selection.version,
                 },
             },
             "payload": {
@@ -1514,6 +2223,16 @@ Resposta do assistente para avaliar:
                 "practical_mode_cooldown_remaining": generation_state[
                     "practical_mode_cooldown_remaining"
                 ],
+                "prayer_cooldown_remaining": next_prayer_cooldown_remaining,
+                "explicit_user_intent": generation_state["explicit_user_intent"],
+                "strategy_key": generation_state["strategy_key"],
+                "strategy_alternative_forced": generation_state[
+                    "strategy_alternative_forced"
+                ],
+                "strategy_repetition_count": next_strategy_repetition_count,
+                "progress_metric": selected_progress_metric,
+                "progress_advanced": progress_advanced,
+                "progress_stalled_turns": next_progress_stalled_turns,
             },
             "evaluation": {
                 "attempts": attempts,
@@ -1534,6 +2253,7 @@ Resposta do assistente para avaliar:
                 channel=channel,
                 ollama_prompt=payload,
                 score=float(best_score),
+                bot_mode=generation_state["derived_mode"],
                 theme=selected_theme,
                 block_root=first_message,
             )
@@ -1603,19 +2323,13 @@ Resposta do assistente para avaliar:
                 f"NUNCA mencione explicitamente): {profile.inferred_gender}"
             )
 
-        system_prompt = f"""
-        Gere somente uma mensagem inicial de boas-vindas em português brasileiro.
-        Identidade: presença cristã acolhedora, humana e serena. Não diga que é bot.
-        Objetivo: transmitir segurança e abertura para conversa.
-        Regras:
-        - Máximo 3 frases e até 90 palavras.
-        - Sem emojis, sem versículos, sem linguagem de sermão.
-        - Sem explicar regras ou funcionamento.
-        - Incluir saudação pelo nome ({profile.name}).
-        - Incluir uma referência espiritual curta e natural, sem imposição.
-        - Terminar com exatamente 1 pergunta aberta e suave.
-        {gender_context}
-        """
+        welcome_template = self._prompt_registry.get_active_prompt(
+            "welcome.generator"
+        ).content
+        system_prompt = welcome_template.format(
+            name=profile.name,
+            gender_context=gender_context,
+        )
 
         last_user_message = profile.messages.filter(role="user").last()
         user_prompt = f"Gere agora a mensagem de boas-vindas para {profile.name}."
@@ -1644,6 +2358,7 @@ Resposta do assistente para avaliar:
             content=response,
             channel=channel,
             ollama_prompt=welcome_payload,
+            bot_mode=MODE_WELCOME,
         )
         message.block_root = message
         message.save(update_fields=["block_root"])

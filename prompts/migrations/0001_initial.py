@@ -1,0 +1,365 @@
+import django.db.models.deletion
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    initial = True
+
+    dependencies = [
+        ("core", "0029_promptcomponent_promptcomponentversion_promptrelease_and_more"),
+    ]
+
+    operations = [
+        migrations.SeparateDatabaseAndState(
+            database_operations=[],
+            state_operations=[
+                migrations.CreateModel(
+                    name="PromptComponent",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        (
+                            "key",
+                            models.CharField(
+                                db_index=True,
+                                help_text="Stable unique component key, ex: runtime.mode.WELCOME",
+                                max_length=120,
+                                unique=True,
+                            ),
+                        ),
+                        (
+                            "component_type",
+                            models.CharField(
+                                choices=[
+                                    ("system", "System"),
+                                    ("runtime", "Runtime"),
+                                    ("theme_meta", "Theme Meta"),
+                                    ("evaluation", "Evaluation"),
+                                    ("welcome", "Welcome"),
+                                    ("topic", "Topic"),
+                                    ("other", "Other"),
+                                ],
+                                db_index=True,
+                                max_length=20,
+                            ),
+                        ),
+                        (
+                            "scope",
+                            models.CharField(
+                                choices=[
+                                    ("global", "Global"),
+                                    ("mode", "Mode"),
+                                    ("theme", "Theme"),
+                                    ("custom", "Custom"),
+                                ],
+                                max_length=20,
+                            ),
+                        ),
+                        (
+                            "mode",
+                            models.CharField(
+                                blank=True,
+                                db_index=True,
+                                help_text="Conversation mode when scope=mode",
+                                max_length=40,
+                                null=True,
+                            ),
+                        ),
+                        ("name", models.CharField(max_length=140)),
+                        (
+                            "description",
+                            models.TextField(
+                                blank=True,
+                                help_text="Short summary describing when/why this component is used",
+                            ),
+                        ),
+                        (
+                            "active_version",
+                            models.PositiveIntegerField(
+                                blank=True,
+                                help_text="Fast pointer to currently active version number",
+                                null=True,
+                            ),
+                        ),
+                        ("created_at", models.DateTimeField(auto_now_add=True)),
+                        ("updated_at", models.DateTimeField(auto_now=True)),
+                        (
+                            "theme",
+                            models.ForeignKey(
+                                blank=True,
+                                help_text="Theme when scope=theme",
+                                null=True,
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="prompt_components",
+                                to="core.theme",
+                            ),
+                        ),
+                    ],
+                    options={
+                        "db_table": "prompt_component",
+                        "ordering": ["key"],
+                    },
+                ),
+                migrations.CreateModel(
+                    name="PromptComponentVersion",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        ("version", models.PositiveIntegerField()),
+                        ("content", models.TextField(help_text="Prompt content")),
+                        (
+                            "description",
+                            models.TextField(
+                                help_text="Summary for what this prompt version is for"
+                            ),
+                        ),
+                        (
+                            "score",
+                            models.FloatField(
+                                blank=True,
+                                db_index=True,
+                                help_text="Observed quality score for this version (0-10)",
+                                null=True,
+                            ),
+                        ),
+                        (
+                            "score_details",
+                            models.JSONField(
+                                blank=True,
+                                default=dict,
+                                help_text="Optional score breakdown payload",
+                            ),
+                        ),
+                        (
+                            "status",
+                            models.CharField(
+                                choices=[
+                                    ("draft", "Draft"),
+                                    ("suggested", "Suggested"),
+                                    ("approved", "Approved"),
+                                    ("active", "Active"),
+                                    ("rejected", "Rejected"),
+                                    ("archived", "Archived"),
+                                ],
+                                db_index=True,
+                                max_length=20,
+                            ),
+                        ),
+                        ("change_summary", models.TextField(blank=True)),
+                        (
+                            "created_by",
+                            models.CharField(default="system", max_length=60),
+                        ),
+                        ("created_at", models.DateTimeField(auto_now_add=True)),
+                        (
+                            "component",
+                            models.ForeignKey(
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="versions",
+                                to="prompts.promptcomponent",
+                            ),
+                        ),
+                        (
+                            "parent",
+                            models.ForeignKey(
+                                blank=True,
+                                null=True,
+                                on_delete=django.db.models.deletion.SET_NULL,
+                                related_name="children",
+                                to="prompts.promptcomponentversion",
+                            ),
+                        ),
+                    ],
+                    options={
+                        "db_table": "prompt_component_version",
+                        "ordering": ["component_id", "version"],
+                        "unique_together": {("component", "version")},
+                    },
+                ),
+                migrations.CreateModel(
+                    name="PromptRelease",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        ("name", models.CharField(max_length=120, unique=True)),
+                        ("description", models.TextField(blank=True)),
+                        (
+                            "status",
+                            models.CharField(
+                                choices=[
+                                    ("draft", "Draft"),
+                                    ("canary", "Canary"),
+                                    ("active", "Active"),
+                                    ("rolled_back", "Rolled Back"),
+                                    ("archived", "Archived"),
+                                ],
+                                db_index=True,
+                                max_length=20,
+                            ),
+                        ),
+                        (
+                            "created_by",
+                            models.CharField(default="system", max_length=60),
+                        ),
+                        ("created_at", models.DateTimeField(auto_now_add=True)),
+                        ("activated_at", models.DateTimeField(blank=True, null=True)),
+                    ],
+                    options={
+                        "db_table": "prompt_release",
+                        "ordering": ["-created_at"],
+                    },
+                ),
+                migrations.CreateModel(
+                    name="PromptVersionProposal",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        ("proposed_content", models.TextField()),
+                        (
+                            "description",
+                            models.TextField(
+                                help_text="Summary of intent/usage of the proposed prompt version"
+                            ),
+                        ),
+                        (
+                            "score",
+                            models.FloatField(
+                                blank=True,
+                                db_index=True,
+                                help_text="Predicted or measured score for this proposal",
+                                null=True,
+                            ),
+                        ),
+                        ("diagnosis", models.TextField(blank=True)),
+                        ("suggestion_summary", models.TextField(blank=True)),
+                        (
+                            "status",
+                            models.CharField(
+                                choices=[
+                                    ("suggested", "Suggested"),
+                                    ("approved", "Approved"),
+                                    ("rejected", "Rejected"),
+                                    ("promoted", "Promoted"),
+                                ],
+                                db_index=True,
+                                max_length=20,
+                            ),
+                        ),
+                        (
+                            "created_by",
+                            models.CharField(default="analyzer", max_length=60),
+                        ),
+                        ("created_at", models.DateTimeField(auto_now_add=True)),
+                        ("reviewed_at", models.DateTimeField(blank=True, null=True)),
+                        (
+                            "based_on",
+                            models.ForeignKey(
+                                blank=True,
+                                null=True,
+                                on_delete=django.db.models.deletion.SET_NULL,
+                                related_name="proposals",
+                                to="prompts.promptcomponentversion",
+                            ),
+                        ),
+                        (
+                            "component",
+                            models.ForeignKey(
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="proposals",
+                                to="prompts.promptcomponent",
+                            ),
+                        ),
+                    ],
+                    options={
+                        "db_table": "prompt_version_proposal",
+                        "ordering": ["-created_at"],
+                    },
+                ),
+                migrations.CreateModel(
+                    name="PromptReleaseItem",
+                    fields=[
+                        (
+                            "id",
+                            models.BigAutoField(
+                                auto_created=True,
+                                primary_key=True,
+                                serialize=False,
+                                verbose_name="ID",
+                            ),
+                        ),
+                        (
+                            "component",
+                            models.ForeignKey(
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="release_items",
+                                to="prompts.promptcomponent",
+                            ),
+                        ),
+                        (
+                            "release",
+                            models.ForeignKey(
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="items",
+                                to="prompts.promptrelease",
+                            ),
+                        ),
+                        (
+                            "version",
+                            models.ForeignKey(
+                                on_delete=django.db.models.deletion.CASCADE,
+                                related_name="release_items",
+                                to="prompts.promptcomponentversion",
+                            ),
+                        ),
+                    ],
+                    options={
+                        "db_table": "prompt_release_item",
+                        "unique_together": {("release", "component")},
+                    },
+                ),
+                migrations.AddConstraint(
+                    model_name="promptreleaseitem",
+                    constraint=models.UniqueConstraint(
+                        fields=("release", "version"),
+                        name="uniq_prompt_release_component_version",
+                    ),
+                ),
+                migrations.AddConstraint(
+                    model_name="promptcomponentversion",
+                    constraint=models.UniqueConstraint(
+                        condition=models.Q(("status", "active")),
+                        fields=("component",),
+                        name="uniq_active_prompt_component_version",
+                    ),
+                ),
+            ],
+        )
+    ]

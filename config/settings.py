@@ -92,6 +92,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "pgvector.django",
     "core.apps.CoreConfig",
+    "prompts.apps.PromptsConfig",
     "corsheaders",
 ]
 
