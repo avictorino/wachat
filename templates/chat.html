@@ -207,6 +207,20 @@
             text-decoration: underline;
         }
 
+        .message-copy-btn {
+            margin-left: 8px;
+            border: none;
+            background: transparent;
+            color: #667781;
+            font-size: 10px;
+            cursor: pointer;
+            padding: 0;
+        }
+
+        .message-copy-btn:hover {
+            text-decoration: underline;
+        }
+
         .prompt-modal {
             position: fixed;
             inset: 0;
@@ -690,6 +704,12 @@
                             <div class="message-content">{{ message.content }}</div>
                             <div class="message-time">
                                 {{ message.created_at|date:"H:i" }}
+                                <button
+                                    type="button"
+                                    class="message-copy-btn"
+                                    data-copy-text="{{ message.content|escapejs }}"
+                                    title="Copiar mensagem"
+                                >📋 copiar</button>
                                 {% if message.theme and message.role != "assistant" %}
                                     <span>• tema: {{ message.theme.name }}</span>
                                 {% endif %}
@@ -916,6 +936,36 @@
                 sendButton.textContent = 'Sending...';
                 sendButton.style.opacity = '0.6';
                 sendButton.style.cursor = 'not-allowed';
+            });
+        })();
+
+        (function() {
+            function decodeEscapedUnicode(text) {
+                return String(text || '').replace(/\\u([0-9a-fA-F]{4})/g, function(_, hex) {
+                    return String.fromCharCode(parseInt(hex, 16));
+                });
+            }
+
+            function normalizeCopyContent(rawText) {
+                return decodeEscapedUnicode(rawText)
+                    .replace(/\\n/g, '\n')
+                    .replace(/\\t/g, '\t');
+            }
+
+            document.querySelectorAll('.message-copy-btn[data-copy-text]').forEach(function(button) {
+                button.addEventListener('click', async function() {
+                    const text = normalizeCopyContent(button.dataset.copyText || '');
+                    if (!text) return;
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        button.textContent = '✅ copiado';
+                        setTimeout(function() {
+                            button.textContent = '📋 copiar';
+                        }, 1200);
+                    } catch (_) {
+                        button.textContent = 'falha ao copiar';
+                    }
+                });
             });
         })();
 

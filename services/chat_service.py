@@ -30,7 +30,6 @@ from services.conversation_runtime import (
     semantic_similarity,
 )
 from services.openai_service import OpenAIService
-from services.rag_service import RAGService
 from services.theme_classifier import ThemeClassifier
 
 logger = logging.getLogger(__name__)
@@ -187,7 +186,6 @@ class ChatService:
 
     def __init__(self):
         self._llm_service = OpenAIService()
-        self._rag_service = RAGService()
         self._theme_classifier = ThemeClassifier()
         self._prompt_registry = PromptRegistry()
 
@@ -892,7 +890,6 @@ Resposta do assistente para avaliar:
         selected_theme_name: str,
         theme_prompt: Optional[str],
         context_messages: list,
-        rag_contexts: list,
     ) -> str:
         runtime_mode = MODE_PASTOR_INSTITUCIONAL
 
@@ -1221,12 +1218,6 @@ Resposta do assistente para avaliar:
         for msg in context_messages:
             history_block += f"{msg.role.upper()}: {msg.content}\n"
 
-        rag_block = ""
-        if rag_contexts:
-            rag_block += "\nRAG CONTEXT AUXILIAR:\n"
-            for rag in rag_contexts:
-                rag_block += f"- {rag}\n"
-
         runtime_template_context = {
             "runtime_mode_prompt": runtime_mode_prompt,
             "runtime_mode": runtime_mode,
@@ -1256,7 +1247,6 @@ Resposta do assistente para avaliar:
             "mode_actions_block": mode_actions_block,
             "last_user_message": last_user_message,
             "history_block": history_block,
-            "rag_block": rag_block,
         }
         return self._render_runtime_main_prompt(
             runtime_main_prompt=runtime_main_prompt, context=runtime_template_context
@@ -1620,11 +1610,6 @@ Resposta do assistente para avaliar:
                     if item.get("topic")
                 ]
             )
-        rag_contexts = self._rag_service.retrieve(
-            query=last_person_message.content,
-            theme_id=selected_theme.id,
-            limit=3,
-        )
         runtime_selection = self._prompt_registry.get_runtime_prompt_for_mode(
             generation_state["derived_mode"]
         )
@@ -1677,7 +1662,6 @@ Resposta do assistente para avaliar:
             selected_theme_name=selected_theme.name,
             theme_prompt=selected_theme.meta_prompt,
             context_messages=context_messages,
-            rag_contexts=rag_contexts,
         )
 
     def _save_runtime_counters(

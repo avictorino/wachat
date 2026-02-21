@@ -80,30 +80,68 @@ def _get_active_version(component: PromptComponent) -> PromptComponentVersion:
     return active
 
 
+def _compose_next_description_command(
+    active_description: str,
+    active_improvement: str,
+    component_key: str,
+) -> str:
+    base_description = _to_command_description(active_description, component_key)
+    improvement_lines = []
+    for line in (active_improvement or "").splitlines():
+        cleaned = line.strip().lstrip("-").strip()
+        if cleaned:
+            improvement_lines.append(cleaned)
+
+    if not improvement_lines:
+        return base_description
+
+    unique_lines = []
+    for line in improvement_lines:
+        if line not in unique_lines:
+            unique_lines.append(line)
+
+    return (
+        f"{base_description.rstrip('.')} "
+        f"Aplique estas melhorias: {'; '.join(unique_lines)}."
+    )
+
+
 def regenerate_prompt_content(component: PromptComponent) -> tuple[str, str]:
     model = _get_openai_model()
     client = _get_openai_client()
     active = _get_active_version(component)
-    command_description = _to_command_description(component.description, component.key)
+    active_version_description = _to_command_description(
+        active.description, component.key
+    )
+    active_improvement = (active.improvement or "").strip()
+    if not active_improvement:
+        active_improvement = "Sem melhoria registrada na versão ativa."
+    next_description_command = _compose_next_description_command(
+        active_description=active.description,
+        active_improvement=active.improvement,
+        component_key=component.key,
+    )
 
     generation_prompt = (
         "Regere um prompt com melhoria incremental mantendo o mesmo propósito.\n"
-        "O campo descrição deve expressar a intenção como comando operacional.\n"
+        "A descrição da nova versão já foi definida e deve ser respeitada.\n"
         "Retorne SOMENTE JSON válido no formato:\n"
         "{\n"
-        '  "description_command": "frase em tom de comando",\n'
         '  "prompt": "texto completo do novo prompt"\n'
         "}\n\n"
         "Regras:\n"
         "- Não remover restrições de segurança do prompt base.\n"
         "- Tornar instruções mais diretas e executáveis.\n"
         "- Evitar repetição e redundância.\n"
+        "- Aplicar a melhoria recomendada da versão ativa de forma concreta.\n"
         "- Manter consistência com tipo/escopo/mode do componente.\n\n"
         f"COMPONENTE: {component.key}\n"
         f"TIPO: {component.component_type}\n"
         f"ESCOPO: {component.scope}\n"
         f"MODO: {component.mode or 'N/A'}\n"
-        f"DESCRIÇÃO-ALVO (COMANDO): {command_description}\n\n"
+        f"DESCRIÇÃO DA VERSÃO ATIVA (COMANDO): {active_version_description}\n\n"
+        f"MELHORIA RECOMENDADA DA VERSÃO ATIVA:\n{active_improvement}\n\n"
+        f"NOVA DESCRIÇÃO DA PRÓXIMA VERSÃO (OBRIGATÓRIA):\n{next_description_command}\n\n"
         f"PROMPT ATIVO ATUAL:\n{active.content}"
     )
 
@@ -142,14 +180,25 @@ def regenerate_prompt_content(component: PromptComponent) -> tuple[str, str]:
     if not isinstance(payload, dict):
         raise RuntimeError("Payload de regeneração deve ser objeto JSON.")
 
-    description_command = payload.get("description_command")
     prompt = payload.get("prompt")
-    if not isinstance(description_command, str) or not description_command.strip():
-        raise RuntimeError("Campo 'description_command' inválido na regeneração.")
     if not isinstance(prompt, str) or not prompt.strip():
         raise RuntimeError("Campo 'prompt' inválido na regeneração.")
 
-    return description_command.strip(), prompt.strip()
+    prompt_clean = prompt.strip()
+    active_description_clean = (active.description or "").strip()
+    active_content_clean = (active.content or "").strip()
+
+    if active_improvement != "Sem melhoria registrada na versão ativa.":
+        if next_description_command == active_description_clean:
+            raise RuntimeError(
+                "Regeneração inválida: description_command igual à descrição da versão ativa."
+            )
+    if prompt_clean == active_content_clean:
+        raise RuntimeError(
+            "Regeneração inválida: prompt idêntico ao conteúdo da versão ativa."
+        )
+
+    return next_description_command, prompt_clean
 
 
 def evaluate_prompt_content(

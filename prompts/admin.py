@@ -1,5 +1,6 @@
 from django.contrib import admin, messages
 from django.db.models import FloatField, OuterRef, Subquery
+from django.http import HttpResponseRedirect
 
 from prompts.models import PromptComponent, PromptComponentVersion
 from prompts.prompt_evolution import evaluate_prompt_content, regenerate_prompt_content
@@ -14,10 +15,8 @@ class PromptComponentVersionInline(admin.TabularInline):
         "score",
         "improvement",
         "description",
-        "created_by",
-        "created_at",
     ]
-    readonly_fields = ["created_at"]
+    readonly_fields = ["version", "status", "score"]
     ordering = ["-version"]
 
 
@@ -26,17 +25,13 @@ class PromptComponentAdmin(admin.ModelAdmin):
     change_form_template = "admin/prompts/promptcomponent/change_form.html"
     list_display = [
         "key",
-        "component_type",
-        "scope",
-        "mode",
-        "theme",
+        "theme_mode",
         "active_score",
         "active_version",
-        "updated_at",
     ]
-    list_filter = ["component_type", "scope", "mode", "theme"]
+    list_filter = ["mode", "theme"]
     search_fields = ["key", "name", "description"]
-    readonly_fields = ["created_at", "updated_at"]
+    readonly_fields = ["created_at"]
     inlines = [PromptComponentVersionInline]
     actions = ["regenerate_and_evaluate_prompts"]
 
@@ -56,6 +51,18 @@ class PromptComponentAdmin(admin.ModelAdmin):
     def active_score(self, obj):
         return obj.active_score_value
 
+    @admin.display(description="Theme / Mode")
+    def theme_mode(self, obj):
+        theme_label = "-"
+        if obj.theme:
+            theme_label = str(obj.theme)
+
+        mode_label = "-"
+        if obj.mode:
+            mode_label = str(obj.mode)
+
+        return f"{theme_label} | {mode_label}"
+
     @admin.action(description="Regenerar prompt ativo + avaliar + ativar nova versão")
     def regenerate_and_evaluate_prompts(self, request, queryset):
         processed = 0
@@ -71,13 +78,17 @@ class PromptComponentAdmin(admin.ModelAdmin):
 
     def response_change(self, request, obj):
         if "_regenerate_prompt" in request.POST:
-            self._regenerate_component(obj)
+            regeneration_result = self._regenerate_component(obj)
             self.message_user(
                 request,
-                "Componente regenerado, avaliado e ativado com sucesso.",
+                (
+                    "Componente regenerado, avaliado e ativado com sucesso. "
+                    f"score={regeneration_result['score']:.2f}; "
+                    f"improvement={regeneration_result['improvement']}"
+                ),
                 level=messages.SUCCESS,
             )
-            return super().response_change(request, obj)
+            return HttpResponseRedirect(request.path)
         return super().response_change(request, obj)
 
     def _regenerate_component(self, component):
@@ -120,6 +131,7 @@ class PromptComponentAdmin(admin.ModelAdmin):
         component.active_version = next_version
         component.description = description_command
         component.save(update_fields=["active_version", "description", "updated_at"])
+        return {"score": score, "improvement": improvement}
 
 
 @admin.register(PromptComponentVersion)
@@ -130,10 +142,13 @@ class PromptComponentVersionAdmin(admin.ModelAdmin):
         "status",
         "score",
         "improvement",
-        "created_by",
-        "created_at",
     ]
-    list_filter = ["status", "component__component_type", "component__scope"]
+    list_filter = [
+        "status",
+        "component",
+        "component__component_type",
+        "component__scope",
+    ]
     search_fields = ["component__key", "description", "change_summary", "content"]
     readonly_fields = ["created_at"]
     actions = ["approve_versions", "activate_versions"]

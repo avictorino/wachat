@@ -238,6 +238,5 @@ TRATAMENTO OBRIGATÓRIO:
 
 HISTÓRICO RECENTE:
 {history_block}
-{rag_block}
 Responda somente com a próxima fala do assistente.
 """.strip()

@@ -1,11 +1,12 @@
 import json
 
 from django.contrib import admin, messages
-from django.db.models import Count
+from django.db.models import Avg, Count
 from django.utils.html import format_html
 
-from core.models import BibleTextFlat, Message, Profile, RagChunk, Theme
+from core.models import Message, Profile, SocialMediaExport, Theme
 from core.theme_prompt_generation import build_theme_prompt_partial
+from services.social_media_export_service import SocialMediaExportService
 
 
 class MessageInline(admin.TabularInline):
@@ -133,22 +134,23 @@ class ProfileAdmin(admin.ModelAdmin):
 
     list_display = [
         "id",
-        "telegram_user_id",
         "name",
-        "phone_number",
-        "inferred_gender",
         "messages_count",
-        "created_at",
+        "messages_score_avg",
     ]
-    list_filter = ["inferred_gender", "created_at"]
+    list_filter = []
     search_fields = ["telegram_user_id", "name", "phone_number"]
     readonly_fields = ["created_at", "updated_at"]
     ordering = ["-created_at"]
     inlines = [MessageInline]
+    actions = ["export_social_media_snippets"]
 
     def get_queryset(self, request):
         queryset = super().get_queryset(request)
-        return queryset.annotate(messages_total=Count("messages"))
+        return queryset.annotate(
+            messages_total=Count("messages"),
+            messages_score_avg_value=Avg("messages__score"),
+        )
 
     def messages_count(self, obj):
         return obj.messages_total
@@ -156,48 +158,27 @@ class ProfileAdmin(admin.ModelAdmin):
     messages_count.short_description = "Messages"
     messages_count.admin_order_field = "messages_total"
 
+    def messages_score_avg(self, obj):
+        if obj.messages_score_avg_value is None:
+            return "-"
+        return f"{obj.messages_score_avg_value:.2f}"
 
-@admin.register(RagChunk)
-class RagChunkAdmin(admin.ModelAdmin):
-    """Admin interface for RagChunk model."""
+    messages_score_avg.short_description = "Avg score"
+    messages_score_avg.admin_order_field = "messages_score_avg_value"
 
-    list_display = [
-        "id",
-        "source",
-        "page",
-        "chunk_index",
-        "type",
-        "theme",
-        "created_at",
-    ]
-    list_filter = ["type", "theme", "source", "created_at"]
-    search_fields = ["id", "source", "raw_text", "text"]
-    readonly_fields = ["id", "created_at", "conversations_display"]
-    ordering = ["source", "page", "chunk_index"]
+    @admin.action(description="Exportar trechos para social media")
+    def export_social_media_snippets(self, request, queryset):
+        service = SocialMediaExportService()
+        exported_count = 0
 
-    # Exclude vector fields from display
-    exclude = ["embedding"]
+        for profile in queryset:
+            exported_count += service.export_profile_messages(profile=profile)
 
-    fieldsets = (
-        (
-            "Identification",
-            {"fields": ("id", "source", "page", "chunk_index", "type", "theme")},
-        ),
-        ("Content", {"fields": ("raw_text", "conversations_display", "text")}),
-        ("Metadata", {"fields": ("created_at",)}),
-    )
-
-    def conversations_display(self, obj):
-        """Display conversations as formatted JSON."""
-        if obj.conversations:
-            formatted_json = json.dumps(obj.conversations, indent=2, ensure_ascii=False)
-            return format_html(
-                '<pre style="background: #f4f4f4; padding: 10px; overflow-x: auto; font-family: monospace;">{}</pre>',
-                formatted_json,
-            )
-        return "No conversations available"
-
-    conversations_display.short_description = "Conversations (Formatted)"
+        self.message_user(
+            request,
+            f"{exported_count} trecho(s) exportado(s) para social media.",
+            level=messages.SUCCESS,
+        )
 
 
 @admin.register(Theme)
@@ -223,19 +204,129 @@ class ThemeAdmin(admin.ModelAdmin):
         )
 
 
-@admin.register(BibleTextFlat)
-class BibleTextFlatAdmin(admin.ModelAdmin):
+@admin.register(SocialMediaExport)
+class SocialMediaExportAdmin(admin.ModelAdmin):
     list_display = [
         "id",
-        "translation",
-        "testament",
-        "book",
-        "chapter",
-        "verse",
-        "reference",
-        "theme",
+        "status",
+        "score",
+        "image_price_usd",
+        "image_thumb",
+        "adapted_text_full",
+        "image_reference_full",
+        "religous_reference_full",
     ]
-    list_filter = ["translation", "testament", "book", "chapter", "theme"]
-    search_fields = ["reference", "text", "book"]
-    ordering = ["book_order", "chapter", "verse"]
-    readonly_fields = ["embedding"]
+    list_filter = []
+    search_fields = [
+        "original_text",
+        "adapted_text",
+        "image_summary",
+        "religous_reference",
+        "original_message__content",
+        "original_message__profile__name",
+    ]
+    readonly_fields = [
+        "original_text",
+        "adapted_text",
+        "image_summary",
+        "religous_reference",
+        "generated_image",
+        "image_preview",
+        "image_generation_usage_pretty",
+    ]
+    exclude = ["original_message"]
+    ordering = ["-id"]
+    actions = ["generate_selected_images"]
+
+    @admin.action(description="Gerar imagem social dos itens selecionados")
+    def generate_selected_images(self, request, queryset):
+        service = SocialMediaExportService()
+        generated_count = 0
+
+        for item in queryset:
+            service.generate_image_for_export(export_item=item)
+            generated_count += 1
+
+        self.message_user(
+            request,
+            f"{generated_count} imagem(ns) gerada(s) com sucesso.",
+            level=messages.SUCCESS,
+        )
+
+    def image_thumb(self, obj):
+        if not obj.generated_image:
+            return "-"
+        return format_html(
+            '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+            '<img src="{0}" style="width: 120px; height: auto; object-fit: contain; border-radius: 6px;" />'
+            "</a>",
+            obj.generated_image.url,
+        )
+
+    image_thumb.short_description = "Image"
+
+    def image_price_usd(self, obj):
+        usage_payload = obj.image_generation_usage or {}
+        pricing = usage_payload.get("pricing") or {}
+        estimated_cost = pricing.get("estimated_cost_usd")
+        if isinstance(estimated_cost, (int, float)):
+            return f"${estimated_cost:.3f}"
+
+        estimated_range = pricing.get("estimated_range_usd") or {}
+        min_cost = estimated_range.get("min")
+        max_cost = estimated_range.get("max")
+        if isinstance(min_cost, (int, float)) and isinstance(max_cost, (int, float)):
+            return f"${min_cost:.3f} - ${max_cost:.3f}"
+
+        return "-"
+
+    image_price_usd.short_description = "Price (USD)"
+
+    def adapted_text_full(self, obj):
+        return format_html(
+            '<div style="white-space: pre-wrap; min-width: 420px;">{}</div>',
+            obj.adapted_text,
+        )
+
+    adapted_text_full.short_description = "Adapted text"
+
+    def image_reference_full(self, obj):
+        return format_html(
+            '<div style="white-space: pre-wrap; min-width: 320px;">{}</div>',
+            obj.image_summary,
+        )
+
+    image_reference_full.short_description = "Image reference"
+
+    def religous_reference_full(self, obj):
+        return format_html(
+            '<div style="white-space: pre-wrap; min-width: 320px;">{}</div>',
+            obj.religous_reference or "",
+        )
+
+    religous_reference_full.short_description = "Religious reference"
+
+    def image_preview(self, obj):
+        if not obj.generated_image:
+            return "No generated image"
+        return format_html(
+            '<a href="{0}" target="_blank" rel="noopener noreferrer">'
+            '<img src="{0}" style="max-width: 280px; height: auto; border-radius: 8px;" />'
+            "</a>",
+            obj.generated_image.url,
+        )
+
+    image_preview.short_description = "Image preview"
+
+    def image_generation_usage_pretty(self, obj):
+        if not obj.image_generation_usage:
+            return "No usage payload"
+        formatted_json = json.dumps(
+            obj.image_generation_usage, indent=2, ensure_ascii=False
+        )
+        return format_html(
+            '<pre style="white-space: pre-wrap; min-width: 420px;">{}</pre>',
+            formatted_json,
+        )
+
+    image_generation_usage_pretty.short_description = "Image usage / cost (USD)"
